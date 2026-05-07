@@ -78,11 +78,6 @@ async function handleWavelengthInteraction(interaction, client) {
     if (!raw) {
       return interaction.reply({ content: 'Clue cannot be blank.', flags: MessageFlags.Ephemeral });
     }
-    // One word only — block spaces.
-    if (/\s/.test(raw)) {
-      return interaction.reply({ content: '❌ Your clue must be a **single word** — no spaces allowed.', flags: MessageFlags.Ephemeral });
-    }
-
     game.clue  = raw;
     game.phase = 'guessing';
     WavelengthRepository.upsert(game);
@@ -295,7 +290,7 @@ async function handleWavelengthInteraction(interaction, client) {
     return interaction.update({
       content:
         `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
-        `🎯 The **target position** is shown on the image below. Give the guessers a **one-word clue** that hints at where it sits!`,
+        `🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!`,
       components: buildClueSubmitComponents(),
       files,
     });
@@ -319,7 +314,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     const input = new TextInputBuilder()
       .setCustomId('wl_clue_input')
-      .setLabel('One word only — no spaces')
+      .setLabel('Your clue')
       .setStyle(TextInputStyle.Short)
       .setMinLength(1)
       .setMaxLength(50)
