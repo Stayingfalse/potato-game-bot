@@ -3,10 +3,13 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 /**
- * The 7-button nudge row shown in each guesser's ephemeral panel.
+ * The 7-button nudge rows shown in each guesser's ephemeral panel.
  *
- * Layout: <<< / << / < / SUBMIT / > / >> / >>>
- * Deltas:  -25 / -10 / -5 / submit / +5 / +10 / +25
+ * Row 1: <<< / << / < / SUBMIT / >   (deltas: -25 / -10 / -5 / submit / +5)
+ * Row 2: >> / >>>                     (deltas: +10 / +25)
+ *
+ * Discord limits each action row to a maximum of 5 buttons, so the 7 buttons
+ * are spread across two rows.
  *
  * @param {string} userId
  * @param {boolean} submitted  When true, all nudge buttons are disabled.
@@ -16,7 +19,7 @@ function buildNudgeComponents(userId, submitted, position) {
   const atLeft  = position <= 0;
   const atRight = position >= 100;
 
-  const row = new ActionRowBuilder().addComponents(
+  const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`wl_nudge_${userId}_-25`)
       .setLabel('<<<')
@@ -42,6 +45,9 @@ function buildNudgeComponents(userId, submitted, position) {
       .setLabel('>')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(submitted || atRight),
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`wl_nudge_${userId}_10`)
       .setLabel('>>')
@@ -54,7 +60,7 @@ function buildNudgeComponents(userId, submitted, position) {
       .setDisabled(submitted || atRight),
   );
 
-  return [row];
+  return [row1, row2];
 }
 
 /**
