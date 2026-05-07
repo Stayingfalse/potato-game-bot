@@ -30,6 +30,7 @@ const { buildNudgeComponents, buildGuessPromptComponents } = require('./phases/g
 const { startRevealPhase } = require('./phases/reveal');
 const { buildSessionSummaryEmbed, evaluateSessionGoal } = require('./phases/sessionEnd');
 const {
+  DEFAULT_SESSION_MODE,
   formatClueOrder,
   buildSessionModePromptEmbed,
   buildSessionModePromptComponents,
@@ -63,7 +64,7 @@ async function checkAllSubmitted(game, client) {
 
 async function startConfiguredRound(game, client) {
   if (!game.sessionMode) {
-    client.wavelengthManager.setSessionMode(game.threadId, { type: 'endless', clueOrder: 'random' });
+    client.wavelengthManager.setSessionMode(game.threadId, { ...DEFAULT_SESSION_MODE });
   }
   client.wavelengthManager.startGame(game.threadId, spectra.spectra);
   game.spectrumOptions = sampleSpectra();

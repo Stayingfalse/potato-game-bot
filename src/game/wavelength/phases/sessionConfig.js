@@ -8,6 +8,8 @@ const MODE_LABELS = {
   endless: 'Endless Mode',
 };
 
+const DEFAULT_SESSION_MODE = Object.freeze({ type: 'endless', clueOrder: 'random' });
+
 function describeSessionMode(sessionMode) {
   if (!sessionMode) return 'Not selected yet';
 
@@ -94,6 +96,7 @@ function buildEndlessClueOrderComponents() {
 }
 
 module.exports = {
+  DEFAULT_SESSION_MODE,
   describeSessionMode,
   formatClueOrder,
   buildSessionModePromptEmbed,
