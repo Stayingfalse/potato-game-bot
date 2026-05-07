@@ -28,7 +28,15 @@ const {
 
 const { buildNudgeComponents, buildGuessPromptComponents } = require('./phases/guessing');
 const { startRevealPhase } = require('./phases/reveal');
-const { buildRematchComponents, buildSessionSummaryEmbed } = require('./phases/sessionEnd');
+const { buildSessionSummaryEmbed, evaluateSessionGoal } = require('./phases/sessionEnd');
+const {
+  DEFAULT_SESSION_MODE,
+  formatClueOrder,
+  buildSessionModePromptEmbed,
+  buildSessionModePromptComponents,
+  buildSnakePointsComponents,
+  buildEndlessClueOrderComponents,
+} = require('./phases/sessionConfig');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const WavelengthRepository = require('../../db/WavelengthRepository');
 
@@ -54,6 +62,47 @@ async function checkAllSubmitted(game, client) {
   }
 }
 
+async function startConfiguredRound(game, client) {
+  if (!game.sessionMode) {
+    client.wavelengthManager.setSessionMode(game.threadId, { ...DEFAULT_SESSION_MODE });
+  }
+  client.wavelengthManager.startGame(game.threadId, spectra.spectra);
+  game.spectrumOptions = sampleSpectra();
+
+  if (game.channelId && game.messageId) {
+    const channel = await client.channels.fetch(game.channelId).catch(() => null);
+    if (channel) {
+      const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
+      if (lobbyMsg) await lobbyMsg.edit({ embeds: [buildActiveEmbed(game)], components: [] }).catch(() => {});
+    }
+  }
+
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return false;
+
+  await thread.send({ content: `🔄 **Round ${game.gameNumber} starting!**`, embeds: [buildGameThreadEmbed(game)] }).catch(() => {});
+
+  const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
+  if (boardMsg) {
+    game.boardMessageId = boardMsg.id;
+    WavelengthRepository.upsert(game);
+  }
+
+  await thread.send({
+    content: `<@${game.clueGiverId}> — you're the **Clue Giver** this round! Click below to receive your private panel.`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('wl_open_cg_panel')
+          .setLabel('Open Clue Giver Panel')
+          .setStyle(ButtonStyle.Primary),
+      ),
+    ],
+  }).catch(() => {});
+
+  return true;
+}
+
 /**
  * Dispatch all `wl_` button interactions and modal submissions.
  * Called from interactionCreate.js.
@@ -65,6 +114,34 @@ async function handleWavelengthInteraction(interaction, client) {
   const { wavelengthManager } = client;
 
   // ── Modal: clue submission ─────────────────────────────────────────────────
+  if (interaction.isModalSubmit() && interaction.customId === 'wl_rr_times_modal') {
+    const game = wavelengthManager.getGame(interaction.channelId);
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No session setup is active.', flags: MessageFlags.Ephemeral });
+    }
+    if (interaction.user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+
+    const raw = interaction.fields.getTextInputValue('wl_rr_times_input').trim();
+    const times = parseInt(raw, 10);
+    if (!Number.isInteger(times) || times < 1 || times > 20) {
+      return interaction.reply({ content: 'Enter a whole number from 1 to 20.', flags: MessageFlags.Ephemeral });
+    }
+
+    client.wavelengthManager.setSessionMode(game.threadId, {
+      type: 'round_robin_times',
+      clueOrder: 'round_robin',
+      targetClueTurns: times,
+    });
+    await interaction.reply({
+      content: `✅ Session mode set: **Round Robin**, everyone clues **${times}** time(s). Starting Round 1…`,
+      flags: MessageFlags.Ephemeral,
+    });
+    await startConfiguredRound(game, client);
+    return;
+  }
+
   if (interaction.isModalSubmit() && interaction.customId === 'wl_clue_modal') {
     const game = wavelengthManager.getGame(interaction.channelId);
     if (!game || game.phase !== 'cluing') {
@@ -78,11 +155,6 @@ async function handleWavelengthInteraction(interaction, client) {
     if (!raw) {
       return interaction.reply({ content: 'Clue cannot be blank.', flags: MessageFlags.Ephemeral });
     }
-    // One word only — block spaces.
-    if (/\s/.test(raw)) {
-      return interaction.reply({ content: '❌ Your clue must be a **single word** — no spaces allowed.', flags: MessageFlags.Ephemeral });
-    }
-
     game.clue  = raw;
     game.phase = 'guessing';
     WavelengthRepository.upsert(game);
@@ -178,39 +250,22 @@ async function handleWavelengthInteraction(interaction, client) {
       }
 
       await interaction.deferUpdate();
+      game.phase = 'setup';
+      WavelengthRepository.upsert(game);
 
-      // Assign clue giver, target, spectra options.
-      wavelengthManager.startGame(threadId, spectra.spectra);
-      game.spectrumOptions = sampleSpectra();
-
-      // Update parent-channel embed.
-      await interaction.editReply({ embeds: [buildActiveEmbed(game)], components: [] });
+      await interaction.editReply({
+        embeds: [buildSessionModePromptEmbed(game)],
+        components: [],
+      });
 
       const thread = await client.channels.fetch(threadId).catch(() => null);
-      if (!thread) return;
-
-      // Post game intro + board in thread.
-      await thread.send({ embeds: [buildGameThreadEmbed(game)] }).catch(() => {});
-
-      const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
-      if (boardMsg) {
-        game.boardMessageId = boardMsg.id;
-        WavelengthRepository.upsert(game);
+      if (thread) {
+        await thread.send({
+          content: `⚙️ <@${game.hostId}> choose a **session mode** to begin Round ${game.gameNumber}.`,
+          embeds: [buildSessionModePromptEmbed(game)],
+          components: buildSessionModePromptComponents(),
+        }).catch(() => {});
       }
-
-      // Send Clue Giver a button to open their private spectrum-pick panel.
-      await thread.send({
-        content: `<@${game.clueGiverId}> — you're the **Clue Giver**! Click below to receive your private panel.`,
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('wl_open_cg_panel')
-              .setLabel('Open Clue Giver Panel')
-              .setStyle(ButtonStyle.Primary),
-          ),
-        ],
-      }).catch(() => {});
-
       return;
     }
 
@@ -252,6 +307,103 @@ async function handleWavelengthInteraction(interaction, client) {
   const game = wavelengthManager.getGame(interaction.channelId);
 
   // ── wl_open_cg_panel — Clue Giver opens their private spectrum picker ─────
+  if (customId === 'wl_mode_rr_times') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId('wl_rr_times_modal')
+      .setTitle('Round Robin Target');
+
+    const input = new TextInputBuilder()
+      .setCustomId('wl_rr_times_input')
+      .setLabel('How many clue turns per player?')
+      .setStyle(TextInputStyle.Short)
+      .setMinLength(1)
+      .setMaxLength(2)
+      .setPlaceholder('e.g. 2')
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  if (customId === 'wl_mode_snake_points') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+    return interaction.reply({
+      content: '🎯 Select the point target for **Snake Draft**:',
+      components: buildSnakePointsComponents(),
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (customId.startsWith('wl_snake_points_')) {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+
+    const targetPoints = parseInt(customId.split('wl_snake_points_')[1], 10);
+    client.wavelengthManager.setSessionMode(game.threadId, {
+      type: 'snake_points',
+      clueOrder: 'snake',
+      targetPoints,
+    });
+    await interaction.update({ content: `✅ Session mode set: **Snake Draft**, first to **${targetPoints}** points. Starting Round 1…`, components: [] });
+    await startConfiguredRound(game, client);
+    return;
+  }
+
+  if (customId === 'wl_mode_endless') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+    return interaction.reply({
+      content: '♾️ Choose clue-giver order for **Endless Mode**:',
+      components: buildEndlessClueOrderComponents(),
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (customId.startsWith('wl_endless_order_')) {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    }
+
+    const clueOrder = customId.split('wl_endless_order_')[1];
+    if (!['round_robin', 'snake', 'random'].includes(clueOrder)) {
+      return interaction.reply({ content: 'Invalid endless clue order.', flags: MessageFlags.Ephemeral });
+    }
+
+    client.wavelengthManager.setSessionMode(game.threadId, {
+      type: 'endless',
+      clueOrder,
+    });
+    await interaction.update({
+      content: `✅ Session mode set: **Endless** with **${formatClueOrder(clueOrder)}**. Starting Round 1…`,
+      components: [],
+    });
+    await startConfiguredRound(game, client);
+    return;
+  }
+
   if (customId === 'wl_open_cg_panel') {
     if (!game || game.phase !== 'cluing') {
       return interaction.reply({ content: 'No active cluing phase.', flags: MessageFlags.Ephemeral });
@@ -295,7 +447,7 @@ async function handleWavelengthInteraction(interaction, client) {
     return interaction.update({
       content:
         `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
-        `🎯 The **target position** is shown on the image below. Give the guessers a **one-word clue** that hints at where it sits!`,
+        `🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!`,
       components: buildClueSubmitComponents(),
       files,
     });
@@ -319,7 +471,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     const input = new TextInputBuilder()
       .setCustomId('wl_clue_input')
-      .setLabel('One word only — no spaces')
+      .setLabel('Your clue')
       .setStyle(TextInputStyle.Short)
       .setMinLength(1)
       .setMaxLength(50)
@@ -464,10 +616,17 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_rematch_same ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_same') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Only the host can start the next round.', flags: MessageFlags.Ephemeral });
+    }
+    const goal = evaluateSessionGoal(game);
+    if (goal.complete) {
+      return interaction.reply({
+        content: '🏁 The configured session goal is already complete. Choose **End Game & Close Session** or **New Game (Open Signups)**.',
+        flags: MessageFlags.Ephemeral,
+      });
     }
 
     await interaction.deferUpdate();
@@ -475,38 +634,7 @@ async function handleWavelengthInteraction(interaction, client) {
     const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
     if (!resetGame) return;
 
-    resetGame.spectrumOptions = sampleSpectra();
-    client.wavelengthManager.startGame(game.threadId, spectra.spectra);
-    resetGame.spectrumOptions = sampleSpectra(); // override with fresh pair
-
-    // Update parent embed.
-    if (resetGame.channelId && resetGame.messageId) {
-      const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
-      if (channel) {
-        const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
-        if (lobbyMsg) await lobbyMsg.edit({ embeds: [buildActiveEmbed(resetGame)], components: [] }).catch(() => {});
-      }
-    }
-
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (!thread) return;
-
-    await thread.send({ content: `🔄 **Game ${resetGame.gameNumber} starting — same group!**`, embeds: [buildGameThreadEmbed(resetGame)] }).catch(() => {});
-
-    const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(resetGame)], components: [] }).catch(() => null);
-    if (boardMsg) resetGame.boardMessageId = boardMsg.id;
-
-    await thread.send({
-      content: `<@${resetGame.clueGiverId}> — you're the **Clue Giver** this round! Click below to open your private panel.`,
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('wl_open_cg_panel')
-            .setLabel('Open Clue Giver Panel')
-            .setStyle(ButtonStyle.Primary),
-        ),
-      ],
-    }).catch(() => {});
+    await startConfiguredRound(resetGame, client);
 
     return;
   }
@@ -514,15 +642,15 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_rematch_open ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_open') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can open sign-ups.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferUpdate();
 
-    const resetGame = client.wavelengthManager.resetForRematch(game.threadId, true);
+    const resetGame = client.wavelengthManager.resetForNewSession(game.threadId, true);
     if (!resetGame) return;
 
     if (resetGame.channelId && resetGame.messageId) {
@@ -537,7 +665,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) {
-      await thread.send({ content: `📋 **Game ${resetGame.gameNumber} sign-ups open!** Join via the lobby button in the main channel.` }).catch(() => {});
+      await thread.send({ content: '📋 **New game sign-ups are open!** Session scores and mode were reset. Join via the lobby button in the main channel.' }).catch(() => {});
     }
 
     return;
@@ -546,7 +674,7 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_close_session ─────────────────────────────────────────────────────
   if (customId === 'wl_close_session') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });

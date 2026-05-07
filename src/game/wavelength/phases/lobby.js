@@ -1,6 +1,7 @@
 'use strict';
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { describeSessionMode } = require('./sessionConfig');
 
 /**
  * Public lobby embed shown in the parent channel.
@@ -16,7 +17,7 @@ function buildLobbyEmbed(game) {
       `**Host:** ${game.hostUsername}\n\n` +
       `**Players (${game.players.size}/20):**\n${playerList}\n\n` +
       `A random **Clue Giver** will be chosen when the game starts.\n` +
-      `The Clue Giver picks a spectrum and gives a one-word clue. Everyone else nudges a marker to guess where they think the target sits!`
+      `The Clue Giver picks a spectrum and gives a clue. Everyone else nudges a marker to guess where they think the target sits!`
     )
     .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
     .setColor(0x5865F2)
@@ -54,12 +55,13 @@ function buildLobbyComponents(threadId) {
 }
 
 /**
- * "Game In Progress" embed shown in the parent channel while the game is active.
+ * "Round In Progress" embed shown in the parent channel while the session is active.
  */
 function buildActiveEmbed(game) {
+  const mode = describeSessionMode(game.sessionMode);
   return new EmbedBuilder()
-    .setTitle('〰️ Wavelength — Game In Progress')
-    .setDescription(`**Game ${game.gameNumber}** is underway inside the thread.`)
+    .setTitle('〰️ Wavelength — Round In Progress')
+    .setDescription(`**Round ${game.gameNumber}** is underway inside the thread.\n**Mode:** ${mode}`)
     .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
     .setColor(0xF39C12)
     .setTimestamp();
@@ -71,10 +73,10 @@ function buildActiveEmbed(game) {
 function buildGameThreadEmbed(game) {
   const clueGiver = game.players.get(game.clueGiverId);
   return new EmbedBuilder()
-    .setTitle(`〰️ Wavelength — Game ${game.gameNumber}`)
+    .setTitle(`〰️ Wavelength — Round ${game.gameNumber}`)
     .setDescription(
       `Welcome! **<@${game.clueGiverId}> (${clueGiver?.username ?? '?'})** is the Clue Giver this round.\n\n` +
-      `**Clue Giver:** You'll receive a private message with two spectrum options to choose from, then submit one word as your clue.\n\n` +
+      `**Clue Giver:** You'll receive a private message with two spectrum options to choose from, then submit your clue.\n\n` +
       `**Everyone else:** Once the clue is revealed, click **"View Guess Panel"** to position your marker on the spectrum.`
     )
     .setColor(0x5865F2)

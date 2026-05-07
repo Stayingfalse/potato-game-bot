@@ -53,6 +53,8 @@ db.exec(`
     target_position      INTEGER,
     clue                 TEXT,
     guesses              TEXT NOT NULL DEFAULT '{}',
+    session_mode         TEXT,
+    clue_order_state     TEXT,
     game_number          INTEGER NOT NULL DEFAULT 1,
     created_at           INTEGER NOT NULL
   );
@@ -107,6 +109,15 @@ db.exec(`
     enabled     INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// ── Lightweight column migrations for existing installs ───────────────────────
+const wlColumns = new Set(db.prepare('PRAGMA table_info(wavelength_games)').all().map(col => col.name));
+if (!wlColumns.has('session_mode')) {
+  db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT');
+}
+if (!wlColumns.has('clue_order_state')) {
+  db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
+}
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 

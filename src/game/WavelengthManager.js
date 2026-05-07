@@ -13,7 +13,7 @@ class WavelengthGameState {
     this.messageId     = null;        // Parent-channel lobby/status embed message ID
     this.boardMessageId = null;       // In-thread live board message ID
 
-    /** @type {'lobby'|'cluing'|'guessing'|'reveal'|'ended'} */
+    /** @type {'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'} */
     this.phase = 'lobby';
 
     /** @type {Map<string, {id:string, username:string, avatarURL:string}>} */
@@ -34,8 +34,15 @@ class WavelengthGameState {
     this.guesses = new Map();
 
     this.guessTimeout   = null;       // setTimeout handle for auto-submit fallback
-    this.gameNumber     = 1;
-    this.sessionHistory = [];         // Array of { gameNumber, target, clue, spectrum, guesses }
+    this.gameNumber     = 1;          // Round counter within this session.
+    this.sessionHistory = [];         // Array of { roundNumber, clueGiverId, target, clue, spectrum, guesses, scores }
+    this.sessionMode    = null;       // { type, clueOrder, targetClueTurns?, targetPoints? }
+    this.clueOrderState = {
+      roundRobinIndex:   0,
+      snakeIndex:        0,
+      snakeDirection:    1,
+      clueTurnsByPlayer: {},
+    };
   }
 }
 
@@ -103,7 +110,56 @@ class WavelengthManager {
     game.clue              = null;
     game.guesses           = new Map();
 
-    // Keep players and sessionHistory.
+    // Keep players, sessionHistory, and session mode.
+    WavelengthRepository.upsert(game);
+    return game;
+  }
+
+  /**
+   * Reset state to begin a brand new session in the same thread.
+   * Preserves players only.
+   */
+  resetForNewSession(threadId, openSignups) {
+    const game = this.games.get(threadId);
+    if (!game) return null;
+
+    if (game.guessTimeout) {
+      clearTimeout(game.guessTimeout);
+      game.guessTimeout = null;
+    }
+
+    game.gameNumber      = 1;
+    game.boardMessageId  = null;
+    game.phase           = openSignups ? 'lobby' : 'setup';
+    game.clueGiverId     = null;
+    game.spectrumOptions = [];
+    game.chosenSpectrum  = null;
+    game.targetPosition  = null;
+    game.clue            = null;
+    game.guesses         = new Map();
+    game.sessionHistory  = [];
+    game.sessionMode     = null;
+    game.clueOrderState  = {
+      roundRobinIndex:   0,
+      snakeIndex:        0,
+      snakeDirection:    1,
+      clueTurnsByPlayer: {},
+    };
+
+    WavelengthRepository.upsert(game);
+    return game;
+  }
+
+  setSessionMode(threadId, sessionMode) {
+    const game = this.games.get(threadId);
+    if (!game) return null;
+    game.sessionMode = sessionMode;
+    game.clueOrderState = {
+      roundRobinIndex:   0,
+      snakeIndex:        0,
+      snakeDirection:    1,
+      clueTurnsByPlayer: {},
+    };
     WavelengthRepository.upsert(game);
     return game;
   }
@@ -141,7 +197,9 @@ class WavelengthManager {
     if (!game) return;
 
     const playerIds = [...game.players.keys()];
-    game.clueGiverId   = playerIds[Math.floor(Math.random() * playerIds.length)];
+    if (!game.sessionMode) return;
+    game.clueGiverId   = this.pickClueGiver(game, playerIds);
+    if (!game.clueGiverId) return;
     game.targetPosition = Math.floor(Math.random() * 101); // 0–100 inclusive
 
     // Fisher-Yates shuffle, pick 2.
@@ -162,6 +220,53 @@ class WavelengthManager {
 
     game.phase = 'cluing';
     WavelengthRepository.upsert(game);
+  }
+
+  pickClueGiver(game, playerIds) {
+    if (playerIds.length === 0) return null;
+    const order = game.sessionMode?.clueOrder ?? 'random';
+    const state = game.clueOrderState ?? {};
+
+    let selectedId;
+
+    if (order === 'round_robin') {
+      const idx = state.roundRobinIndex ?? 0;
+      selectedId = playerIds[idx % playerIds.length];
+      game.clueOrderState.roundRobinIndex = (idx + 1) % playerIds.length;
+    } else if (order === 'snake') {
+      if (playerIds.length === 1) {
+        selectedId = playerIds[0];
+      } else {
+        let idx = Math.max(0, Math.min(playerIds.length - 1, state.snakeIndex ?? 0));
+        let dir = state.snakeDirection === -1 ? -1 : 1;
+        selectedId = playerIds[idx];
+        ({ idx, dir } = this.advanceSnakeIndex(idx, dir, playerIds.length));
+
+        game.clueOrderState.snakeIndex = idx;
+        game.clueOrderState.snakeDirection = dir;
+      }
+    } else {
+      selectedId = playerIds[Math.floor(Math.random() * playerIds.length)];
+    }
+
+    const counts = game.clueOrderState.clueTurnsByPlayer ?? {};
+    counts[selectedId] = (counts[selectedId] ?? 0) + 1;
+    game.clueOrderState.clueTurnsByPlayer = counts;
+    return selectedId;
+  }
+
+  /**
+   * Advance the snake cursor for clue-giver order.
+   * Pattern for players [A,B,C] is A → B → C → C → B → A → A → ...
+   */
+  advanceSnakeIndex(idx, dir, playerCount) {
+    if (playerCount <= 1) return { idx: 0, dir: 1 };
+    if (dir === 1) {
+      if (idx >= playerCount - 1) return { idx: playerCount - 1, dir: -1 };
+      return { idx: idx + 1, dir };
+    }
+    if (idx <= 0) return { idx: 0, dir: 1 };
+    return { idx: idx - 1, dir };
   }
 }
 
