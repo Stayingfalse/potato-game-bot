@@ -48,7 +48,7 @@ function startGameTimer(game, thread, client) {
 
     // TTS warning at key milestones.
     if (TTS_WARNINGS.has(game.timeLeft)) {
-      sendTtsWarning(thread, game.timeLeft);
+      await sendTtsWarning(thread, game.timeLeft);
     }
 
     const updateEvery = game.timeLeft > 60 ? 30
