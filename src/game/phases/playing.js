@@ -110,10 +110,27 @@ function buildMayorActionComponents(tokens) {
  * Returns the Accept / Reject action row posted when a player makes a guess.
  * Only the Wordsmith can interact with these buttons.
  * @param {string} guesserId  The user ID of the player who made the guess.
- * @param {{ correct: number, so_close_way_off: number }} tokens
+ * @param {{ yes_no: number, maybe: number, correct: number, so_close_way_off: number }} tokens
  */
 function buildGuessComponents(guesserId, tokens) {
   return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ww_guess_yes_${guesserId}`)
+        .setLabel('✅ Yes')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(tokens.yes_no <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_guess_no_${guesserId}`)
+        .setLabel('❌ No')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(tokens.yes_no <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_guess_maybe_${guesserId}`)
+        .setLabel('❔ Maybe')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(tokens.maybe <= 0),
+    ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`ww_guess_correct_${guesserId}`)

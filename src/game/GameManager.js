@@ -23,7 +23,7 @@ class GameState {
     /** @type {'lobby'|'starting'|'playing'|'voting'|'ended'} */
     this.phase = 'lobby';
 
-    /** @type {Map<string, {id: string, username: string, role: string|null}>} */
+    /** @type {Map<string, {id: string, username: string, role: string|null, secretRole: string|null}>} */
     this.players = new Map(); // userId → player object
 
     this.word = null;
@@ -148,6 +148,7 @@ class GameManager {
     // Reset roles so they get reassigned on start.
     for (const player of game.players.values()) {
       player.role = null;
+      player.secretRole = null;
     }
 
     GameRepository.upsert(game);
@@ -164,7 +165,7 @@ class GameManager {
     const game = this.games.get(threadId);
     if (!game || game.players.has(user.id) || game.players.size >= 10) return false;
 
-    game.players.set(user.id, { id: user.id, username: user.username, role: null });
+    game.players.set(user.id, { id: user.id, username: user.username, role: null, secretRole: null });
     GameRepository.upsert(game);
     return true;
   }

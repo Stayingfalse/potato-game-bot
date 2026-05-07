@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES } = require('../../utils/roles');
+const { isDemon } = require('../../utils/roles');
 const { endGame } = require('./endGame');
 const GameRepository = require('../../db/GameRepository');
 
@@ -82,7 +82,7 @@ async function tallyVotes(game, client) {
 
   // Check if the top target is the Demon.
   const suspected = game.players.get(topTargets[0]);
-  const isWerewolf = suspected?.role === ROLES.WEREWOLF;
+  const isWerewolf = isDemon(suspected);
 
   await endGame(game, client, isWerewolf ? 'villagers_vote' : 'werewolf_vote');
 }

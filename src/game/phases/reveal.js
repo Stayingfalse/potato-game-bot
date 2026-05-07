@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES } = require('../../utils/roles');
+const { isLibrarian } = require('../../utils/roles');
 const { endGame } = require('./endGame');
 const GameRepository = require('../../db/GameRepository');
 
@@ -36,14 +36,13 @@ function buildRevealComponents() {
 }
 
 /**
- * One button per player who could be the Librarian (excludes the Demon themselves
- * and the Wordsmith, since neither can be the Librarian).
+ * One button per player who could be the Librarian (excludes the Demon themselves).
  * @param {Map<string, {id: string, username: string, role: string}>} players
  * @param {string} werewolfId
  */
 function buildSeerPickComponents(players, werewolfId) {
   const candidates = [...players.values()].filter(
-    p => p.id !== werewolfId && p.role !== ROLES.MAYOR,
+    p => p.id !== werewolfId,
   );
 
   const rows = [];
@@ -80,7 +79,7 @@ async function startRevealPhase(game, client) {
   }
 
   // No Librarian in this game → Townsfolk win straight away.
-  const hasSeer = [...game.players.values()].some(p => p.role === ROLES.SEER);
+  const hasSeer = [...game.players.values()].some(isLibrarian);
   if (!hasSeer) {
     await endGame(game, client, 'villagers_word');
     return;

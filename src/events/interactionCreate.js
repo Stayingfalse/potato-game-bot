@@ -14,7 +14,13 @@ const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
 const { buildSessionSummaryEmbed, buildRematchComponents } = require('../game/phases/sessionEnd');
 const { getGuildStats } = require('../db/StatsRepository');
 const { startGameTimer } = require('../game/phases/timer');
-const { ROLES, ROLE_DESCRIPTIONS } = require('../utils/roles');
+const {
+  ROLES,
+  ROLE_DESCRIPTIONS,
+  isDemon,
+  isLibrarian,
+  getEffectiveRole,
+} = require('../utils/roles');
 const words = require('../../data/words.json');
 
 // Flatten all words from every category into a single pool at load time.
@@ -30,15 +36,33 @@ function sampleN(arr, n) {
   return copy.slice(0, n);
 }
 
+function getWordsmithSecretRoleText(player) {
+  if (player?.role !== ROLES.MAYOR || !player.secretRole) return '';
+  return `\n\n🎭 Secret role: **${player.secretRole}**`;
+}
+
+async function refreshBoardMessage(game, client) {
+  if (!game?.boardMessageId) return;
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
+  const board = await thread.messages.fetch(game.boardMessageId).catch(() => null);
+  if (!board) return;
+  await board.edit({
+    embeds: [buildBoardEmbed(game)],
+    components: buildMayorActionComponents(game.tokens),
+  }).catch(() => {});
+}
+
 /**
  * Builds the ephemeral secret-info text for a player.
- * @param {{ role: string }} player
+ * @param {{ role: string, secretRole?: string|null }} player
  * @param {string|null} word  Current game.word (may be null if Mayor hasn't picked yet)
  * @returns {{ content: string, wordPending: boolean }}
  */
 function buildSecretContent(player, word) {
-  const roleDesc = ROLE_DESCRIPTIONS[player.role];
-  const knowsWord = [ROLES.MAYOR, ROLES.WEREWOLF, ROLES.SEER].includes(player.role);
+  const effectiveRole = getEffectiveRole(player);
+  const roleDesc = `${ROLE_DESCRIPTIONS[player.role] ?? ''}${getWordsmithSecretRoleText(player)}`;
+  const knowsWord = player.role === ROLES.MAYOR || [ROLES.WEREWOLF, ROLES.SEER].includes(effectiveRole);
 
   if (!knowsWord) {
     return { content: roleDesc, wordPending: false };
@@ -131,7 +155,7 @@ module.exports = {
         game.word = chosen;
 
         await interaction.reply({
-          content: `✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
           components: buildMayorActionComponents(game.tokens),
           flags: MessageFlags.Ephemeral,
         });
@@ -340,13 +364,13 @@ module.exports = {
       if (player.role === ROLES.MAYOR) {
         if (game.word) {
           return interaction.reply({
-            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
             components: buildMayorActionComponents(game.tokens),
             flags: MessageFlags.Ephemeral,
           });
         }
         return interaction.reply({
-          content: ROLE_DESCRIPTIONS[ROLES.MAYOR] + '\n\n🔤 **Choose the forbidden word:**',
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n🔤 **Choose the forbidden word:**`,
           components: buildMayorWordComponents(game.wordOptions),
           flags: MessageFlags.Ephemeral,
         });
@@ -390,7 +414,7 @@ module.exports = {
       game.word = chosen;
 
       await interaction.update({
-        content: `✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+        content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
         components: buildMayorActionComponents(game.tokens),
       });
 
@@ -485,7 +509,7 @@ module.exports = {
       } else {
         // Clicked from the Mayor's ephemeral — refresh the ephemeral with new buttons…
         await interaction.editReply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ Forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ Forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
           components: buildMayorActionComponents(game.tokens),
         }).catch(() => {});
 
@@ -525,7 +549,7 @@ module.exports = {
     }
 
     // ── ww_correct / ww_soclose / ww_wayoff (board-level — voice-chat mode) ──
-    if (customId === 'ww_correct' || customId === 'ww_soclose' || customId === 'ww_wayoff') {
+      if (customId === 'ww_correct' || customId === 'ww_soclose' || customId === 'ww_wayoff') {
       if (!game || game.phase !== 'playing') {
         return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
@@ -572,6 +596,52 @@ module.exports = {
     }
 
     // ── ww_guess_correct_{guesserId} (Mayor marks a guess as correct) ────────
+    if (
+      customId.startsWith('ww_guess_yes_') ||
+      customId.startsWith('ww_guess_no_') ||
+      customId.startsWith('ww_guess_maybe_')
+    ) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Wordsmith can respond to guesses.', flags: MessageFlags.Ephemeral });
+      }
+
+      const isMaybe = customId.startsWith('ww_guess_maybe_');
+      const tokenKey = isMaybe ? 'maybe' : 'yes_no';
+      if (game.tokens[tokenKey] <= 0) {
+        return interaction.reply({
+          content: isMaybe ? 'No **Maybe** tokens remaining!' : 'No **Yes / No** tokens remaining!',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      game.tokens[tokenKey]--;
+
+      const responseLine = customId.startsWith('ww_guess_yes_')
+        ? '\n✅ **Yes — keep narrowing it down!**'
+        : customId.startsWith('ww_guess_no_')
+          ? '\n❌ **No — try a different angle!**'
+          : '\n❔ **Maybe — you are circling it!**';
+
+      await interaction.update({
+        content: interaction.message.content + responseLine,
+        components: [],
+      });
+
+      await refreshBoardMessage(game, client);
+
+      if (!isMaybe && game.tokens.yes_no <= 0) {
+        await startVotingPhase(game, client);
+      }
+
+      return;
+    }
+
+    // ── ww_guess_correct_{guesserId} (Mayor marks a guess as correct) ────────
     if (customId.startsWith('ww_guess_correct_')) {
       if (!game || game.phase !== 'playing') {
         return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
@@ -579,7 +649,7 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can respond to guesses.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.tokens.correct <= 0) {
@@ -610,7 +680,7 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can respond to guesses.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.tokens.so_close_way_off <= 0) {
@@ -627,6 +697,8 @@ module.exports = {
         components: [],
       });
 
+      await refreshBoardMessage(game, client);
+
       return;
     }
 
@@ -637,7 +709,7 @@ module.exports = {
       }
 
       const player = game.players.get(user.id);
-      if (!player || player.role !== ROLES.WEREWOLF) {
+      if (!player || !isDemon(player)) {
         return interaction.reply({ content: 'Only the Demon can reveal themselves.', flags: MessageFlags.Ephemeral });
       }
 
@@ -681,7 +753,7 @@ module.exports = {
       }
 
       const player = game.players.get(user.id);
-      if (!player || player.role !== ROLES.WEREWOLF) {
+      if (!player || !isDemon(player)) {
         return interaction.reply({ content: 'Only the Demon can pick the Librarian.', flags: MessageFlags.Ephemeral });
       }
 
@@ -701,7 +773,7 @@ module.exports = {
       });
 
       // Announce result publicly in the thread.
-      const correct = target?.role === ROLES.SEER;
+      const correct = isLibrarian(target);
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (thread) {
         await thread.send({

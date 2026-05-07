@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES } = require('../../utils/roles');
+const { ROLES, isDemon } = require('../../utils/roles');
 const { recordGame } = require('../../db/StatsRepository');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 
@@ -101,7 +101,10 @@ async function postSequentialReveal(thread, players) {
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const emoji = ROLE_EMOJI[p.role] ?? '❓';
-    await thread.send({ content: `${emoji}  <@${p.id}> was the **${p.role}**` }).catch(() => {});
+    const roleText = p.role === ROLES.MAYOR && p.secretRole
+      ? `${p.role} + ${p.secretRole}`
+      : p.role;
+    await thread.send({ content: `${emoji}  <@${p.id}> was the **${roleText}**` }).catch(() => {});
     if (i < list.length - 1) await delay(1500);
   }
 }
@@ -152,7 +155,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   const werewolfWins = !VILLAGER_WIN_OUTCOMES.has(outcome);
   const winnerIds = new Set(
     [...game.players.values()]
-      .filter(p => werewolfWins ? p.role === ROLES.WEREWOLF : p.role !== ROLES.WEREWOLF)
+      .filter(p => werewolfWins ? isDemon(p) : !isDemon(p))
       .map(p => p.id),
   );
 
@@ -161,7 +164,12 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     outcome,
     word: game.word,
     winners: winnerIds,
-    players: [...game.players.values()].map(p => ({ id: p.id, username: p.username, role: p.role })),
+    players: [...game.players.values()].map(p => ({
+      id: p.id,
+      username: p.username,
+      role: p.role,
+      secretRole: p.secretRole ?? null,
+    })),
   });
 
   recordGame(
