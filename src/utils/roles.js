@@ -28,6 +28,32 @@ const ROLE_DESCRIPTIONS = Object.freeze({
 });
 
 /**
+ * Returns the player's hidden alignment role when present.
+ * Wordsmiths can carry a secondary secret role.
+ * @param {{role?: string, secretRole?: string|null}} player
+ * @returns {string|undefined}
+ */
+function getEffectiveRole(player) {
+  return player?.secretRole ?? player?.role;
+}
+
+/**
+ * @param {{role?: string, secretRole?: string|null}} player
+ * @returns {boolean}
+ */
+function isDemon(player) {
+  return getEffectiveRole(player) === ROLES.WEREWOLF;
+}
+
+/**
+ * @param {{role?: string, secretRole?: string|null}} player
+ * @returns {boolean}
+ */
+function isLibrarian(player) {
+  return getEffectiveRole(player) === ROLES.SEER;
+}
+
+/**
  * Assigns roles to a shuffled copy of the player array.
  *
  * Distribution:
@@ -35,7 +61,7 @@ const ROLE_DESCRIPTIONS = Object.freeze({
  *   4+ players → Wordsmith, Demon, Librarian, ...Townsfolk
  *
  * @param {Array<{id: string, username: string}>} players
- * @returns {Array<{id: string, username: string, role: string}>}
+ * @returns {Array<{id: string, username: string, role: string, secretRole: string|null}>}
  * @throws {Error} if fewer than 3 players are provided
  */
 function assignRoles(players) {
@@ -50,7 +76,7 @@ function assignRoles(players) {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  const result = shuffled.map(p => ({ ...p }));
+  const result = shuffled.map(p => ({ ...p, secretRole: null }));
 
   result[0].role = ROLES.MAYOR;
   result[1].role = ROLES.WEREWOLF;
@@ -64,7 +90,21 @@ function assignRoles(players) {
     result[2].role = ROLES.VILLAGER;
   }
 
+  const wordsmith = result.find(p => p.role === ROLES.MAYOR);
+  if (wordsmith) {
+    const secretPool = [ROLES.WEREWOLF, ROLES.VILLAGER];
+    if (result.length >= 4) secretPool.push(ROLES.SEER);
+    wordsmith.secretRole = secretPool[Math.floor(Math.random() * secretPool.length)];
+  }
+
   return result;
 }
 
-module.exports = { ROLES, ROLE_DESCRIPTIONS, assignRoles };
+module.exports = {
+  ROLES,
+  ROLE_DESCRIPTIONS,
+  assignRoles,
+  getEffectiveRole,
+  isDemon,
+  isLibrarian,
+};

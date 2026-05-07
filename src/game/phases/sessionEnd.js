@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES } = require('../../utils/roles');
+const { ROLES, isDemon } = require('../../utils/roles');
 const { recordGame } = require('../../db/StatsRepository');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 
@@ -101,7 +101,10 @@ async function postSequentialReveal(thread, players) {
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const emoji = ROLE_EMOJI[p.role] ?? '❓';
-    await thread.send({ content: `${emoji}  <@${p.id}> was the **${p.role}**` }).catch(() => {});
+    const roleText = p.role === ROLES.MAYOR && p.secretRole
+      ? `${p.role} (Secret: ${p.secretRole})`
+      : p.role;
+    await thread.send({ content: `${emoji}  <@${p.id}> was the **${roleText}**` }).catch(() => {});
     if (i < list.length - 1) await delay(1500);
   }
 }
@@ -110,7 +113,33 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ── Main orchestrator ──────────────────────────────────────────────────────────
+// ── Player response-card stats ─────────────────────────────────────────────────
+
+/**
+ * Builds a per-player summary of how many Yes/No/Maybe/So-Close/Way-Off
+ * response cards each player received during the game.
+ * @param {import('../GameManager').GameState} game
+ * @returns {EmbedBuilder}
+ */
+function buildPlayerStatsEmbed(game) {
+  const lines = [...game.players.values()].map(p => {
+    const s = p.responseStats ?? {};
+    const yes     = s.yes     ?? 0;
+    const no      = s.no      ?? 0;
+    const maybe   = s.maybe   ?? 0;
+    const soClose = s.soClose ?? 0;
+    const wayOff  = s.wayOff  ?? 0;
+    return `<@${p.id}> — ✅ **${yes}** Yes ❌ **${no}** No ❔ **${maybe}** Maybe 🔥 **${soClose}** So Close 🚫 **${wayOff}** Way Off`;
+  });
+
+  return new EmbedBuilder()
+    .setTitle('🃏 Response Cards — This Game')
+    .setDescription(lines.join('\n') || '*No responses recorded*')
+    .setColor(0xFEE75C)
+    .setTimestamp();
+}
+
+
 
 /**
  * Full end-game sequence:
@@ -144,6 +173,11 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     await postSequentialReveal(thread, game.players);
 
     await delay(1000);
+
+    // 3b. Response-card stats.
+    await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
+
+    await delay(500);
   }
 
   // 4. Record stats + session history.
@@ -152,7 +186,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   const werewolfWins = !VILLAGER_WIN_OUTCOMES.has(outcome);
   const winnerIds = new Set(
     [...game.players.values()]
-      .filter(p => werewolfWins ? p.role === ROLES.WEREWOLF : p.role !== ROLES.WEREWOLF)
+      .filter(p => werewolfWins ? isDemon(p) : !isDemon(p))
       .map(p => p.id),
   );
 
@@ -161,7 +195,12 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     outcome,
     word: game.word,
     winners: winnerIds,
-    players: [...game.players.values()].map(p => ({ id: p.id, username: p.username, role: p.role })),
+    players: [...game.players.values()].map(p => ({
+      id: p.id,
+      username: p.username,
+      role: p.role,
+      secretRole: p.secretRole ?? null,
+    })),
   });
 
   recordGame(
@@ -202,4 +241,4 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   }
 }
 
-module.exports = { runEndSequence, buildRematchComponents, buildSessionSummaryEmbed };
+module.exports = { runEndSequence, buildRematchComponents, buildSessionSummaryEmbed, buildPlayerStatsEmbed };

@@ -13,6 +13,10 @@ async function handleGameMessage(message, gameManager) {
     content: `🎯 <@${message.author.id}> guesses: **"${message.content}"**`,
     components: buildGuessComponents(message.author.id, game.tokens),
   });
+
+  if (message.deletable) {
+    await message.delete().catch(() => {});
+  }
 }
 
 module.exports = {

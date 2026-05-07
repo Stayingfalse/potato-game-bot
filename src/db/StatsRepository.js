@@ -7,17 +7,12 @@
  */
 
 const db = require('./database');
+const { ROLES, isDemon, getEffectiveRole } = require('../utils/roles');
 
 // ── Win/loss mapping ───────────────────────────────────────────────────────────
 
-const WINNER_ROLES = {
-  villagers_word:  new Set(['Wordsmith', 'Librarian', 'Townsfolk']),
-  villagers_vote:  new Set(['Wordsmith', 'Librarian', 'Townsfolk']),
-  werewolf_time:   new Set(['Demon']),
-  werewolf_tokens: new Set(['Demon']),
-  werewolf_seer:   new Set(['Demon']),
-  werewolf_vote:   new Set(['Demon']),
-};
+const DEMON_WIN_OUTCOMES = new Set(['werewolf_time', 'werewolf_tokens', 'werewolf_seer', 'werewolf_vote']);
+const TOWNSFOLK_WIN_OUTCOMES = new Set(['villagers_word', 'villagers_vote']);
 
 // ── Prepared statements ────────────────────────────────────────────────────────
 
@@ -71,28 +66,30 @@ const stmtGetGuild = db.prepare(`
  * Records the result of one werewords game (maps to the old StatsManager API).
  *
  * @param {string} guildId
- * @param {Map<string, {id: string, username: string, role: string}>} players
+ * @param {Map<string, {id: string, username: string, role: string, secretRole?: string|null}>} players
  * @param {string} outcome
  * @param {string|null} winnerGuesserUserId
  * @param {string|null} seerVictimUserId
  */
 const recordGame = db.transaction((guildId, players, outcome, winnerGuesserUserId, seerVictimUserId) => {
-  const winners = WINNER_ROLES[outcome] ?? new Set();
+  const demonWin = DEMON_WIN_OUTCOMES.has(outcome);
+  const townsfolkWin = TOWNSFOLK_WIN_OUTCOMES.has(outcome);
 
   for (const player of players.values()) {
     // Ensure row exists.
     stmtUpsertPlayer.run({ guild_id: guildId, user_id: player.id, username: player.username });
 
-    const won = winners.has(player.role) ? 1 : 0;
+    const won = demonWin ? (isDemon(player) ? 1 : 0) : (townsfolkWin ? (isDemon(player) ? 0 : 1) : 0);
     stmtIncrGame.run({ guild_id: guildId, user_id: player.id, won, lost: 1 - won });
 
+    const effectiveRole = getEffectiveRole(player);
     stmtIncrRole.run({
       guild_id:   guildId,
       user_id:    player.id,
-      wordsmith:  player.role === 'Wordsmith' ? 1 : 0,
-      demon:      player.role === 'Demon'     ? 1 : 0,
-      librarian:  player.role === 'Librarian' ? 1 : 0,
-      townsfolk:  player.role === 'Townsfolk' ? 1 : 0,
+      wordsmith:  player.role === ROLES.MAYOR      ? 1 : 0,
+      demon:      effectiveRole === ROLES.WEREWOLF ? 1 : 0,
+      librarian:  effectiveRole === ROLES.SEER     ? 1 : 0,
+      townsfolk:  effectiveRole === ROLES.VILLAGER ? 1 : 0,
     });
 
     if (winnerGuesserUserId && player.id === winnerGuesserUserId) {
