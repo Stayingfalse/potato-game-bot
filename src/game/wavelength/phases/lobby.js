@@ -54,12 +54,12 @@ function buildLobbyComponents(threadId) {
 }
 
 /**
- * "Game In Progress" embed shown in the parent channel while the game is active.
+ * "Round In Progress" embed shown in the parent channel while the session is active.
  */
 function buildActiveEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('〰️ Wavelength — Game In Progress')
-    .setDescription(`**Game ${game.gameNumber}** is underway inside the thread.`)
+    .setTitle('〰️ Wavelength — Round In Progress')
+    .setDescription(`**Round ${game.gameNumber}** is underway inside the thread.`)
     .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
     .setColor(0xF39C12)
     .setTimestamp();
@@ -71,7 +71,7 @@ function buildActiveEmbed(game) {
 function buildGameThreadEmbed(game) {
   const clueGiver = game.players.get(game.clueGiverId);
   return new EmbedBuilder()
-    .setTitle(`〰️ Wavelength — Game ${game.gameNumber}`)
+    .setTitle(`〰️ Wavelength — Round ${game.gameNumber}`)
     .setDescription(
       `Welcome! **<@${game.clueGiverId}> (${clueGiver?.username ?? '?'})** is the Clue Giver this round.\n\n` +
       `**Clue Giver:** You'll receive a private message with two spectrum options to choose from, then submit your clue.\n\n` +

@@ -19,8 +19,8 @@ async function runEndSequence(game, client, scores) {
       const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
       if (lobbyMsg) {
         const doneEmbed = new EmbedBuilder()
-          .setTitle('〰️ Wavelength — Game Complete')
-          .setDescription(`**Game ${game.gameNumber}** has ended!`)
+          .setTitle('〰️ Wavelength — Round Complete')
+          .setDescription(`**Round ${game.gameNumber}** has ended!`)
           .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
           .setColor(0x2ECC71)
           .setTimestamp();
@@ -42,21 +42,32 @@ async function runEndSequence(game, client, scores) {
  * Session summary embed (shown after each round, accumulates history).
  */
 function buildSessionSummaryEmbed(game) {
-  const clueGiver = game.players.get(game.clueGiverId);
+  const cumulative = computeSessionTotals(game);
 
   const lines = game.sessionHistory.map(h => {
+    const roundNo = h.roundNumber ?? h.gameNumber ?? '?';
     const avg = h.scores?.avgPosition ?? '?';
+    const roundTotal = computeRoundTotal(h);
     return (
-      `**Game ${h.gameNumber}** — \`${h.spectrum?.left}\` ↔ \`${h.spectrum?.right}\`\n` +
-      `Clue: "${h.clue}" · Target: \`${h.target}\` · Group avg: \`${avg}\``
+      `**Round ${roundNo}** — \`${h.spectrum?.left}\` ↔ \`${h.spectrum?.right}\`\n` +
+      `Clue: "${h.clue}" · Target: \`${h.target}\` · Group avg: \`${avg}\` · Round pts: **${roundTotal}**`
     );
   });
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle('〰️ Wavelength — Session Summary')
     .setDescription(lines.length > 0 ? lines.join('\n\n') : '*No rounds yet.*')
     .setColor(0x5865F2)
     .setTimestamp();
+
+  if (cumulative.length > 0) {
+    embed.addFields({
+      name: '📈 Cumulative Session Scores',
+      value: cumulative.map((entry, idx) => `**${idx + 1}.** <@${entry.userId}> — **${entry.total} pts**`).join('\n'),
+    });
+  }
+
+  return embed;
 }
 
 /**
@@ -66,21 +77,65 @@ function buildRematchComponents() {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('wl_rematch_same')
-      .setLabel('Rematch — Same Players')
+      .setLabel('Next Round')
       .setStyle(ButtonStyle.Primary)
       .setEmoji('🔄'),
     new ButtonBuilder()
       .setCustomId('wl_rematch_open')
-      .setLabel('Rematch — Open Sign-ups')
+      .setLabel('New Game (Open Signups)')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('📋'),
     new ButtonBuilder()
       .setCustomId('wl_close_session')
-      .setLabel('Close Session')
+      .setLabel('End Game & Close Session')
       .setStyle(ButtonStyle.Danger)
       .setEmoji('🔒'),
   );
   return [row];
 }
 
-module.exports = { runEndSequence, buildSessionSummaryEmbed, buildRematchComponents };
+function computeRoundTotal(roundHistory) {
+  let total = 0;
+  const guesserScores = roundHistory?.scores?.guesserScores;
+  if (guesserScores instanceof Map) {
+    for (const [, value] of guesserScores) {
+      total += value?.total ?? 0;
+    }
+  } else if (guesserScores && typeof guesserScores === 'object') {
+    for (const value of Object.values(guesserScores)) {
+      total += value?.total ?? 0;
+    }
+  }
+  total += roundHistory?.scores?.clueGiverScore?.total ?? 0;
+  return total;
+}
+
+function computeSessionTotals(game) {
+  const totals = new Map();
+
+  for (const round of game.sessionHistory ?? []) {
+    const guesserScores = round?.scores?.guesserScores;
+    if (guesserScores instanceof Map) {
+      for (const [userId, value] of guesserScores) {
+        totals.set(userId, (totals.get(userId) ?? 0) + (value?.total ?? 0));
+      }
+    } else if (guesserScores && typeof guesserScores === 'object') {
+      for (const [userId, value] of Object.entries(guesserScores)) {
+        totals.set(userId, (totals.get(userId) ?? 0) + (value?.total ?? 0));
+      }
+    }
+
+    if (round?.clueGiverId) {
+      totals.set(
+        round.clueGiverId,
+        (totals.get(round.clueGiverId) ?? 0) + (round?.scores?.clueGiverScore?.total ?? 0),
+      );
+    }
+  }
+
+  return [...totals.entries()]
+    .map(([userId, total]) => ({ userId, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+module.exports = { runEndSequence, buildSessionSummaryEmbed, buildRematchComponents, computeSessionTotals };

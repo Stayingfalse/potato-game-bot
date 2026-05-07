@@ -4,6 +4,7 @@ const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { generateRevealImage } = require('../imageGen');
 const WavelengthRepository      = require('../../../db/WavelengthRepository');
 const WavelengthStatsRepository = require('../../../db/WavelengthStatsRepository');
+const { computeSessionTotals } = require('./sessionEnd');
 
 // ── Scoring constants ──────────────────────────────────────────────────────────
 const TIER_BULLSEYE = 5;   // ±5  → 4 pts
@@ -138,10 +139,11 @@ async function startRevealPhase(game, client) {
 
   // Record into session history
   game.sessionHistory.push({
-    gameNumber:    game.gameNumber,
+    roundNumber:   game.gameNumber,
     target:        game.targetPosition,
     clue:          game.clue,
     spectrum:      game.chosenSpectrum,
+    clueGiverId:   game.clueGiverId,
     guesses:       Object.fromEntries(game.guesses),
     scores,
   });
@@ -174,6 +176,7 @@ async function startRevealPhase(game, client) {
  */
 function buildRevealEmbed(game, scores) {
   const clueGiver = game.players.get(game.clueGiverId);
+  const cumulative = computeSessionTotals(game);
 
   const guesserLines = [...scores.guesserScores.entries()].map(([userId, s]) => {
     const player = game.players.get(userId);
@@ -206,6 +209,13 @@ function buildRevealEmbed(game, scores) {
         : '') +
       ` = **${scores.clueGiverScore.total} pts**`,
   });
+
+  if (cumulative.length > 0) {
+    embed.addFields({
+      name: `📈 Session Totals (after Round ${game.gameNumber})`,
+      value: cumulative.map((entry, idx) => `**${idx + 1}.** <@${entry.userId}> — **${entry.total} pts**`).join('\n'),
+    });
+  }
 
   return embed;
 }

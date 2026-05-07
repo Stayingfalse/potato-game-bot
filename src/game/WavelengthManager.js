@@ -34,8 +34,8 @@ class WavelengthGameState {
     this.guesses = new Map();
 
     this.guessTimeout   = null;       // setTimeout handle for auto-submit fallback
-    this.gameNumber     = 1;
-    this.sessionHistory = [];         // Array of { gameNumber, target, clue, spectrum, guesses }
+    this.gameNumber     = 1;          // Round counter within this session.
+    this.sessionHistory = [];         // Array of { roundNumber, clueGiverId, target, clue, spectrum, guesses, scores }
   }
 }
 

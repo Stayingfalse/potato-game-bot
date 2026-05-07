@@ -459,10 +459,10 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_rematch_same ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_same') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Only the host can start the next round.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferUpdate();
@@ -486,7 +486,7 @@ async function handleWavelengthInteraction(interaction, client) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (!thread) return;
 
-    await thread.send({ content: `🔄 **Game ${resetGame.gameNumber} starting — same group!**`, embeds: [buildGameThreadEmbed(resetGame)] }).catch(() => {});
+    await thread.send({ content: `🔄 **Round ${resetGame.gameNumber} starting — same group!**`, embeds: [buildGameThreadEmbed(resetGame)] }).catch(() => {});
 
     const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(resetGame)], components: [] }).catch(() => null);
     if (boardMsg) resetGame.boardMessageId = boardMsg.id;
@@ -509,10 +509,10 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_rematch_open ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_open') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can open sign-ups.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferUpdate();
@@ -532,7 +532,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) {
-      await thread.send({ content: `📋 **Game ${resetGame.gameNumber} sign-ups open!** Join via the lobby button in the main channel.` }).catch(() => {});
+      await thread.send({ content: '📋 **New game sign-ups are open!** Join via the lobby button in the main channel.' }).catch(() => {});
     }
 
     return;
@@ -541,7 +541,7 @@ async function handleWavelengthInteraction(interaction, client) {
   // ── wl_close_session ─────────────────────────────────────────────────────
   if (customId === 'wl_close_session') {
     if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
