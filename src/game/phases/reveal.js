@@ -36,7 +36,8 @@ function buildRevealComponents() {
 }
 
 /**
- * One button per player who could be the Librarian (excludes the Demon themselves).
+ * One button per player who could be the Librarian (excludes only the Demon themselves).
+ * Wordsmith is included because they may carry a secret Librarian role.
  * @param {Map<string, {id: string, username: string, role: string}>} players
  * @param {string} werewolfId
  */
