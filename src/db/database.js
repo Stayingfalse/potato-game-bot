@@ -111,8 +111,16 @@ db.exec(`
 `);
 
 // ── Lightweight column migrations for existing installs ───────────────────────
-try { db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT'); } catch {}
-try { db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT'); } catch {}
+try {
+  db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT');
+} catch (err) {
+  if (!err.message.includes('duplicate column name')) throw err;
+}
+try {
+  db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
+} catch (err) {
+  if (!err.message.includes('duplicate column name')) throw err;
+}
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 

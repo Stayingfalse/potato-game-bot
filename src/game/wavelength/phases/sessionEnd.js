@@ -106,7 +106,7 @@ function buildRematchComponents(disableNextRound = false) {
 
 function computeRoundTotal(roundHistory) {
   let total = 0;
-  for (const [, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
+  for (const [_userId, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
     total += value?.total ?? 0;
   }
   total += roundHistory?.scores?.clueGiverScore?.total ?? 0;
@@ -154,7 +154,7 @@ function evaluateSessionGoal(game) {
   if (sessionMode.type === 'snake_points') {
     const target = Math.max(1, sessionMode.targetPoints ?? 1);
     const totals = computeSessionTotals(game);
-    const winner = totals.find(entry => entry.total >= target) ?? null;
+    const winner = totals.find(entry => entry.total >= target);
     if (winner) {
       return {
         complete: true,

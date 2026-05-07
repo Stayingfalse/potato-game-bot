@@ -240,16 +240,7 @@ class WavelengthManager {
         let idx = Math.max(0, Math.min(playerIds.length - 1, state.snakeIndex ?? 0));
         let dir = state.snakeDirection === -1 ? -1 : 1;
         selectedId = playerIds[idx];
-
-        if (dir === 1 && idx >= playerIds.length - 1) {
-          dir = -1;
-          idx = playerIds.length - 2;
-        } else if (dir === -1 && idx <= 0) {
-          dir = 1;
-          idx = 1;
-        } else {
-          idx += dir;
-        }
+        ({ idx, dir } = this.advanceSnakeIndex(idx, dir, playerIds.length));
 
         game.clueOrderState.snakeIndex = idx;
         game.clueOrderState.snakeDirection = dir;
@@ -262,6 +253,16 @@ class WavelengthManager {
     counts[selectedId] = (counts[selectedId] ?? 0) + 1;
     game.clueOrderState.clueTurnsByPlayer = counts;
     return selectedId;
+  }
+
+  advanceSnakeIndex(idx, dir, playerCount) {
+    if (playerCount <= 1) return { idx: 0, dir: 1 };
+    if (dir === 1) {
+      if (idx >= playerCount - 1) return { idx: playerCount - 1, dir: -1 };
+      return { idx: idx + 1, dir };
+    }
+    if (idx <= 0) return { idx: 0, dir: 1 };
+    return { idx: idx - 1, dir };
   }
 }
 
