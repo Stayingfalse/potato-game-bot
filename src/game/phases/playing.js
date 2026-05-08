@@ -48,7 +48,7 @@ function buildBoardEmbed(game) {
       { name: 'Players', value: playerList },
     )
     .setColor(BOARD_COLOR)
-    .setFooter({ text: 'Wordsmith: answer questions with Yes / No / Maybe. When a player guesses the word, tap ✅ Correct! or ❌ Way Off! on their guess message.' })
+    .setFooter({ text: 'The Wordsmith responds to guesses using the buttons on each guess (text mode) or on each player\'s panel (voice mode).' })
     .setTimestamp();
 }
 
@@ -151,9 +151,78 @@ function buildGuessComponents(guesserId, tokens) {
   ];
 }
 
+// ── Voice-mode per-player panel ────────────────────────────────────────────────
+
+/**
+ * Builds the text content for a player's voice-mode response panel.
+ * Shows a running tally of all Wordsmith responses for that player.
+ * @param {{ id: string, username: string, responseStats?: object }} player
+ * @returns {string}
+ */
+function buildVoicePlayerContent(player) {
+  const s = player.responseStats ?? { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 };
+  return (
+    `🎙️ **<@${player.id}>** — Wordsmith responses:\n` +
+    `✅ Yes: **${s.yes}** | ❌ No: **${s.no}** | ❔ Maybe: **${s.maybe}** | 🔥 So Close: **${s.soClose}** | ❌ Way Off: **${s.wayOff}**`
+  );
+}
+
+/**
+ * Builds the action rows for a player's voice-mode response panel.
+ * Buttons are disabled when the relevant token pool reaches zero.
+ * @param {string} playerId
+ * @param {{ yes_no: number, maybe: number, correct: number, so_close_way_off: number }} tokens
+ */
+function buildVoicePlayerComponents(playerId, tokens) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_yes_${playerId}`)
+        .setLabel('Yes')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(tokens.yes_no <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_no_${playerId}`)
+        .setLabel('No')
+        .setEmoji('❌')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(tokens.yes_no <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_maybe_${playerId}`)
+        .setLabel('Maybe')
+        .setEmoji('❔')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(tokens.maybe <= 0),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_soclose_${playerId}`)
+        .setLabel('So Close!')
+        .setEmoji('🔥')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(tokens.so_close_way_off <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_wayoff_${playerId}`)
+        .setLabel('Way Off!')
+        .setEmoji('❌')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(tokens.so_close_way_off <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_voice_correct_${playerId}`)
+        .setLabel('Correct!')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(tokens.correct <= 0),
+    ),
+  ];
+}
+
 module.exports = {
   formatTime,
   buildBoardEmbed,
   buildMayorActionComponents,
   buildGuessComponents,
+  buildVoicePlayerContent,
+  buildVoicePlayerComponents,
 };

@@ -8,27 +8,31 @@ const stmtUpsert = db.prepare(`
   INSERT INTO werewords_games
     (thread_id, guild_id, channel_id, host_id, host_username,
      message_id, board_message_id, phase, players, word, word_options,
-     tokens, time_left, votes, game_number, winner_guesser_user_id, created_at)
+     tokens, time_left, votes, game_number, winner_guesser_user_id,
+     session_mode, voice_player_message_ids, created_at)
   VALUES
     (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
      @message_id, @board_message_id, @phase, @players, @word, @word_options,
-     @tokens, @time_left, @votes, @game_number, @winner_guesser_user_id, @created_at)
+     @tokens, @time_left, @votes, @game_number, @winner_guesser_user_id,
+     @session_mode, @voice_player_message_ids, @created_at)
   ON CONFLICT(thread_id) DO UPDATE SET
-    guild_id               = excluded.guild_id,
-    channel_id             = excluded.channel_id,
-    host_id                = excluded.host_id,
-    host_username          = excluded.host_username,
-    message_id             = excluded.message_id,
-    board_message_id       = excluded.board_message_id,
-    phase                  = excluded.phase,
-    players                = excluded.players,
-    word                   = excluded.word,
-    word_options           = excluded.word_options,
-    tokens                 = excluded.tokens,
-    time_left              = excluded.time_left,
-    votes                  = excluded.votes,
-    game_number            = excluded.game_number,
-    winner_guesser_user_id = excluded.winner_guesser_user_id
+    guild_id                  = excluded.guild_id,
+    channel_id                = excluded.channel_id,
+    host_id                   = excluded.host_id,
+    host_username             = excluded.host_username,
+    message_id                = excluded.message_id,
+    board_message_id          = excluded.board_message_id,
+    phase                     = excluded.phase,
+    players                   = excluded.players,
+    word                      = excluded.word,
+    word_options              = excluded.word_options,
+    tokens                    = excluded.tokens,
+    time_left                 = excluded.time_left,
+    votes                     = excluded.votes,
+    game_number               = excluded.game_number,
+    winner_guesser_user_id    = excluded.winner_guesser_user_id,
+    session_mode              = excluded.session_mode,
+    voice_player_message_ids  = excluded.voice_player_message_ids
 `);
 
 const stmtUpdateTimeLeft = db.prepare(`
@@ -63,6 +67,8 @@ function upsert(game) {
     votes:                   JSON.stringify(Object.fromEntries(game.votes ?? new Map())),
     game_number:             game.gameNumber,
     winner_guesser_user_id:  game.winnerGuesserUserId ?? null,
+    session_mode:            game.sessionMode ?? null,
+    voice_player_message_ids: JSON.stringify(Object.fromEntries(game.voicePlayerMessageIds ?? new Map())),
     created_at:              game._createdAt ?? Date.now(),
   });
 }
