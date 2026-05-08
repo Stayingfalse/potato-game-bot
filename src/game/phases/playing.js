@@ -48,7 +48,7 @@ function buildBoardEmbed(game) {
       { name: 'Players', value: playerList },
     )
     .setColor(BOARD_COLOR)
-    .setFooter({ text: 'The Wordsmith responds to guesses using the buttons on each guess (text mode) or on each player\'s panel (voice mode).' })
+    .setFooter({ text: "The Wordsmith responds to guesses using the buttons on each guess (text mode) or on each player's panel (voice mode)." })
     .setTimestamp();
 }
 

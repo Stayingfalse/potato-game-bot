@@ -130,7 +130,7 @@ async function maybeStartTimer(game, client) {
  * @param {import('discord.js').ThreadChannel} thread
  */
 async function createVoicePlayerPanels(game, thread) {
-  await thread.send({ content: '🎙️ **Voice Mode panels — Wordsmith, use these to log each player\'s responses:**' }).catch(() => {});
+  await thread.send({ content: "🎙️ **Voice Mode panels — Wordsmith, use these to log each player's responses:**" }).catch(() => {});
   for (const player of game.players.values()) {
     if (player.role === ROLES.MAYOR) continue;
     const msg = await thread.send({
