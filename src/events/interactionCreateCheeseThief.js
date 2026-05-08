@@ -207,7 +207,7 @@ function buildWinners(game, outcome) {
     for (const p of game.players.values()) if (p.role === CT_ROLES.FALL_MOUSE) winners.add(p.id);
     return winners;
   }
-  if (outcome === 'villagers_vote') {
+  if (outcome === 'sleepy_mice_vote') {
     for (const p of game.players.values()) {
       if (p.role === CT_ROLES.SLEEPY_MOUSE && !p.isAccomplice) winners.add(p.id);
     }
@@ -232,7 +232,7 @@ async function endGame(game, client, outcome) {
   const winnerMentions = [...winners].map(id => `<@${id}>`).join(', ') || '*None*';
   const outcomeText = outcome === 'fall_mouse_vote'
     ? '🍂 **Fall Mouse wins alone**'
-    : outcome === 'villagers_vote'
+    : outcome === 'sleepy_mice_vote'
       ? '🐭 **Sleepy Mice win**'
       : '🧀 **Cheese Thief team wins**';
 
@@ -284,7 +284,7 @@ async function tallyVotes(game, client) {
     return;
   }
   if (selectedPlayers.some(p => p.role === CT_ROLES.THIEF)) {
-    await endGame(game, client, 'villagers_vote');
+    await endGame(game, client, 'sleepy_mice_vote');
     return;
   }
   await endGame(game, client, 'thief_team_vote');
