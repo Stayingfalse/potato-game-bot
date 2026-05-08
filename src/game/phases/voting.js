@@ -6,7 +6,7 @@ const GameRepository = require('../../db/GameRepository');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
-const VOTE_DURATION = 15_000;
+const VOTE_DURATION = 15_000; // 15 seconds final accusation window
 
 // ── Embeds ─────────────────────────────────────────────────────────────────────
 

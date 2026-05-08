@@ -7,7 +7,7 @@
  */
 
 const db = require('./database');
-const { ROLES, isDemon, getEffectiveRole } = require('../utils/roles');
+const { ROLES, getEffectiveRole } = require('../utils/roles');
 
 // ── Win/loss mapping ───────────────────────────────────────────────────────────
 
@@ -82,13 +82,14 @@ const recordGame = db.transaction((guildId, players, outcome, winnerGuesserUserI
     stmtUpsertPlayer.run({ guild_id: guildId, user_id: player.id, username: player.username });
     const effectiveRole = getEffectiveRole(player);
 
-    const won = demonWin
-      ? (isDemon(player) || player.isAccomplice ? 1 : 0)
-      : fallMouseWin
-        ? (effectiveRole === ROLES.SEER ? 1 : 0)
-        : townsfolkWin
-          ? (effectiveRole === ROLES.VILLAGER && !player.isAccomplice ? 1 : 0)
-          : 0;
+    let won = 0;
+    if (demonWin) {
+      won = (effectiveRole === ROLES.WEREWOLF || player.isAccomplice) ? 1 : 0;
+    } else if (fallMouseWin) {
+      won = effectiveRole === ROLES.SEER ? 1 : 0;
+    } else if (townsfolkWin) {
+      won = (effectiveRole === ROLES.VILLAGER && !player.isAccomplice) ? 1 : 0;
+    }
     stmtIncrGame.run({ guild_id: guildId, user_id: player.id, won, lost: 1 - won });
 
     stmtIncrRole.run({

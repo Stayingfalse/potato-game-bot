@@ -38,6 +38,7 @@ db.exec(`
     phase_ends_at        INTEGER,
     cheese_stolen        INTEGER NOT NULL DEFAULT 0,
     accomplice_id        TEXT,
+    thief_id             TEXT,
     stolen_at_wake       INTEGER,
     created_at           INTEGER NOT NULL
   );
@@ -142,6 +143,9 @@ if (!wwColumns.has('cheese_stolen')) {
 }
 if (!wwColumns.has('accomplice_id')) {
   db.exec('ALTER TABLE werewords_games ADD COLUMN accomplice_id TEXT');
+}
+if (!wwColumns.has('thief_id')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN thief_id TEXT');
 }
 if (!wwColumns.has('stolen_at_wake')) {
   db.exec('ALTER TABLE werewords_games ADD COLUMN stolen_at_wake INTEGER');

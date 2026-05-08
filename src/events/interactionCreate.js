@@ -44,6 +44,10 @@ function getWordsmithSecretRoleText(player) {
   return `\n\n🎭 Secret role: **${player.secretRole}**`;
 }
 
+/**
+ * Assigns each player a single d6 roll (1-6) for wake grouping.
+ * @param {import('../game/GameManager').GameState} game
+ */
 function assignDiceValues(game) {
   for (const player of game.players.values()) {
     player.dieValue = Math.floor(Math.random() * 6) + 1;
@@ -70,7 +74,7 @@ function buildSecretContent(player, game) {
   const roleDesc = ROLE_DESCRIPTIONS[player.role] ?? '';
   const dieText = player.dieValue ? `\n\n🎲 Your die number: **${player.dieValue}**` : '';
   const accompliceText = player.isAccomplice
-    ? `\n\n🤝 You are the **accomplice**.\nThe **Cheese Thief** is <@${[...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? 'unknown'}>.`
+    ? `\n\n🤝 You are the **accomplice**.\nThe **Cheese Thief** is <@${game.thiefId ?? 'unknown'}>.`
     : '';
   const theftText = game.cheeseStolen
     ? `\n\n🧀 Cheese status: **Stolen at wake ${game.stolenAtWake ?? '?'}**`
@@ -344,6 +348,7 @@ module.exports = {
         game.phaseEndsAt = null;
         game.cheeseStolen = false;
         game.accompliceId = null;
+        game.thiefId = [...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
         game.stolenAtWake = null;
 
         // Show active game in the main channel and remove lobby buttons.
@@ -535,10 +540,14 @@ module.exports = {
       if (!target || target.id === user.id) {
         return interaction.reply({ content: 'Invalid accomplice choice.', flags: MessageFlags.Ephemeral });
       }
+      if (game.accompliceId) {
+        return interaction.reply({ content: 'An accomplice has already been chosen.', flags: MessageFlags.Ephemeral });
+      }
 
       for (const p of game.players.values()) p.isAccomplice = false;
       target.isAccomplice = true;
       game.accompliceId = target.id;
+      game.thiefId = user.id;
 
       const { upsert: upsertGame } = require('../db/GameRepository');
       upsertGame(game);
@@ -1127,6 +1136,7 @@ module.exports = {
       resetGame.phaseEndsAt = null;
       resetGame.cheeseStolen = false;
       resetGame.accompliceId = null;
+      resetGame.thiefId = [...resetGame.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
       resetGame.stolenAtWake = null;
 
       // Update main channel embed → In Progress.

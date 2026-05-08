@@ -43,12 +43,8 @@ function isLibrarian(player) {
   return getEffectiveRole(player) === ROLES.SEER;
 }
 
-function isThief(player) {
-  return isDemon(player);
-}
-
 function isFallMouse(player) {
-  return isLibrarian(player);
+  return getEffectiveRole(player) === ROLES.SEER;
 }
 
 /**
@@ -91,6 +87,5 @@ module.exports = {
   getEffectiveRole,
   isDemon,
   isLibrarian,
-  isThief,
   isFallMouse,
 };

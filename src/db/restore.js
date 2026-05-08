@@ -19,6 +19,7 @@ async function restoreGames(client) {
 // ── Werewords restore ──────────────────────────────────────────────────────────
 
 async function restoreWerewords(client, GameRepository) {
+  const { ROLES } = require('../utils/roles');
   const rows = GameRepository.getAll();
   if (rows.length === 0) return;
 
@@ -45,7 +46,7 @@ async function restoreWerewords(client, GameRepository) {
     const wordOptions    = JSON.parse(row.word_options);
 
     // Reconstruct the GameState-shaped object and insert into the manager.
-    const game = {
+     const game = {
       guildId:           row.guild_id,
       channelId:         row.channel_id,
       threadId:          row.thread_id,
@@ -76,10 +77,15 @@ async function restoreWerewords(client, GameRepository) {
        phaseEndsAt: row.phase_ends_at ?? null,
        cheeseStolen: !!row.cheese_stolen,
        accompliceId: row.accomplice_id ?? null,
+       thiefId: row.thief_id ?? null,
        stolenAtWake: row.stolen_at_wake ?? null,
        wakeTimeout: null,
        _createdAt:        row.created_at,
      };
+
+     if (!game.thiefId) {
+       game.thiefId = [...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
+     }
 
     client.gameManager.games.set(row.thread_id, game);
 

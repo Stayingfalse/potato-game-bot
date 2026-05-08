@@ -37,7 +37,7 @@ function buildWinnerEmbed(game, outcome) {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .addFields({ name: '🧀 Cheese Stolen', value: game.cheeseStolen ? `Yes (wake ${game.stolenAtWake ?? '?'})` : 'No' })
+    .addFields({ name: '🧀 Cheese Stolen', value: game.cheeseStolen ? `Yes (wake ${game.stolenAtWake ?? 'unknown'})` : 'No' })
     .setColor(OUTCOME_COLOR[outcome])
     .setTimestamp();
 }
@@ -215,7 +215,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
         role: p.role,
         secretRole: p.secretRole ?? null,
         dieValue: p.dieValue ?? null,
-        isAccomplice: !!p.isAccomplice,
+        isAccomplice: p.isAccomplice ?? false,
       })),
     });
 

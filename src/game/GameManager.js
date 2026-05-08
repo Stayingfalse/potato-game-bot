@@ -73,6 +73,7 @@ class GameState {
     this.phaseEndsAt = null;
     this.cheeseStolen = false;
     this.accompliceId = null;
+    this.thiefId = null;
     this.stolenAtWake = null;
     this.wakeTimeout = null;
   }
@@ -167,6 +168,7 @@ class GameManager {
     game.phaseEndsAt = null;
     game.cheeseStolen = false;
     game.accompliceId = null;
+    game.thiefId = null;
     game.stolenAtWake = null;
     if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
     // For same-group rematch keep the previously chosen mode; for open sign-ups ask again.

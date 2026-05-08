@@ -1,9 +1,12 @@
 'use strict';
 
 const GameRepository = require('../../db/GameRepository');
+const { ROLES } = require('../../utils/roles');
 
 const WAKE_DURATION_MS = 15_000;
+const WAKE_DURATION_SECONDS = Math.floor(WAKE_DURATION_MS / 1000);
 const DISCUSSION_DURATION_MS = 3 * 60_000;
+const MAX_WAKE_NUMBER = 6;
 
 function getAwakePlayerIds(game, wakeNumber) {
   return [...game.players.values()]
@@ -32,7 +35,7 @@ function buildWakeActionRows(game, awakePlayerIds) {
     }
   }
 
-  const thiefAwake = awakePlayerIds.some(id => game.players.get(id)?.role === 'Cheese Thief');
+  const thiefAwake = awakePlayerIds.some(id => game.players.get(id)?.role === ROLES.WEREWOLF);
   if (thiefAwake && !game.cheeseStolen) {
     rows.push(
       new ActionRowBuilder().addComponents(
@@ -50,7 +53,7 @@ function buildWakeActionRows(game, awakePlayerIds) {
 async function runWakeStep(game, thread, client) {
   if (game.phase !== 'playing') return;
 
-  if (game.currentWakeNumber > 6) {
+  if (game.currentWakeNumber > MAX_WAKE_NUMBER) {
     await startDiscussion(game, thread, client);
     return;
   }
@@ -65,7 +68,7 @@ async function runWakeStep(game, thread, client) {
     content:
       `🌙 **Wake ${wakeNumber}**\n` +
       `Awake now: ${awakeMentions}\n` +
-      `_Wake closes in ${Math.floor(WAKE_DURATION_MS / 1000)} seconds._`,
+      `_Wake closes in ${WAKE_DURATION_SECONDS} seconds._`,
     components: buildWakeActionRows(game, awakePlayerIds),
   }).catch(() => {});
 
@@ -121,7 +124,7 @@ async function startGameTimer(game, thread, client) {
   }
 
   if (game.phase !== 'playing') return;
-  if (!game.currentWakeNumber || game.currentWakeNumber < 1) game.currentWakeNumber = 1;
+  game.currentWakeNumber = game.currentWakeNumber || 1;
   await runWakeStep(game, thread, client);
 }
 
