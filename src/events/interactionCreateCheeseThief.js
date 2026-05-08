@@ -128,7 +128,7 @@ async function runWakeStep(game, thread, client) {
   const awakeMentions = awakeIds.length ? awakeIds.map(id => `<@${id}>`).join(', ') : '*No one*';
 
   await thread.send({
-    content: `🌙 **Wake ${game.currentWakeNumber}**\nAwake now: ${awakeMentions}\n_Wake closes in 15 seconds._`,
+    content: `🌙 **Wake ${game.currentWakeNumber}**\nAwake now: ${awakeMentions}\n_Wake ends in 15 seconds._`,
     components: buildWakeActionRows(game, awakeIds),
   }).catch(() => {});
 
