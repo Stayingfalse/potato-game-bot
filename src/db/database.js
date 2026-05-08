@@ -59,6 +59,28 @@ db.exec(`
     created_at           INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS cheese_thief_games (
+    thread_id            TEXT PRIMARY KEY,
+    guild_id             TEXT NOT NULL,
+    channel_id           TEXT NOT NULL,
+    host_id              TEXT NOT NULL,
+    host_username        TEXT NOT NULL,
+    message_id           TEXT,
+    ready_message_id     TEXT,
+    phase                TEXT NOT NULL DEFAULT 'lobby',
+    players              TEXT NOT NULL DEFAULT '[]',
+    ready_players        TEXT NOT NULL DEFAULT '[]',
+    votes                TEXT NOT NULL DEFAULT '{}',
+    current_wake_number  INTEGER NOT NULL DEFAULT 0,
+    phase_ends_at        INTEGER,
+    cheese_stolen        INTEGER NOT NULL DEFAULT 0,
+    thief_id             TEXT,
+    accomplice_id        TEXT,
+    stolen_at_wake       INTEGER,
+    game_number          INTEGER NOT NULL DEFAULT 1,
+    created_at           INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS werewords_player_stats (
     guild_id                  TEXT NOT NULL,
     user_id                   TEXT NOT NULL,

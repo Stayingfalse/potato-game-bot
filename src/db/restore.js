@@ -7,13 +7,74 @@
  * @param {import('discord.js').Client} client
  */
 async function restoreGames(client) {
+  const CheeseThiefRepository = require('./CheeseThiefRepository');
   const GameRepository       = require('./GameRepository');
   const WavelengthRepository = require('./WavelengthRepository');
 
   await Promise.all([
+    restoreCheeseThief(client, CheeseThiefRepository),
     restoreWerewords(client, GameRepository),
     restoreWavelength(client, WavelengthRepository),
   ]);
+}
+
+// ── Cheese Thief restore ───────────────────────────────────────────────────────
+
+async function restoreCheeseThief(client, CheeseThiefRepository) {
+  const rows = CheeseThiefRepository.getAll();
+  if (rows.length === 0) return;
+
+  const { resumeCheeseThiefGame } = require('../events/interactionCreateCheeseThief');
+
+  for (const row of rows) {
+    if (row.phase === 'ended') {
+      CheeseThiefRepository.remove(row.thread_id);
+      continue;
+    }
+
+    const playersArray = JSON.parse(row.players);
+    const players = new Map(playersArray.map(p => [p.id, p]));
+    const readyPlayers = new Set(JSON.parse(row.ready_players || '[]'));
+    const votes = new Map(Object.entries(JSON.parse(row.votes || '{}')));
+
+    const game = {
+      guildId: row.guild_id,
+      channelId: row.channel_id,
+      threadId: row.thread_id,
+      hostId: row.host_id,
+      hostUsername: row.host_username,
+      messageId: row.message_id,
+      readyMessageId: row.ready_message_id,
+      phase: row.phase,
+      players,
+      readyPlayers,
+      votes,
+      currentWakeNumber: row.current_wake_number ?? 0,
+      phaseEndsAt: row.phase_ends_at ?? null,
+      cheeseStolen: !!row.cheese_stolen,
+      thiefId: row.thief_id ?? null,
+      accompliceId: row.accomplice_id ?? null,
+      stolenAtWake: row.stolen_at_wake ?? null,
+      wakeTimeout: null,
+      revealTimeout: null,
+      gameNumber: row.game_number ?? 1,
+      _createdAt: row.created_at,
+    };
+
+    client.cheeseThiefManager.games.set(row.thread_id, game);
+
+    if (row.phase === 'lobby') {
+      CheeseThiefRepository.remove(row.thread_id);
+      client.cheeseThiefManager.games.delete(row.thread_id);
+      continue;
+    }
+
+    const resumed = await resumeCheeseThiefGame(game, client);
+    if (!resumed) {
+      CheeseThiefRepository.remove(row.thread_id);
+      client.cheeseThiefManager.games.delete(row.thread_id);
+    }
+  }
 }
 
 // ── Werewords restore ──────────────────────────────────────────────────────────
