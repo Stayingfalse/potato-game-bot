@@ -78,6 +78,7 @@ module.exports = {
     });
 
     game.messageId = resource.message.id;
+    client.cheeseThiefManager.saveGame(game.threadId);
   },
 
   buildLobbyEmbed,

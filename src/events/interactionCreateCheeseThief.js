@@ -6,6 +6,11 @@ const WAKE_DURATION_MS = 15_000;
 const DISCUSSION_DURATION_MS = 3 * 60_000;
 const VOTE_DURATION_MS = 15_000;
 
+function persistGame(client, game) {
+  if (!game) return;
+  client.cheeseThiefManager?.saveGame(game.threadId);
+}
+
 function assignDiceValues(game) {
   for (const p of game.players.values()) {
     p.dieValue = Math.floor(Math.random() * 6) + 1;
@@ -133,9 +138,11 @@ async function runWakeStep(game, thread, client) {
   }).catch(() => {});
 
   game.phaseEndsAt = Date.now() + WAKE_DURATION_MS;
+  persistGame(client, game);
   game.wakeTimeout = setTimeout(async () => {
     if (game.phase !== 'playing') return;
     game.currentWakeNumber += 1;
+    persistGame(client, game);
     await runWakeStep(game, thread, client);
   }, WAKE_DURATION_MS);
 }
@@ -147,6 +154,7 @@ async function maybeStartWake(game, client) {
   if (!thread) return;
 
   game.currentWakeNumber = 1;
+  persistGame(client, game);
   await thread.send({ content: '🌙 All players are ready — wake sequence starting now.' }).catch(() => {});
   await runWakeStep(game, thread, client);
 }
@@ -154,6 +162,7 @@ async function maybeStartWake(game, client) {
 async function startDiscussion(game, thread, client) {
   game.phase = 'discussion';
   game.phaseEndsAt = Date.now() + DISCUSSION_DURATION_MS;
+  persistGame(client, game);
 
   await thread.send({ content: '🗣️ **Discussion Phase**\nYou have **3 minutes** before the final accusation.' }).catch(() => {});
 
@@ -180,6 +189,7 @@ async function startVotingPhase(game, client) {
   if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
   game.phase = 'voting';
   game.phaseEndsAt = Date.now() + VOTE_DURATION_MS;
+  persistGame(client, game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
@@ -224,6 +234,7 @@ async function endGame(game, client, outcome) {
   if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
   if (game.revealTimeout) { clearTimeout(game.revealTimeout); game.revealTimeout = null; }
   game.phase = 'ended';
+  persistGame(client, game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
@@ -334,11 +345,13 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
     game.cheeseStolen = false;
     game.accompliceId = null;
     game.stolenAtWake = null;
+    persistGame(client, game);
 
     await interaction.deferUpdate();
 
     client.cheeseThiefManager.assignRoles(threadId);
     assignDiceValues(game);
+    persistGame(client, game);
 
     if (!game.thiefId) {
       return interaction.followUp({ content: '❌ Failed to assign Cheese Thief. Please start again.', flags: MessageFlags.Ephemeral });
@@ -349,7 +362,10 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
     const thread = await client.channels.fetch(threadId).catch(() => null);
     if (thread) {
       const msg = await thread.send({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => null);
-      if (msg) game.readyMessageId = msg.id;
+      if (msg) {
+        game.readyMessageId = msg.id;
+        persistGame(client, game);
+      }
     }
     return;
   }
@@ -381,8 +397,94 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
   }
 }
 
+async function resumeCheeseThiefGame(game, client) {
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return false;
+
+  await thread.send({ content: '⚠️ Bot restarted. Attempting to resume Cheese Thief game…' }).catch(() => {});
+
+  if (game.phase === 'playing') {
+    if ((game.currentWakeNumber ?? 0) <= 0) game.currentWakeNumber = 1;
+    const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
+    if (remaining === 0) {
+      await runWakeStep(game, thread, client);
+      return true;
+    }
+
+    const awakeIds = getAwakePlayerIds(game, game.currentWakeNumber);
+    const awakeMentions = awakeIds.length ? awakeIds.map(id => `<@${id}>`).join(', ') : '*No one*';
+    const remainingSeconds = Math.max(1, Math.ceil(remaining / 1000));
+    await thread.send({
+      content: `🌙 **Wake ${game.currentWakeNumber} (resumed)**\nAwake now: ${awakeMentions}\n_Wake ends in ${remainingSeconds} seconds._`,
+      components: buildWakeActionRows(game, awakeIds),
+    }).catch(() => {});
+
+    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
+    game.wakeTimeout = setTimeout(async () => {
+      if (game.phase !== 'playing') return;
+      game.currentWakeNumber += 1;
+      persistGame(client, game);
+      await runWakeStep(game, thread, client);
+    }, remaining);
+    persistGame(client, game);
+    return true;
+  }
+
+  if (game.phase === 'discussion') {
+    const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
+    if (remaining === 0) {
+      await startVotingPhase(game, client);
+      return true;
+    }
+
+    const remainingSeconds = Math.max(1, Math.ceil(remaining / 1000));
+    await thread.send({
+      content: `🗣️ **Discussion Phase (resumed)**\nYou have **${remainingSeconds} seconds** before the final accusation.`,
+    }).catch(() => {});
+
+    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
+    game.wakeTimeout = setTimeout(async () => {
+      if (game.phase !== 'discussion') return;
+      await startVotingPhase(game, client);
+    }, remaining);
+    persistGame(client, game);
+    return true;
+  }
+
+  if (game.phase === 'voting') {
+    const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
+    if (remaining === 0) {
+      await tallyVotes(game, client);
+      return true;
+    }
+
+    const remainingSeconds = Math.max(1, Math.ceil(remaining / 1000));
+    await thread.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('🗳️ Final Accusation (resumed)')
+          .setDescription(`Vote for who you think is the **Cheese Thief**.\nVoting ends in ${remainingSeconds} seconds.`)
+          .setColor(0xEB459E)
+          .setTimestamp(),
+      ],
+      components: buildVoteComponents(game),
+    }).catch(() => {});
+
+    if (game.revealTimeout) clearTimeout(game.revealTimeout);
+    game.revealTimeout = setTimeout(async () => {
+      if (game.phase !== 'voting') return;
+      await tallyVotes(game, client);
+    }, remaining);
+    persistGame(client, game);
+    return true;
+  }
+
+  return true;
+}
+
 module.exports = {
   name: 'interactionCreate',
+  resumeCheeseThiefGame,
 
   async execute(interaction, client) {
     if (!interaction.isButton()) return;
@@ -419,6 +521,7 @@ module.exports = {
       if (game.readyPlayers.has(user.id)) return interaction.update({ content: '✅ You are already ready.', components: [] });
 
       game.readyPlayers.add(user.id);
+      persistGame(client, game);
       await interaction.update({ content: `✅ You're ready! (${game.readyPlayers.size}/${game.players.size})`, components: [] });
       await updateReadyEmbed(game, client);
       await maybeStartWake(game, client);
@@ -455,6 +558,7 @@ module.exports = {
 
       game.cheeseStolen = true;
       game.stolenAtWake = game.currentWakeNumber;
+      persistGame(client, game);
 
       const candidates = [...game.players.values()].filter(p => p.id !== user.id);
       const rows = [];
@@ -483,6 +587,7 @@ module.exports = {
       }
       target.isAccomplice = true;
       game.accompliceId = target.id;
+      persistGame(client, game);
       return interaction.update({ content: `🤝 Accomplice selected: **${target.username}**.`, components: [] });
     }
 
@@ -497,6 +602,7 @@ module.exports = {
       }
 
       game.votes.set(user.id, targetId);
+      persistGame(client, game);
       return interaction.reply({ content: `🗳️ Vote recorded for <@${targetId}>.`, flags: MessageFlags.Ephemeral });
     }
 
@@ -521,8 +627,12 @@ module.exports = {
       client.cheeseThiefManager.assignRoles(game.threadId);
       assignDiceValues(game);
       game.phase = 'playing';
+      persistGame(client, game);
       const msg = await thread.send({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => null);
-      if (msg) game.readyMessageId = msg.id;
+      if (msg) {
+        game.readyMessageId = msg.id;
+        persistGame(client, game);
+      }
       return interaction.reply({ content: '🔄 Rematch started. Check your secret info and ready up.', flags: MessageFlags.Ephemeral });
     }
 

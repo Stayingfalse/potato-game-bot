@@ -1,3 +1,5 @@
+const CheeseThiefRepository = require('../db/CheeseThiefRepository');
+
 class CheeseThiefGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
     this.guildId = guildId;
@@ -54,7 +56,9 @@ class CheeseThiefManager {
 
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
     const game = new CheeseThiefGameState(guildId, channelId, threadId, hostId, hostUsername);
+    game._createdAt = Date.now();
     this.games.set(threadId, game);
+    CheeseThiefRepository.upsert(game);
     return game;
   }
 
@@ -74,6 +78,7 @@ class CheeseThiefManager {
     if (!game) return false;
     if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
     if (game.revealTimeout) clearTimeout(game.revealTimeout);
+    CheeseThiefRepository.remove(threadId);
     this.games.delete(threadId);
     return true;
   }
@@ -88,13 +93,16 @@ class CheeseThiefManager {
       dieValue: null,
       isAccomplice: false,
     });
+    CheeseThiefRepository.upsert(game);
     return true;
   }
 
   removePlayer(threadId, userId) {
     const game = this.games.get(threadId);
     if (!game) return false;
-    return game.players.delete(userId);
+    const removed = game.players.delete(userId);
+    if (removed) CheeseThiefRepository.upsert(game);
+    return removed;
   }
 
   assignRoles(threadId) {
@@ -105,6 +113,7 @@ class CheeseThiefManager {
       game.players.set(player.id, player);
     }
     game.thiefId = assigned.find(p => p.role === CT_ROLES.THIEF)?.id ?? null;
+    CheeseThiefRepository.upsert(game);
     return game;
   }
 
@@ -138,7 +147,15 @@ class CheeseThiefManager {
       }
     }
 
+    CheeseThiefRepository.upsert(game);
     return game;
+  }
+
+  saveGame(threadId) {
+    const game = this.games.get(threadId);
+    if (!game) return false;
+    CheeseThiefRepository.upsert(game);
+    return true;
   }
 }
 
