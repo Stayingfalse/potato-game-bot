@@ -1,21 +1,21 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES } = require('../../utils/roles');
+const { isDemon } = require('../../utils/roles');
 const { endGame } = require('./endGame');
 const { buildPlayerStatsEmbed } = require('./sessionEnd');
 const GameRepository = require('../../db/GameRepository');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
-const VOTE_DURATION = 15_000; // 15 seconds final accusation window
+const VOTE_DURATION = 60_000; // 60 seconds
 
 // ── Embeds ─────────────────────────────────────────────────────────────────────
 
 function buildWordRevealEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('🗳️ Final Accusation')
+    .setTitle('🔤  The Forbidden Word — Revealed!')
     .setDescription(
-      'Discussion is over.\n\n' +
-      'Vote for who you think is the **Cheese Thief**.',
+      `Time's up! The forbidden word was **"${game.word || '*(never chosen)*'}"**.\n\n` +
+      'Now vote for who you think the **Demon** is!',
     )
     .setColor(VOTE_COLOR)
     .setTimestamp();
@@ -25,9 +25,10 @@ function buildVoteEmbed(game) {
   const timeStr = `<t:${Math.floor((Date.now() + VOTE_DURATION) / 1000)}:R>`;
 
   return new EmbedBuilder()
-    .setTitle('🗳️ Vote Now')
+    .setTitle('🗳️  The Forbidden Word — Vote!')
     .setDescription(
-      'Vote for who you think the **Cheese Thief** is.\n\n' +
+      'Vote for who you think the **Demon** is. ' +
+      'If the majority picks correctly, the Townsfolk win!\n\n' +
       `Voting closes ${timeStr}. You can change your vote before it ends.`,
     )
     .setColor(VOTE_COLOR)
@@ -62,6 +63,9 @@ function buildVoteComponents(players) {
 // ── Tally ──────────────────────────────────────────────────────────────────────
 
 /**
+ * Counts current votes, determines the winner, and calls endGame.
+ * Tie → werewolf_vote (Demons win). Majority on Demon → townsfolk_vote.
+ *
  * @param {import('../GameManager').GameState} game
  * @param {import('discord.js').Client} client
  */
@@ -81,26 +85,17 @@ async function tallyVotes(game, client) {
     .filter(([, count]) => count === maxVotes)
     .map(([id]) => id);
 
-  if (topTargets.length === 0) {
+  // Tie → Demons win.
+  if (topTargets.length !== 1) {
     await endGame(game, client, 'werewolf_vote');
     return;
   }
 
-  const selectedPlayers = topTargets.map(id => game.players.get(id)).filter(Boolean);
-  const hasFallMouse = selectedPlayers.some(p => p.role === ROLES.SEER);
-  const hasThief = selectedPlayers.some(p => p.role === ROLES.WEREWOLF);
+  // Check if the top target is the Demon.
+  const suspected = game.players.get(topTargets[0]);
+  const isWerewolf = isDemon(suspected);
 
-  if (hasFallMouse) {
-    await endGame(game, client, 'fall_mouse_vote');
-    return;
-  }
-
-  if (hasThief) {
-    await endGame(game, client, 'villagers_vote');
-    return;
-  }
-
-  await endGame(game, client, 'werewolf_vote');
+  await endGame(game, client, isWerewolf ? 'villagers_vote' : 'werewolf_vote');
 }
 
 // ── Phase entry point ──────────────────────────────────────────────────────────
@@ -113,14 +108,10 @@ async function tallyVotes(game, client) {
  * @param {import('discord.js').Client} client
  */
 async function startVotingPhase(game, client) {
-  // Stop wake/discussion timers if still running.
+  // Stop the main countdown timer if still running.
   if (game.timerInterval) {
     clearInterval(game.timerInterval);
     game.timerInterval = null;
-  }
-  if (game.wakeTimeout) {
-    clearTimeout(game.wakeTimeout);
-    game.wakeTimeout = null;
   }
 
   game.phase = 'voting';
@@ -132,21 +123,18 @@ async function startVotingPhase(game, client) {
     return;
   }
 
-  game.phaseEndsAt = Date.now() + VOTE_DURATION;
-  GameRepository.upsert(game);
-
-  // Remove stale action buttons from the board.
+  // Remove Wordsmith action buttons from the board.
   if (game.boardMessageId) {
     const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
     if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});
   }
 
+  // Announce the forbidden word.
   await thread.send({ embeds: [buildWordRevealEmbed(game)] }).catch(() => {});
 
-  if (!game.responseStatsShown) {
-    await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
-    game.responseStatsShown = true;
-  }
+  // Show per-player response card stats for this game.
+  await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
+  game.responseStatsShown = true;
 
   await thread.send({
     embeds: [buildVoteEmbed(game)],

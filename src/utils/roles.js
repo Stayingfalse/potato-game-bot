@@ -1,20 +1,30 @@
 const ROLES = Object.freeze({
   MAYOR: 'Wordsmith',
-  WEREWOLF: 'Cheese Thief',
-  SEER: 'Fall Mouse',
-  VILLAGER: 'Sleepy Mice',
+  WEREWOLF: 'Demon',
+  SEER: 'Librarian',
+  VILLAGER: 'Townsfolk',
 });
 
 const ROLE_DESCRIPTIONS = Object.freeze({
+  [ROLES.MAYOR]:
+    'You are the **Wordsmith** 📝\n\n' +
+    "You know the forbidden word. Answer your fellow townsfolk's questions using only **Yes**, **No**, or " +
+    '**Maybe** via the buttons on the game board. You **cannot speak** during the game — your answers are your only voice!',
+
   [ROLES.WEREWOLF]:
-    'You are the **Cheese Thief** 🧀\n\n' +
-    'You wake only when your die number is called. You may steal the cheese once, then choose one accomplice.',
+    'You are the **Demon** 😈\n\n' +
+    'You already know the forbidden word. Pretend you don\'t! Blend in with the townsfolk, ask misleading ' +
+    'questions, and stop them from guessing the word before time runs out.',
+
   [ROLES.SEER]:
-    'You are the **Fall Mouse** 🍂\n\n' +
-    'If you are selected in the final accusation (including a tie), you win alone.',
+    'You are the **Librarian** 📚\n\n' +
+    'You know the forbidden word. Subtly guide the townsfolk toward the answer — without revealing that you ' +
+    'already know it. The Demon will be watching for you!',
+
   [ROLES.VILLAGER]:
-    'You are a **Sleepy Mice** 🐭\n\n' +
-    'You wake when your die number is called and try to identify the Cheese Thief.',
+    'You are a **Townsfolk** 🏡\n\n' +
+    "You don't know the forbidden word. Ask strategic yes/no questions, listen to the Wordsmith's answers, and " +
+    'work together to guess the word before time runs out!',
 });
 
 /**
@@ -24,7 +34,7 @@ const ROLE_DESCRIPTIONS = Object.freeze({
  * @returns {string|undefined}
  */
 function getEffectiveRole(player) {
-  return player?.role;
+  return player?.secretRole ?? player?.role;
 }
 
 /**
@@ -40,10 +50,6 @@ function isDemon(player) {
  * @returns {boolean}
  */
 function isLibrarian(player) {
-  return isFallMouse(player);
-}
-
-function isFallMouse(player) {
   return getEffectiveRole(player) === ROLES.SEER;
 }
 
@@ -51,7 +57,8 @@ function isFallMouse(player) {
  * Assigns roles to a shuffled copy of the player array.
  *
  * Distribution:
- *   3+ players → Cheese Thief, Fall Mouse, ...Sleepy Mice
+ *   3 players  → Wordsmith, Demon, Townsfolk
+ *   4+ players → Wordsmith, Demon, Librarian, ...Townsfolk
  *
  * @param {Array<{id: string, username: string}>} players
  * @returns {Array<{id: string, username: string, role: string, secretRole: string|null}>}
@@ -59,7 +66,7 @@ function isFallMouse(player) {
  */
 function assignRoles(players) {
   if (players.length < 3) {
-    throw new Error('At least 3 players are required to start.');
+    throw new Error('At least 3 players are required to start The Forbidden Word.');
   }
 
   // Fisher-Yates shuffle for fair randomisation
@@ -71,10 +78,23 @@ function assignRoles(players) {
 
   const result = shuffled.map(p => ({ ...p, secretRole: null }));
 
-  result[0].role = ROLES.WEREWOLF;
-  result[1].role = ROLES.SEER;
-  for (let i = 2; i < result.length; i++) {
-    result[i].role = ROLES.VILLAGER;
+  result[0].role = ROLES.MAYOR;
+  result[1].role = ROLES.WEREWOLF;
+
+  if (result.length >= 4) {
+    result[2].role = ROLES.SEER;
+    for (let i = 3; i < result.length; i++) {
+      result[i].role = ROLES.VILLAGER;
+    }
+  } else {
+    result[2].role = ROLES.VILLAGER;
+  }
+
+  const wordsmith = result.find(p => p.role === ROLES.MAYOR);
+  if (wordsmith) {
+    const secretPool = [ROLES.WEREWOLF, ROLES.VILLAGER];
+    if (result.length >= 4) secretPool.push(ROLES.SEER);
+    wordsmith.secretRole = secretPool[Math.floor(Math.random() * secretPool.length)];
   }
 
   return result;
@@ -87,5 +107,4 @@ module.exports = {
   getEffectiveRole,
   isDemon,
   isLibrarian,
-  isFallMouse,
 };

@@ -9,14 +9,12 @@ const stmtUpsert = db.prepare(`
     (thread_id, guild_id, channel_id, host_id, host_username,
      message_id, board_message_id, phase, players, word, word_options,
      tokens, time_left, votes, game_number, winner_guesser_user_id,
-     session_mode, voice_player_message_ids, current_wake_number, phase_ends_at,
-     cheese_stolen, accomplice_id, thief_id, stolen_at_wake, created_at)
+     session_mode, voice_player_message_ids, created_at)
   VALUES
-     (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
+    (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
      @message_id, @board_message_id, @phase, @players, @word, @word_options,
      @tokens, @time_left, @votes, @game_number, @winner_guesser_user_id,
-     @session_mode, @voice_player_message_ids, @current_wake_number, @phase_ends_at,
-     @cheese_stolen, @accomplice_id, @thief_id, @stolen_at_wake, @created_at)
+     @session_mode, @voice_player_message_ids, @created_at)
   ON CONFLICT(thread_id) DO UPDATE SET
     guild_id                  = excluded.guild_id,
     channel_id                = excluded.channel_id,
@@ -34,13 +32,7 @@ const stmtUpsert = db.prepare(`
     game_number               = excluded.game_number,
     winner_guesser_user_id    = excluded.winner_guesser_user_id,
     session_mode              = excluded.session_mode,
-    voice_player_message_ids  = excluded.voice_player_message_ids,
-    current_wake_number       = excluded.current_wake_number,
-    phase_ends_at             = excluded.phase_ends_at,
-    cheese_stolen             = excluded.cheese_stolen,
-    accomplice_id             = excluded.accomplice_id,
-    thief_id                  = excluded.thief_id,
-    stolen_at_wake            = excluded.stolen_at_wake
+    voice_player_message_ids  = excluded.voice_player_message_ids
 `);
 
 const stmtUpdateTimeLeft = db.prepare(`
@@ -77,12 +69,6 @@ function upsert(game) {
     winner_guesser_user_id:  game.winnerGuesserUserId ?? null,
     session_mode:            game.sessionMode ?? null,
     voice_player_message_ids: JSON.stringify(Object.fromEntries(game.voicePlayerMessageIds ?? new Map())),
-    current_wake_number:     game.currentWakeNumber ?? 0,
-    phase_ends_at:           game.phaseEndsAt ?? null,
-    cheese_stolen:           game.cheeseStolen ? 1 : 0,
-    accomplice_id:           game.accompliceId ?? null,
-    thief_id:                game.thiefId ?? null,
-    stolen_at_wake:          game.stolenAtWake ?? null,
     created_at:              game._createdAt ?? Date.now(),
   });
 }

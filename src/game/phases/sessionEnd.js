@@ -5,13 +5,12 @@ const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 
 const ROLE_EMOJI = {
   [ROLES.MAYOR]:    '📝',
-  [ROLES.WEREWOLF]: '🧀',
-  [ROLES.SEER]:     '🍂',
-  [ROLES.VILLAGER]: '🐭',
+  [ROLES.WEREWOLF]: '😈',
+  [ROLES.SEER]:     '📚',
+  [ROLES.VILLAGER]: '🏡',
 };
 
 const OUTCOME_COLOR = {
-  fall_mouse_vote: 0xFAA61A,
   villagers_word:  0x57F287,
   villagers_vote:  0x57F287,
   werewolf_time:   0xED4245,
@@ -21,13 +20,12 @@ const OUTCOME_COLOR = {
 };
 
 const OUTCOME_BANNER = {
-  fall_mouse_vote: { title: '🍂  Fall Mouse Wins!', description: 'Fall Mouse was selected in the final accusation and wins alone.' },
   villagers_word:  { title: '🎉  Townsfolk Win!',   description: 'The forbidden word was guessed correctly — and the Demon stayed hidden!' },
-  villagers_vote:  { title: '🎉  Sleepy Mice Win!', description: 'Cheese Thief was selected (without Fall Mouse), so all non-accomplice Sleepy Mice win.' },
+  villagers_vote:  { title: '🎉  Townsfolk Win!',   description: 'The Townsfolk correctly voted out the Demon!' },
   werewolf_time:   { title: '😈  Demons Win!',      description: 'Time ran out before the forbidden word was guessed.' },
   werewolf_tokens: { title: '😈  Demons Win!',      description: 'All tokens were exhausted before the forbidden word was guessed.' },
   werewolf_seer:   { title: '😈  Demons Win!',      description: 'The Demon revealed and correctly identified the Librarian — stealing the win!' },
-  werewolf_vote:   { title: '🧀  Cheese Thief Team Wins!', description: 'Cheese Thief was not selected, so the Cheese Thief and accomplice win.' },
+  werewolf_vote:   { title: '😈  Demons Win!',      description: 'The Townsfolk failed to unmask the Demon.' },
 };
 
 // ── Embeds ─────────────────────────────────────────────────────────────────────
@@ -37,7 +35,7 @@ function buildWinnerEmbed(game, outcome) {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .addFields({ name: '🧀 Cheese Stolen', value: game.cheeseStolen ? `Yes (wake ${game.stolenAtWake ?? 'unknown'})` : 'No' })
+    .addFields({ name: '🔤 The Forbidden Word', value: `**${game.word || '*(never chosen)*'}**` })
     .setColor(OUTCOME_COLOR[outcome])
     .setTimestamp();
 }
@@ -185,39 +183,26 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
 
   // 4. Record stats + session history.
   // Build winner set for session history.
-   const winnerIds = new Set();
-   if (outcome === 'fall_mouse_vote') {
-     for (const p of game.players.values()) {
-       if (p.role === ROLES.SEER) winnerIds.add(p.id);
-     }
-   } else if (outcome === 'villagers_vote') {
-     for (const p of game.players.values()) {
-       if (p.role === ROLES.VILLAGER && !p.isAccomplice) winnerIds.add(p.id);
-     }
-   } else if (outcome === 'werewolf_vote') {
-     for (const p of game.players.values()) {
-       if (p.role === ROLES.WEREWOLF || p.isAccomplice) winnerIds.add(p.id);
-     }
-   } else {
-     for (const p of game.players.values()) {
-       if (!isDemon(p)) winnerIds.add(p.id);
-     }
-   }
+  const VILLAGER_WIN_OUTCOMES = new Set(['villagers_word', 'villagers_vote']);
+  const werewolfWins = !VILLAGER_WIN_OUTCOMES.has(outcome);
+  const winnerIds = new Set(
+    [...game.players.values()]
+      .filter(p => werewolfWins ? isDemon(p) : !isDemon(p))
+      .map(p => p.id),
+  );
 
   game.sessionHistory.push({
     gameNumber: game.gameNumber,
     outcome,
     word: game.word,
     winners: winnerIds,
-      players: [...game.players.values()].map(p => ({
-        id: p.id,
-        username: p.username,
-        role: p.role,
-        secretRole: p.secretRole ?? null,
-        dieValue: p.dieValue ?? null,
-        isAccomplice: p.isAccomplice ?? false,
-      })),
-    });
+    players: [...game.players.values()].map(p => ({
+      id: p.id,
+      username: p.username,
+      role: p.role,
+      secretRole: p.secretRole ?? null,
+    })),
+  });
 
   recordGame(
     game.guildId,

@@ -19,7 +19,6 @@ async function restoreGames(client) {
 // ── Werewords restore ──────────────────────────────────────────────────────────
 
 async function restoreWerewords(client, GameRepository) {
-  const { ROLES } = require('../utils/roles');
   const rows = GameRepository.getAll();
   if (rows.length === 0) return;
 
@@ -46,7 +45,7 @@ async function restoreWerewords(client, GameRepository) {
     const wordOptions    = JSON.parse(row.word_options);
 
     // Reconstruct the GameState-shaped object and insert into the manager.
-     const game = {
+    const game = {
       guildId:           row.guild_id,
       channelId:         row.channel_id,
       threadId:          row.thread_id,
@@ -68,29 +67,13 @@ async function restoreWerewords(client, GameRepository) {
       revealTimeout:     null,
       gameNumber:        row.game_number,
       sessionHistory:    [],
-       winnerGuesserUserId: row.winner_guesser_user_id,
-       sessionMode:       row.session_mode ?? null,
-       voicePlayerMessageIds: row.voice_player_message_ids
-         ? new Map(Object.entries(JSON.parse(row.voice_player_message_ids)))
-         : new Map(),
-       currentWakeNumber: row.current_wake_number ?? 0,
-       phaseEndsAt: row.phase_ends_at ?? null,
-       cheeseStolen: !!row.cheese_stolen,
-       accompliceId: row.accomplice_id ?? null,
-       thiefId: row.thief_id ?? null,
-       stolenAtWake: row.stolen_at_wake ?? null,
-       wakeTimeout: null,
-       _createdAt:        row.created_at,
-     };
-
-     if (!game.thiefId) {
-       game.thiefId = [...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
-     }
-     if (!game.thiefId && (row.phase === 'playing' || row.phase === 'discussion' || row.phase === 'voting')) {
-       GameRepository.remove(row.thread_id);
-       client.gameManager.games.delete(row.thread_id);
-       continue;
-     }
+      winnerGuesserUserId: row.winner_guesser_user_id,
+      sessionMode:       row.session_mode ?? null,
+      voicePlayerMessageIds: row.voice_player_message_ids
+        ? new Map(Object.entries(JSON.parse(row.voice_player_message_ids)))
+        : new Map(),
+      _createdAt:        row.created_at,
+    };
 
     client.gameManager.games.set(row.thread_id, game);
 
@@ -113,10 +96,10 @@ async function restoreWerewords(client, GameRepository) {
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume game…' }).catch(() => {});
 
     // ── Phase-specific recovery ────────────────────────────────────────────
-    if (row.phase === 'playing' || row.phase === 'discussion') {
+    if (row.phase === 'playing') {
       // Restart the countdown from saved time_left.
       startGameTimer(game, thread, client);
-      if (row.phase === 'playing' && game.boardMessageId) {
+      if (game.boardMessageId) {
         const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
         if (bMsg) {
           await bMsg.edit({

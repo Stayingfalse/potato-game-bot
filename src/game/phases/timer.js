@@ -1,136 +1,80 @@
 'use strict';
 
-const GameRepository = require('../../db/GameRepository');
-const { ROLES } = require('../../utils/roles');
+// Key time milestones (in seconds) at which TTS warnings are announced.
+const TTS_WARNINGS = new Set([60, 30, 10]);
 
-const WAKE_DURATION_MS = 15_000;
-const WAKE_DURATION_SECONDS = Math.floor(WAKE_DURATION_MS / 1000);
-const DISCUSSION_DURATION_MS = 3 * 60_000;
-const MAX_WAKE_NUMBER = 6;
-
-function getAwakePlayerIds(game, wakeNumber) {
-  return [...game.players.values()]
-    .filter(player => player.dieValue === wakeNumber)
-    .map(player => player.id);
-}
-
-function buildWakeActionRows(game, awakePlayerIds) {
-  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-  const rows = [];
-
-  if (awakePlayerIds.length === 1) {
-    const soloId = awakePlayerIds[0];
-    const targets = [...game.players.values()].filter(p => p.id !== soloId);
-    for (let i = 0; i < targets.length; i += 5) {
-      rows.push(
-        new ActionRowBuilder().addComponents(
-          targets.slice(i, i + 5).map(target =>
-            new ButtonBuilder()
-              .setCustomId(`ww_inspect_${target.id}`)
-              .setLabel(`Inspect ${target.username}`)
-              .setStyle(ButtonStyle.Secondary),
-          ),
-        ),
-      );
+/**
+ * Attempts to send a TTS warning message to the thread.
+ * Fails silently so a broken TTS permission never kills the bot.
+ */
+async function sendTtsWarning(thread, seconds) {
+  try {
+    await thread.send({ content: `⏱️ ${seconds} seconds remaining!`, tts: true });
+  } catch (err) {
+    // TTS may be disabled or rate-limited — fall back to a plain message.
+    try {
+      await thread.send({ content: `⏱️ ${seconds} seconds remaining!` });
+    } catch {
+      // Ignore all errors; timer warnings are non-critical.
     }
   }
-
-  const thiefAwake = awakePlayerIds.some(id => game.players.get(id)?.role === ROLES.WEREWOLF);
-  if (thiefAwake && !game.cheeseStolen) {
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('ww_steal_cheese')
-          .setLabel('Steal Cheese')
-          .setStyle(ButtonStyle.Danger),
-      ),
-    );
-  }
-
-  return rows;
 }
 
-async function runWakeStep(game, thread, client) {
-  if (game.phase !== 'playing') return;
+/**
+ * Shared helper: start (or restart) the werewords game-board timer.
+ * Called both from interactionCreate.js (initial start) and restore.js (crash recovery).
+ *
+ * @param {import('../game/GameManager').GameState} game
+ * @param {import('discord.js').ThreadChannel} thread
+ * @param {import('discord.js').Client} client
+ */
+function startGameTimer(game, thread, client) {
+  const { buildBoardEmbed, buildMayorActionComponents } = require('./playing');
+  const { startVotingPhase } = require('./voting');
+  const { updateTimeLeft } = require('../../db/GameRepository');
 
-  if (game.currentWakeNumber > MAX_WAKE_NUMBER) {
-    await startDiscussion(game, thread, client);
-    return;
-  }
+  let boardRefreshing = false;
 
-  const wakeNumber = game.currentWakeNumber;
-  const awakePlayerIds = getAwakePlayerIds(game, wakeNumber);
-  const awakeMentions = awakePlayerIds.length
-    ? awakePlayerIds.map(id => `<@${id}>`).join(', ')
-    : '*No one*';
-
-  await thread.send({
-    content:
-      `🌙 **Wake ${wakeNumber}**\n` +
-      `Awake now: ${awakeMentions}\n` +
-      `_Wake closes in ${WAKE_DURATION_SECONDS} seconds._`,
-    components: buildWakeActionRows(game, awakePlayerIds),
-  }).catch(() => {});
-
-  game.phaseEndsAt = Date.now() + WAKE_DURATION_MS;
-  GameRepository.upsert(game);
-
-  game.wakeTimeout = setTimeout(async () => {
+  game.timerInterval = setInterval(async () => {
     if (game.phase !== 'playing') return;
-    game.currentWakeNumber += 1;
-    GameRepository.upsert(game);
-    await runWakeStep(game, thread, client);
-  }, WAKE_DURATION_MS);
+
+    game.timeLeft--;
+
+    if (game.timeLeft <= 0) {
+      game.timeLeft = 0;
+      await startVotingPhase(game, client);
+      return;
+    }
+
+    // TTS warning at key milestones.
+    if (TTS_WARNINGS.has(game.timeLeft)) {
+      await sendTtsWarning(thread, game.timeLeft);
+    }
+
+    const updateEvery = game.timeLeft > 60 ? 30
+                      : game.timeLeft > 30 ? 10
+                      : 5;
+
+    if (game.timeLeft % updateEvery === 0 && game.boardMessageId && !boardRefreshing) {
+      updateTimeLeft(game.threadId, game.timeLeft);
+      boardRefreshing = true;
+      try {
+        const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
+        if (bMsg) {
+          await bMsg.edit({
+            embeds: [buildBoardEmbed(game)],
+            components: buildMayorActionComponents(game.tokens),
+          }).catch(err => {
+            if (err?.status === 429) {
+              console.warn(`[Board] Rate limited (thread ${game.threadId}, ${game.timeLeft}s left) — skipping tick`);
+            }
+          });
+        }
+      } finally {
+        boardRefreshing = false;
+      }
+    }
+  }, 1_000);
 }
 
-async function startDiscussion(game, thread, client) {
-  const { startVotingPhase } = require('./voting');
-  game.phase = 'discussion';
-  game.phaseEndsAt = Date.now() + DISCUSSION_DURATION_MS;
-  GameRepository.upsert(game);
-
-  await thread.send({
-    content: `🗣️ **Discussion Phase**\nYou have **3 minutes** to discuss before the final accusation.`,
-  }).catch(() => {});
-
-  game.wakeTimeout = setTimeout(async () => {
-    if (game.phase !== 'discussion') return;
-    await startVotingPhase(game, client);
-  }, DISCUSSION_DURATION_MS);
-}
-
-async function resumeDiscussion(game, thread, client) {
-  const { startVotingPhase } = require('./voting');
-  const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
-  if (remaining === 0) {
-    await startVotingPhase(game, client);
-    return;
-  }
-  game.wakeTimeout = setTimeout(async () => {
-    if (game.phase !== 'discussion') return;
-    await startVotingPhase(game, client);
-  }, remaining);
-}
-
-async function startGameTimer(game, thread, client) {
-  if (game.wakeTimeout) {
-    clearTimeout(game.wakeTimeout);
-    game.wakeTimeout = null;
-  }
-
-  if (game.phase === 'discussion') {
-    await resumeDiscussion(game, thread, client);
-    return;
-  }
-
-  if (game.phase !== 'playing') return;
-  game.currentWakeNumber = game.currentWakeNumber ?? 1;
-  await runWakeStep(game, thread, client);
-}
-
-module.exports = {
-  startGameTimer,
-  getAwakePlayerIds,
-  WAKE_DURATION_MS,
-  DISCUSSION_DURATION_MS,
-};
+module.exports = { startGameTimer };
