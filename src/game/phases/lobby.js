@@ -163,6 +163,67 @@ function buildMayorWordComponents(wordOptions) {
   ];
 }
 
+// ── Mode-selection embeds and components ──────────────────────────────────────
+
+/**
+ * Embed shown in the main channel while the host selects text vs. voice mode.
+ * @param {import('../GameManager').GameState} game
+ */
+function buildModeSelectingEmbed(game) {
+  const playerMentions =
+    [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
+
+  return new EmbedBuilder()
+    .setTitle('🔮  The Forbidden Word — Choosing Game Mode')
+    .setDescription('The host is selecting the play mode in the game thread…')
+    .addFields(
+      { name: 'Players', value: playerMentions },
+      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
+    )
+    .setColor(PLAYING_COLOR)
+    .setFooter({ text: `Host: @${game.hostUsername}` })
+    .setTimestamp();
+}
+
+/**
+ * Embed posted in the game thread asking the host to choose text or voice mode.
+ * @param {import('../GameManager').GameState} game
+ */
+function buildModeSelectEmbed(game) {
+  return new EmbedBuilder()
+    .setTitle('🔮  The Forbidden Word — Choose Game Mode')
+    .setDescription(
+      `<@${game.hostId}>, how will players be making their guesses?\n\n` +
+      '📝 **Text Mode** — Players type their guesses in the thread. ' +
+      'The Wordsmith responds using the buttons that appear on each guess message.\n\n' +
+      '🎙️ **Voice Mode** — Players call out guesses in a voice channel. ' +
+      'A response panel is created for each player; the Wordsmith taps the relevant button on the panel to log each response.',
+    )
+    .setColor(LOBBY_COLOR)
+    .setFooter({ text: `Only the host (@${game.hostUsername}) can choose` })
+    .setTimestamp();
+}
+
+/**
+ * Two-button action row for the host to pick text or voice mode.
+ */
+function buildModeSelectComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ww_mode_text')
+        .setLabel('Text Mode')
+        .setEmoji('📝')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('ww_mode_voice')
+        .setLabel('Voice Mode')
+        .setEmoji('🎙️')
+        .setStyle(ButtonStyle.Success),
+    ),
+  ];
+}
+
 module.exports = {
   buildLobbyEmbed,
   buildLobbyComponents,
@@ -170,4 +231,7 @@ module.exports = {
   buildGameThreadEmbed,
   buildPlayingComponents,
   buildMayorWordComponents,
+  buildModeSelectEmbed,
+  buildModeSelectComponents,
+  buildModeSelectingEmbed,
 };

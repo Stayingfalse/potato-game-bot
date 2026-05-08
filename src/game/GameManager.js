@@ -20,7 +20,7 @@ class GameState {
     /** Discord message ID of the game board embed posted in the thread. */
     this.boardMessageId = null;
 
-    /** @type {'lobby'|'starting'|'playing'|'voting'|'ended'} */
+    /** @type {'lobby'|'mode_select'|'starting'|'playing'|'voting'|'ended'} */
     this.phase = 'lobby';
 
     /** @type {Map<string, {id: string, username: string, role: string|null, secretRole: string|null}>} */
@@ -51,6 +51,11 @@ class GameState {
     this.votes = new Map();
     /** setTimeout handle for the 90s outer reveal safety net / voting window. */
     this.revealTimeout = null;
+
+    /** @type {'text'|'voice'|null} Chosen play mode; null until host selects. */
+    this.sessionMode = null;
+    /** @type {Map<string, string>} userId → messageId of their voice-mode response panel. */
+    this.voicePlayerMessageIds = new Map();
 
     // Session tracking
     this.gameNumber = 1;
@@ -150,6 +155,9 @@ class GameManager {
     game.winnerGuesserUserId = null;
     game.responseStatsShown = false;
     game.timeLeft = 240;
+    // For same-group rematch keep the previously chosen mode; for open sign-ups ask again.
+    if (openSignups) game.sessionMode = null;
+    game.voicePlayerMessageIds = new Map();
 
     // Reset roles so they get reassigned on start.
     for (const player of game.players.values()) {

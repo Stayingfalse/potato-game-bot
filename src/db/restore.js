@@ -68,14 +68,18 @@ async function restoreWerewords(client, GameRepository) {
       gameNumber:        row.game_number,
       sessionHistory:    [],
       winnerGuesserUserId: row.winner_guesser_user_id,
+      sessionMode:       row.session_mode ?? null,
+      voicePlayerMessageIds: row.voice_player_message_ids
+        ? new Map(Object.entries(JSON.parse(row.voice_player_message_ids)))
+        : new Map(),
       _createdAt:        row.created_at,
     };
 
     client.gameManager.games.set(row.thread_id, game);
 
-    // Lobby games are trivial to re-start — drop them silently so users aren't
+    // Lobby and mode_select games are trivial to re-start — drop them silently so users aren't
     // spammed with a "bot restarted" notice every time a new lobby is created.
-    if (row.phase === 'lobby') {
+    if (row.phase === 'lobby' || row.phase === 'mode_select') {
       GameRepository.remove(row.thread_id);
       client.gameManager.games.delete(row.thread_id);
       continue;

@@ -119,6 +119,14 @@ if (!wlColumns.has('clue_order_state')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
 }
 
+const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
+if (!wwColumns.has('session_mode')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN session_mode TEXT');
+}
+if (!wwColumns.has('voice_player_message_ids')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
+}
+
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 
 const STATS_JSON = path.join(__dirname, '../../data/stats.json');

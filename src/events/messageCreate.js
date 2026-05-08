@@ -6,6 +6,9 @@ async function handleGameMessage(message, gameManager) {
   const game = gameManager.getGame(message.channel.id);
   if (!game || game.phase !== 'playing' || !game.word) return;
 
+  // In voice mode guesses are called out verbally — don't process text messages as guesses.
+  if (game.sessionMode === 'voice') return;
+
   const player = game.players.get(message.author.id);
   if (!player || player.role === ROLES.MAYOR) return;
 

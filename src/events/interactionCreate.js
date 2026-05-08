@@ -6,8 +6,11 @@ const {
   buildGameThreadEmbed,
   buildPlayingComponents,
   buildMayorWordComponents,
+  buildModeSelectEmbed,
+  buildModeSelectComponents,
+  buildModeSelectingEmbed,
 } = require('../game/phases/lobby');
-const { buildBoardEmbed, buildMayorActionComponents, buildGuessComponents } = require('../game/phases/playing');
+const { buildBoardEmbed, buildMayorActionComponents, buildGuessComponents, buildVoicePlayerContent, buildVoicePlayerComponents } = require('../game/phases/playing');
 const { endGame } = require('../game/phases/endGame');
 const { startRevealPhase, buildSeerPickComponents } = require('../game/phases/reveal');
 const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
@@ -49,7 +52,7 @@ async function refreshBoardMessage(game, client) {
   if (!board) return;
   await board.edit({
     embeds: [buildBoardEmbed(game)],
-    components: buildMayorActionComponents(game.tokens),
+    components: [],
   }).catch(() => {});
 }
 
@@ -118,6 +121,26 @@ async function maybeStartTimer(game, client) {
   if (!thread) return;
   await thread.send({ content: '⏱️ All players are ready — the timer has started! Good luck!' }).catch(() => {});
   startGameTimer(game, thread, client);
+}
+
+/**
+ * Creates a voice-mode response panel message for every non-Wordsmith player.
+ * Populates game.voicePlayerMessageIds and persists the game.
+ * @param {import('../game/GameManager').GameState} game
+ * @param {import('discord.js').ThreadChannel} thread
+ */
+async function createVoicePlayerPanels(game, thread) {
+  await thread.send({ content: "🎙️ **Voice Mode panels — Wordsmith, use these to log each player's responses:**" }).catch(() => {});
+  for (const player of game.players.values()) {
+    if (player.role === ROLES.MAYOR) continue;
+    const msg = await thread.send({
+      content: buildVoicePlayerContent(player),
+      components: buildVoicePlayerComponents(player.id, game.tokens),
+    }).catch(() => null);
+    if (msg) game.voicePlayerMessageIds.set(player.id, msg.id);
+  }
+  const { upsert: upsertGame } = require('../db/GameRepository');
+  upsertGame(game);
 }
 
 module.exports = {
@@ -194,8 +217,8 @@ module.exports = {
         game.readyPlayers.add(user.id);
 
         await interaction.reply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
-          components: buildMayorActionComponents(game.tokens),
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**`,
+          components: [],
           flags: MessageFlags.Ephemeral,
         });
 
@@ -208,6 +231,12 @@ module.exports = {
           await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
         }
         game.pendingSecretInteractions = [];
+
+        // In voice mode, create per-player response panels now that the word is set.
+        if (game.sessionMode === 'voice') {
+          const thread = await client.channels.fetch(game.threadId).catch(() => null);
+          if (thread) await createVoicePlayerPanels(game, thread);
+        }
 
         await updateReadyEmbed(game, client);
         await maybeStartTimer(game, client);
@@ -311,45 +340,26 @@ module.exports = {
           });
         }
 
-        game.phase = 'starting';
+        game.phase = 'mode_select';
         await interaction.deferUpdate();
 
-        client.gameManager.assignRoles(threadId);
-        game.wordOptions = sampleN(wordPool, 3);
-
-        game.phase = 'playing';
-
-        // Update the main-channel lobby embed → Game In Progress, no buttons.
+        // Show "choosing mode…" in the main channel and remove lobby buttons.
         await interaction.editReply({
-          embeds: [buildActiveEmbed(game)],
+          embeds: [buildModeSelectingEmbed(game)],
           components: [],
         });
 
-        // Post the game thread welcome embed + secret info button.
+        // Post the mode selection prompt in the game thread.
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread) {
-          const startMsg = await thread.send({
-            embeds: [buildGameThreadEmbed(game)],
-            components: buildPlayingComponents(),
-          }).catch(() => null);
-
-          if (startMsg) game.readyMessageId = startMsg.id;
-
-          // Post the live game board with Mayor action buttons.
-          const boardMsg = await thread.send({
-            embeds: [buildBoardEmbed(game)],
-            components: buildMayorActionComponents(game.tokens),
-          }).catch(() => null);
-
-          if (boardMsg) {
-            game.boardMessageId = boardMsg.id;
-            // Persist the boardMessageId now that we have it.
-            const { upsert: upsertGame } = require('../db/GameRepository');
-            upsertGame(game);
-          }
-
-          // Timer starts once all players have confirmed their roles (ww_ready).
+          await thread.send({
+            embeds: [buildModeSelectEmbed(game)],
+            components: buildModeSelectComponents(),
+          }).catch(() => {});
         }
+
+        const { upsert: upsertGame } = require('../db/GameRepository');
+        upsertGame(game);
       }
 
       // ── ww_cancel_{threadId} ──────────────────────────────────────────────
@@ -392,6 +402,74 @@ module.exports = {
     // interaction.channelId === game.threadId when inside the thread.
     const game = client.gameManager.getGame(channelId);
 
+    // ── ww_mode_text / ww_mode_voice (host selects play mode) ─────────────────
+    if (customId === 'ww_mode_text' || customId === 'ww_mode_voice') {
+      if (!game || game.phase !== 'mode_select') {
+        return interaction.reply({ content: 'No mode selection is in progress.', flags: MessageFlags.Ephemeral });
+      }
+      if (user.id !== game.hostId) {
+        return interaction.reply({ content: 'Only the host can choose the game mode.', flags: MessageFlags.Ephemeral });
+      }
+
+      const chosenMode = customId === 'ww_mode_text' ? 'text' : 'voice';
+      const modeEmoji  = chosenMode === 'voice' ? '🎙️' : '📝';
+      const modeLabel  = chosenMode === 'voice' ? 'Voice' : 'Text';
+
+      game.sessionMode = chosenMode;
+      game.phase = 'starting';
+
+      await interaction.deferUpdate();
+
+      // Remove the mode-select buttons and confirm the choice.
+      await interaction.editReply({
+        content: `${modeEmoji} **${modeLabel} Mode** selected!`,
+        embeds: [],
+        components: [],
+      });
+
+      client.gameManager.assignRoles(channelId);
+      game.wordOptions = sampleN(wordPool, 3);
+      game.phase = 'playing';
+
+      // Update main-channel lobby embed → Game In Progress.
+      if (game.channelId && game.messageId) {
+        const mainChannel = await client.channels.fetch(game.channelId).catch(() => null);
+        if (mainChannel) {
+          const lobbyMsg = await mainChannel.messages.fetch(game.messageId).catch(() => null);
+          if (lobbyMsg) {
+            await lobbyMsg.edit({
+              embeds: [buildActiveEmbed(game)],
+              components: [],
+            }).catch(() => {});
+          }
+        }
+      }
+
+      const thread = await client.channels.fetch(channelId).catch(() => null);
+      if (thread) {
+        const startMsg = await thread.send({
+          embeds: [buildGameThreadEmbed(game)],
+          components: buildPlayingComponents(),
+        }).catch(() => null);
+
+        if (startMsg) game.readyMessageId = startMsg.id;
+
+        // Post the live game board without action buttons.
+        const boardMsg = await thread.send({
+          embeds: [buildBoardEmbed(game)],
+          components: [],
+        }).catch(() => null);
+
+        if (boardMsg) game.boardMessageId = boardMsg.id;
+
+        // Timer starts once all players have confirmed their roles (ww_ready).
+      }
+
+      const { upsert: upsertGame } = require('../db/GameRepository');
+      upsertGame(game);
+      return;
+    }
+
     // ── ww_secret ────────────────────────────────────────────────────────────
     if (customId === 'ww_secret') {
       if (!game || game.phase !== 'playing') {
@@ -404,12 +482,13 @@ module.exports = {
       }
 
       // Wordsmith gets the word-picker UI until they have chosen a word;
-      // afterwards they see their word + Yes/No/Maybe action buttons.
+      // afterwards they just see their word (no action buttons — responses go via
+      // guess messages in text mode, or per-player panels in voice mode).
       if (player.role === ROLES.MAYOR) {
         if (game.word) {
           return interaction.reply({
-            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
-            components: buildMayorActionComponents(game.tokens),
+            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**`,
+            components: [],
             flags: MessageFlags.Ephemeral,
           });
         }
@@ -492,8 +571,8 @@ module.exports = {
       game.readyPlayers.add(user.id);
 
       await interaction.update({
-        content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
-        components: buildMayorActionComponents(game.tokens),
+        content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**`,
+        components: [],
       });
 
       // Resolve all pending Demon/Librarian interactions.
@@ -505,6 +584,12 @@ module.exports = {
         await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
       }
       game.pendingSecretInteractions = [];
+
+      // In voice mode, create per-player response panels now that the word is set.
+      if (game.sessionMode === 'voice') {
+        const thread = await client.channels.fetch(game.threadId).catch(() => null);
+        if (thread) await createVoicePlayerPanels(game, thread);
+      }
 
       await updateReadyEmbed(game, client);
       await maybeStartTimer(game, client);
@@ -580,32 +665,14 @@ module.exports = {
         await thread.send({ content: `${tokenEmoji} The Wordsmith answers: **${label.toUpperCase()}**` }).catch(() => {});
       }
 
-      const fromBoard = interaction.message.id === game.boardMessageId;
+      // Refresh the source message (board or ephemeral) without action buttons.
+      await interaction.editReply({
+        embeds: [buildBoardEmbed(game)],
+        components: [],
+      }).catch(() => {});
 
-      if (fromBoard) {
-        // Update the board in-place (the source of this interaction).
-        await interaction.editReply({
-          embeds: [buildBoardEmbed(game)],
-          components: buildMayorActionComponents(game.tokens),
-        }).catch(() => {});
-      } else {
-        // Clicked from the Mayor's ephemeral — refresh the ephemeral with new buttons…
-        await interaction.editReply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ Forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
-          components: buildMayorActionComponents(game.tokens),
-        }).catch(() => {});
-
-        // … and also refresh the board message.
-        if (thread && game.boardMessageId) {
-          const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-          if (bMsg) {
-            await bMsg.edit({
-              embeds: [buildBoardEmbed(game)],
-              components: buildMayorActionComponents(game.tokens),
-            }).catch(() => {});
-          }
-        }
-      }
+      // Also refresh the board if the click came from somewhere else.
+      await refreshBoardMessage(game, client);
 
       // Only trigger voting when the shared Yes/No pool is exhausted.
       if (isYesNo && game.tokens.yes_no <= 0) {
@@ -630,8 +697,8 @@ module.exports = {
       return;
     }
 
-    // ── ww_correct / ww_soclose / ww_wayoff (board-level — voice-chat mode) ──
-      if (customId === 'ww_correct' || customId === 'ww_soclose' || customId === 'ww_wayoff') {
+    // ── ww_correct / ww_soclose / ww_wayoff (board-level — legacy voice-chat mode) ──
+    if (customId === 'ww_correct' || customId === 'ww_soclose' || customId === 'ww_wayoff') {
       if (!game || game.phase !== 'playing') {
         return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
@@ -668,10 +735,10 @@ module.exports = {
         await thread.send({ content: msg }).catch(() => {});
       }
 
-      // Refresh the board buttons to reflect updated token counts.
+      // Refresh the board without action buttons.
       await interaction.editReply({
         embeds: [buildBoardEmbed(game)],
-        components: buildMayorActionComponents(game.tokens),
+        components: [],
       }).catch(() => {});
 
       return;
@@ -799,6 +866,116 @@ module.exports = {
       });
 
       await refreshBoardMessage(game, client);
+
+      return;
+    }
+
+    // ── ww_voice_* (voice-mode per-player panel buttons) ──────────────────────
+    if (
+      customId.startsWith('ww_voice_yes_') ||
+      customId.startsWith('ww_voice_no_') ||
+      customId.startsWith('ww_voice_maybe_') ||
+      customId.startsWith('ww_voice_soclose_') ||
+      customId.startsWith('ww_voice_wayoff_') ||
+      customId.startsWith('ww_voice_correct_')
+    ) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Wordsmith can use these buttons.', flags: MessageFlags.Ephemeral });
+      }
+
+      const targetPlayerId = customId.substring(customId.lastIndexOf('_') + 1);
+      const targetPlayer = game.players.get(targetPlayerId);
+      if (!targetPlayer) {
+        return interaction.reply({ content: 'Player not found.', flags: MessageFlags.Ephemeral });
+      }
+
+      const isCorrect  = customId.startsWith('ww_voice_correct_');
+      const isYes      = customId.startsWith('ww_voice_yes_');
+      const isNo       = customId.startsWith('ww_voice_no_');
+      const isMaybe    = customId.startsWith('ww_voice_maybe_');
+      const isSoClose  = customId.startsWith('ww_voice_soclose_');
+      const isWayOff   = customId.startsWith('ww_voice_wayoff_');
+
+      if (isCorrect) {
+        if (game.tokens.correct <= 0) {
+          return interaction.reply({ content: 'No **Correct** tokens remaining!', flags: MessageFlags.Ephemeral });
+        }
+        game.tokens.correct--;
+        game.winnerGuesserUserId = targetPlayerId;
+
+        await interaction.deferUpdate();
+
+        // Update the panel to show correct, remove buttons.
+        await interaction.editReply({
+          content: buildVoicePlayerContent(targetPlayer) + '\n✅ **CORRECT — the word has been guessed!**',
+          components: [],
+        }).catch(() => {});
+
+        await startRevealPhase(game, client);
+        return;
+      }
+
+      // Determine which token pool and stat to update.
+      let tokenKey, statKey;
+      if (isYes || isNo) {
+        tokenKey = 'yes_no';
+        statKey  = isYes ? 'yes' : 'no';
+      } else if (isMaybe) {
+        tokenKey = 'maybe';
+        statKey  = 'maybe';
+      } else if (isSoClose) {
+        tokenKey = 'so_close_way_off';
+        statKey  = 'soClose';
+      } else { // wayOff
+        tokenKey = 'so_close_way_off';
+        statKey  = 'wayOff';
+      }
+
+      if (game.tokens[tokenKey] <= 0) {
+        const tokenLabel = tokenKey === 'yes_no' ? 'Yes / No' : tokenKey === 'maybe' ? 'Maybe' : 'So Close / Way Off';
+        return interaction.reply({
+          content: `No **${tokenLabel}** tokens remaining!`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      game.tokens[tokenKey]--;
+      if (targetPlayer.responseStats) targetPlayer.responseStats[statKey]++;
+
+      await interaction.deferUpdate();
+
+      // Update the player's voice panel with new tally and refreshed buttons.
+      await interaction.editReply({
+        content: buildVoicePlayerContent(targetPlayer),
+        components: buildVoicePlayerComponents(targetPlayerId, game.tokens),
+      }).catch(() => {});
+
+      // Also refresh other player panels so their buttons reflect current token counts.
+      const panelThread = await client.channels.fetch(channelId).catch(() => null);
+      if (panelThread) {
+        for (const [pid, msgId] of game.voicePlayerMessageIds) {
+          if (pid === targetPlayerId) continue; // already updated via deferUpdate
+          const panelMsg = await panelThread.messages.fetch(msgId).catch(() => null);
+          if (!panelMsg) continue;
+          const panelPlayer = game.players.get(pid);
+          if (!panelPlayer) continue;
+          await panelMsg.edit({
+            content: buildVoicePlayerContent(panelPlayer),
+            components: buildVoicePlayerComponents(pid, game.tokens),
+          }).catch(() => {});
+        }
+      }
+
+      await refreshBoardMessage(game, client);
+
+      if ((isYes || isNo) && game.tokens.yes_no <= 0) {
+        await startVotingPhase(game, client);
+      }
 
       return;
     }
@@ -971,7 +1148,7 @@ module.exports = {
 
       const boardMsg = await thread.send({
         embeds: [buildBoardEmbed(resetGame)],
-        components: buildMayorActionComponents(resetGame.tokens),
+        components: [],
       }).catch(() => null);
 
       if (boardMsg) resetGame.boardMessageId = boardMsg.id;
