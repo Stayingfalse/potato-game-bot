@@ -6,32 +6,32 @@ const GameRepository      = require('../../db/GameRepository');
 const OUTCOMES = {
   villagers_word: {
     title: '🎉 Townsfolk Win!',
-    description: 'The forbidden word was correctly guessed and the Demon stayed hidden!',
+    description: 'The secret word was correctly guessed and the Werewolf stayed hidden!',
     color: 0x57F287, // green
   },
   werewolf_time: {
-    title: '😈 Demons Win!',
-    description: 'Time ran out before the forbidden word was guessed.',
+    title: '😈 Werewolves Win!',
+    description: 'Time ran out before the secret word was guessed.',
     color: 0xED4245, // red
   },
   werewolf_tokens: {
-    title: '😈 Demons Win!',
-    description: 'All tokens were used up before the forbidden word was guessed.',
+    title: '😈 Werewolves Win!',
+    description: 'All tokens were used up before the secret word was guessed.',
     color: 0xED4245, // red
   },
   werewolf_seer: {
-    title: '😈 Demons Win!',
-    description: 'The word was guessed but the Demon revealed themselves and correctly identified the Librarian!',
+    title: '😈 Werewolves Win!',
+    description: 'The word was guessed but the Werewolf revealed themselves and correctly identified the Seer!',
     color: 0xED4245, // red
   },
   villagers_vote: {
     title: '🎉 Townsfolk Win!',
-    description: 'The Townsfolk voted correctly and exposed the Demon!',
+    description: 'The Townsfolk voted correctly and exposed the Werewolf!',
     color: 0x57F287, // green
   },
   werewolf_vote: {
-    title: '😈 Demons Win!',
-    description: 'The Townsfolk failed to identify the Demon.',
+    title: '😈 Werewolves Win!',
+    description: 'The Townsfolk failed to identify the Werewolf.',
     color: 0xED4245, // red
   },
   host_cancelled: {

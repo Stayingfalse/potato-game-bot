@@ -33,11 +33,11 @@ function buildBoardEmbed(game) {
   const playerList = [...players.values()].map(p => `<@${p.id}>`).join(' • ');
 
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — Game Board')
+    .setTitle('🔮  Werewords — Game Board')
     .setDescription(
       game.word
-        ? '🔤 The forbidden word has been chosen. Type any message in this thread to make a guess!'
-        : '⏳ Waiting for the Wordsmith to choose the forbidden word…',
+        ? '🔤 The secret word has been chosen. Type any message in this thread to make a guess!'
+        : '⏳ Waiting for the Mayor to choose the secret word…',
     )
     .addFields(
       { name: '⏱ Time Remaining', value: formatTime(timeLeft) },
@@ -48,7 +48,7 @@ function buildBoardEmbed(game) {
       { name: 'Players', value: playerList },
     )
     .setColor(BOARD_COLOR)
-    .setFooter({ text: "The Wordsmith responds to guesses using the buttons on each guess (text mode) or on each player's panel (voice mode)." })
+    .setFooter({ text: "The Mayor responds to guesses using the buttons on each guess (text mode) or on each player's panel (voice mode)." })
     .setTimestamp();
 }
 
@@ -162,7 +162,7 @@ function buildGuessComponents(guesserId, tokens) {
 function buildVoicePlayerContent(player) {
   const s = player.responseStats ?? { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 };
   return (
-    `🎙️ **<@${player.id}>** — Wordsmith responses:\n` +
+    `🎙️ **<@${player.id}>** — Mayor responses:\n` +
     `✅ Yes: **${s.yes}** | ❌ No: **${s.no}** | ❔ Maybe: **${s.maybe}** | 🔥 So Close: **${s.soClose}** | ❌ Way Off: **${s.wayOff}**`
   );
 }

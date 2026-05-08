@@ -9,11 +9,11 @@ const REVEAL_COLOR = 0xFEE75C; // yellow
 
 function buildRevealEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('�  The Forbidden Word — The Word Was Guessed!')
+    .setTitle('🔮  Werewords — The Word Was Guessed!')
     .setDescription(
-      `The forbidden word **"${game.word}"** was correctly guessed!\n\n` +
-      '**Demon:** you may now reveal yourself to attempt to identify the Librarian.\n' +
-      'If you correctly name the Librarian, your team steals the win!\n\n' +
+      `The secret word **"${game.word}"** was correctly guessed!\n\n` +
+      '**Werewolf:** you may now reveal yourself to attempt to identify the Seer.\n' +
+      'If you correctly name the Seer, your team steals the win!\n\n' +
       '_If you choose not to reveal, the Townsfolk win._',
     )
     .setColor(REVEAL_COLOR)
@@ -36,8 +36,8 @@ function buildRevealComponents() {
 }
 
 /**
- * One button per player who could be the Librarian (excludes only the Demon themselves).
- * Wordsmith is included because they may carry a secret Librarian role.
+ * One button per player who could be the Seer (excludes only the Werewolf themselves).
+ * Mayor is included because they may carry a secret Seer role.
  * @param {Map<string, {id: string, username: string, role: string}>} players
  * @param {string} werewolfId
  */

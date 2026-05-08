@@ -4,7 +4,7 @@ A Discord bot that brings party games and social deduction fun to your server! H
 
 ## 🎲 Games
 
-### The Forbidden Word (Werewords)
+### Werewords 🔮
 
 A social deduction word-guessing game where players work together to guess a secret word... but some players are secretly working against the team!
 
@@ -25,6 +25,26 @@ A social deduction word-guessing game where players work together to guess a sec
 - 🔄 Session support - play multiple rounds with the same group
 - 🎯 Text or voice mode options
 - 👥 Supports 4-10 players
+
+### Cheese Thief 🧀
+
+A hidden-role bluffing game built around wake phases, private information, and one final accusation.
+
+**How to Play:**
+- Use `/cheesethief` to start a game
+- One player is the **Cheese Thief**, one is the **Fall Mouse**, and everyone else is **Sleepy Mice**
+- Each player gets a secret die value that determines when they wake up
+- Awake players may inspect others, and the Cheese Thief can steal the cheese during their wake
+- After all wake phases, the group gets time to discuss what happened
+- Everyone makes a final accusation to catch the Cheese Thief
+
+**Features:**
+- 🌙 Automated wake phases based on secret die numbers
+- 🔍 Private role and inspection information
+- 🤝 Accomplice mechanic when the Cheese Thief steals the cheese
+- 🗣️ Timed discussion phase before the final accusation
+- 🗳️ Fast final voting round
+- 👥 Supports 3-10 players
 
 ### Wavelength 〰️
 
@@ -88,15 +108,21 @@ An AI companion powered by Google Gemini that adds personality to your server co
    - Create Private Threads
    - Send Messages in Threads
    - Manage Threads
-3. **Start playing!** Use `/werewords` or `/wavelength` in any channel to begin
+3. **Start playing!** Use `/werewords`, `/cheesethief`, or `/wavelength` in any channel to begin
 
 ## 🎯 Game Tips
 
-**For The Forbidden Word:**
+**For Werewords:**
 - Players can strategically use their response tokens to guide the guesser
 - The Seer should be subtle - revealing yourself too early might help the Werewolves!
 - Werewolves should participate naturally to avoid suspicion
 - Use "So Close" and "Way Off" tokens wisely - they're limited!
+
+**For Cheese Thief:**
+- Pay attention to who is awake during each die roll
+- The Cheese Thief should avoid obvious steals unless the timing helps sell the bluff
+- Sleepy Mice should compare inspection info carefully before accusing
+- Watch out for the Fall Mouse - voting for them can hand them the solo win
 
 **For Wavelength:**
 - Clue Givers: Be creative but not too obscure!
@@ -125,4 +151,4 @@ All games run in private threads to keep your channels clean and conversations o
 
 ---
 
-Ready to play? Start with `/werewords` or `/wavelength` and let the games begin! 🎉
+Ready to play? Start with `/werewords`, `/cheesethief`, or `/wavelength` and let the games begin! 🎉

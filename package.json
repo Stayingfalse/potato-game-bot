@@ -1,7 +1,7 @@
 {
   "name": "werewords-bot",
   "version": "1.0.0",
-  "description": "Discord bot for the Werewords social deduction game",
+  "description": "Discord bot for party games including Werewords, Wavelength, and Cheese Thief",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

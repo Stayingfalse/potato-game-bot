@@ -5,25 +5,32 @@ const ROLES = Object.freeze({
   VILLAGER: 'Townsfolk',
 });
 
+const ROLE_DISPLAY_NAMES = Object.freeze({
+  [ROLES.MAYOR]: 'Mayor',
+  [ROLES.WEREWOLF]: 'Werewolf',
+  [ROLES.SEER]: 'Seer',
+  [ROLES.VILLAGER]: 'Townsfolk',
+});
+
 const ROLE_DESCRIPTIONS = Object.freeze({
   [ROLES.MAYOR]:
-    'You are the **Wordsmith** 📝\n\n' +
-    "You know the forbidden word. Answer your fellow townsfolk's questions using only **Yes**, **No**, or " +
+    'You are the **Mayor** 👑\n\n' +
+    "You know the secret word. Answer your fellow townsfolk's questions using only **Yes**, **No**, or " +
     '**Maybe** via the buttons on the game board. You **cannot speak** during the game — your answers are your only voice!',
 
   [ROLES.WEREWOLF]:
-    'You are the **Demon** 😈\n\n' +
-    'You already know the forbidden word. Pretend you don\'t! Blend in with the townsfolk, ask misleading ' +
+    'You are the **Werewolf** 😈\n\n' +
+    'You already know the secret word. Pretend you don\'t! Blend in with the townsfolk, ask misleading ' +
     'questions, and stop them from guessing the word before time runs out.',
 
   [ROLES.SEER]:
-    'You are the **Librarian** 📚\n\n' +
-    'You know the forbidden word. Subtly guide the townsfolk toward the answer — without revealing that you ' +
-    'already know it. The Demon will be watching for you!',
+    'You are the **Seer** 🔮\n\n' +
+    'You know the secret word. Subtly guide the townsfolk toward the answer — without revealing that you ' +
+    'already know it. The Werewolf will be watching for you!',
 
   [ROLES.VILLAGER]:
     'You are a **Townsfolk** 🏡\n\n' +
-    "You don't know the forbidden word. Ask strategic yes/no questions, listen to the Wordsmith's answers, and " +
+    "You don't know the secret word. Ask strategic yes/no questions, listen to the Mayor's answers, and " +
     'work together to guess the word before time runs out!',
 });
 
@@ -35,6 +42,14 @@ const ROLE_DESCRIPTIONS = Object.freeze({
  */
 function getEffectiveRole(player) {
   return player?.secretRole ?? player?.role;
+}
+
+/**
+ * @param {string|null|undefined} role
+ * @returns {string}
+ */
+function getRoleDisplayName(role) {
+  return ROLE_DISPLAY_NAMES[role] ?? role ?? 'Unknown';
 }
 
 /**
@@ -66,7 +81,7 @@ function isLibrarian(player) {
  */
 function assignRoles(players) {
   if (players.length < 3) {
-    throw new Error('At least 3 players are required to start The Forbidden Word.');
+    throw new Error('At least 3 players are required to start Werewords.');
   }
 
   // Fisher-Yates shuffle for fair randomisation
@@ -102,9 +117,11 @@ function assignRoles(players) {
 
 module.exports = {
   ROLES,
+  ROLE_DISPLAY_NAMES,
   ROLE_DESCRIPTIONS,
   assignRoles,
   getEffectiveRole,
+  getRoleDisplayName,
   isDemon,
   isLibrarian,
 };
