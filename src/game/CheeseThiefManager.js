@@ -29,7 +29,7 @@ class CheeseThiefGameState {
 const CT_ROLES = Object.freeze({
   THIEF: 'Cheese Thief',
   FALL_MOUSE: 'Fall Mouse',
-  SLEEPY_MOUSE: 'Sleepy Mice',
+  SLEEPY_MICE: 'Sleepy Mice',
 });
 
 function assignCheeseThiefRoles(players) {
@@ -41,7 +41,7 @@ function assignCheeseThiefRoles(players) {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  const result = shuffled.map(p => ({ ...p, role: CT_ROLES.SLEEPY_MOUSE, dieValue: null, isAccomplice: false }));
+  const result = shuffled.map(p => ({ ...p, role: CT_ROLES.SLEEPY_MICE, dieValue: null, isAccomplice: false }));
   result[0].role = CT_ROLES.THIEF;
   result[1].role = CT_ROLES.FALL_MOUSE;
   return result;
