@@ -72,8 +72,10 @@ function isLibrarian(player) {
  * Assigns roles to a shuffled copy of the player array.
  *
  * Distribution:
- *   3 players  → Wordsmith, Demon, Townsfolk
- *   4+ players → Wordsmith, Demon, Librarian, ...Townsfolk
+ *   3 players  → 1 Werewolf, 2 Townsfolk, then one player becomes Mayor
+ *   4 players  → 1 Werewolf, 3 Townsfolk, then one player becomes Mayor
+ *   5 players  → 1 Werewolf, 3-4 Townsfolk, 0-1 Seer, then one player becomes Mayor
+ *   6+ players → 2 Werewolves, remaining Townsfolk, optional Seer, then one player becomes Mayor
  *
  * @param {Array<{id: string, username: string}>} players
  * @returns {Array<{id: string, username: string, role: string, secretRole: string|null}>}
@@ -92,25 +94,21 @@ function assignRoles(players) {
   }
 
   const result = shuffled.map(p => ({ ...p, secretRole: null }));
+  const includeSeer = result.length >= 5 && Math.random() < 0.5;
+  const werewolfCount = result.length >= 6 ? 2 : 1;
+  const rolePool = [
+    ...Array(werewolfCount).fill(ROLES.WEREWOLF),
+    ...(includeSeer ? [ROLES.SEER] : []),
+    ...Array(result.length - werewolfCount - (includeSeer ? 1 : 0)).fill(ROLES.VILLAGER),
+  ];
 
-  result[0].role = ROLES.MAYOR;
-  result[1].role = ROLES.WEREWOLF;
-
-  if (result.length >= 4) {
-    result[2].role = ROLES.SEER;
-    for (let i = 3; i < result.length; i++) {
-      result[i].role = ROLES.VILLAGER;
-    }
-  } else {
-    result[2].role = ROLES.VILLAGER;
+  for (let i = 0; i < result.length; i++) {
+    result[i].role = rolePool[i];
   }
 
-  const wordsmith = result.find(p => p.role === ROLES.MAYOR);
-  if (wordsmith) {
-    const secretPool = [ROLES.WEREWOLF, ROLES.VILLAGER];
-    if (result.length >= 4) secretPool.push(ROLES.SEER);
-    wordsmith.secretRole = secretPool[Math.floor(Math.random() * secretPool.length)];
-  }
+  const mayorIndex = Math.floor(Math.random() * result.length);
+  result[mayorIndex].secretRole = result[mayorIndex].role;
+  result[mayorIndex].role = ROLES.MAYOR;
 
   return result;
 }
