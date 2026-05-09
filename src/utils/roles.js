@@ -96,8 +96,11 @@ function assignRoles(players) {
   }
 
   const result = shuffled.map(p => ({ ...p, secretRole: null }));
+  // For 5+ players, the Seer is included on a simple 50/50 roll.
   const includeSeer = result.length >= 5 && randomInt(2) === 0;
   const werewolfCount = result.length >= 6 ? 2 : 1;
+  // Players were already shuffled above, so assigning this ordered pool still
+  // distributes the hidden roles fairly.
   const rolePool = [
     ...Array(werewolfCount).fill(ROLES.WEREWOLF),
     ...(includeSeer ? [ROLES.SEER] : []),
