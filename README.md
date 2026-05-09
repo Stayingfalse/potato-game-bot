@@ -24,7 +24,7 @@ A social deduction word-guessing game where players work together to guess a sec
 - 📊 Response statistics tracking
 - 🔄 Session support - play multiple rounds with the same group
 - 🎯 Text or voice mode options
-- 👥 Supports 4-10 players
+- 👥 Supports 3-10 players
 
 ### Cheese Thief 🧀
 
