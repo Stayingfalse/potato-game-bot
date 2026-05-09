@@ -1,3 +1,5 @@
+const { randomInt } = require('node:crypto');
+
 const ROLES = Object.freeze({
   MAYOR: 'Wordsmith',
   WEREWOLF: 'Demon',
@@ -89,12 +91,12 @@ function assignRoles(players) {
   // Fisher-Yates shuffle for fair randomisation
   const shuffled = [...players];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
   const result = shuffled.map(p => ({ ...p, secretRole: null }));
-  const includeSeer = result.length >= 5 && Math.random() < 0.5;
+  const includeSeer = result.length >= 5 && randomInt(2) === 0;
   const werewolfCount = result.length >= 6 ? 2 : 1;
   const rolePool = [
     ...Array(werewolfCount).fill(ROLES.WEREWOLF),
@@ -106,7 +108,7 @@ function assignRoles(players) {
     result[i].role = rolePool[i];
   }
 
-  const mayorIndex = Math.floor(Math.random() * result.length);
+  const mayorIndex = randomInt(result.length);
   result[mayorIndex].secretRole = result[mayorIndex].role;
   result[mayorIndex].role = ROLES.MAYOR;
 
