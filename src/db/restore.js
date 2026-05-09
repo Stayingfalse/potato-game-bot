@@ -184,7 +184,7 @@ async function restoreWerewords(client, GameRepository) {
     } else if (row.phase === 'reveal') {
       // Re-post Demon reveal button. 90 s timeout.
       await thread.send({
-        content: '😈 Resume: Demon, you may still reveal yourself:',
+        content: '😈 Resume: Werewolf, you may still reveal yourself:',
         components: buildRevealComponents(),
       }).catch(() => {});
 

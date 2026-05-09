@@ -21,7 +21,7 @@ function buildLobbyEmbed(game) {
       .join('\n') || '*No players yet — be the first to join!*';
 
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — Lobby')
+    .setTitle('🔮  Werewords — Lobby')
     .setDescription(
       'A social deduction game of forbidden words and hidden roles.\n' +
       'Click **Join** to enter. The host can **Start** when at least 3 players are ready.',
@@ -80,7 +80,7 @@ function buildActiveEmbed(game) {
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
 
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — In Progress')
+    .setTitle('🔮  Werewords — In Progress')
     .setDescription('A game is currently underway!')
     .addFields(
       { name: 'Players', value: playerMentions },
@@ -108,7 +108,7 @@ function buildGameThreadEmbed(game) {
   }).join('\n') || '*No players*';
 
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — Game Started!')
+    .setTitle('🔮  Werewords — Game Started!')
     .setDescription(
       allReady
         ? '✅ All players are ready — the game is live!'
@@ -174,7 +174,7 @@ function buildModeSelectingEmbed(game) {
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
 
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — Choosing Game Mode')
+    .setTitle('🔮  Werewords — Choosing Game Mode')
     .setDescription('The host is selecting the play mode in the game thread…')
     .addFields(
       { name: 'Players', value: playerMentions },
@@ -191,13 +191,13 @@ function buildModeSelectingEmbed(game) {
  */
 function buildModeSelectEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('🔮  The Forbidden Word — Choose Game Mode')
+    .setTitle('🔮  Werewords — Choose Game Mode')
     .setDescription(
       `<@${game.hostId}>, how will players be making their guesses?\n\n` +
       '📝 **Text Mode** — Players type their guesses in the thread. ' +
-      'The Wordsmith responds using the buttons that appear on each guess message.\n\n' +
+      'The Mayor responds using the buttons that appear on each guess message.\n\n' +
       '🎙️ **Voice Mode** — Players call out guesses in a voice channel. ' +
-      'A response panel is created for each player; the Wordsmith taps the relevant button on the panel to log each response.',
+      'A response panel is created for each player; the Mayor taps the relevant button on the panel to log each response.',
     )
     .setColor(LOBBY_COLOR)
     .setFooter({ text: `Only the host (@${game.hostUsername}) can choose` })

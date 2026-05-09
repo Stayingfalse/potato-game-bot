@@ -12,10 +12,10 @@ const VOTE_DURATION = 60_000; // 60 seconds
 
 function buildWordRevealEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('🔤  The Forbidden Word — Revealed!')
+    .setTitle('🔤  Werewords — Revealed!')
     .setDescription(
-      `Time's up! The forbidden word was **"${game.word || '*(never chosen)*'}"**.\n\n` +
-      'Now vote for who you think the **Demon** is!',
+      `Time's up! The secret word was **"${game.word || '*(never chosen)*'}"**.\n\n` +
+      'Now vote for who you think the **Werewolf** is!',
     )
     .setColor(VOTE_COLOR)
     .setTimestamp();
@@ -25,9 +25,9 @@ function buildVoteEmbed(game) {
   const timeStr = `<t:${Math.floor((Date.now() + VOTE_DURATION) / 1000)}:R>`;
 
   return new EmbedBuilder()
-    .setTitle('🗳️  The Forbidden Word — Vote!')
+    .setTitle('🗳️  Werewords — Vote!')
     .setDescription(
-      'Vote for who you think the **Demon** is. ' +
+      'Vote for who you think the **Werewolf** is. ' +
       'If the majority picks correctly, the Townsfolk win!\n\n' +
       `Voting closes ${timeStr}. You can change your vote before it ends.`,
     )
