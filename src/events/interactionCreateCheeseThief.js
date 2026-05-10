@@ -162,18 +162,22 @@ function scheduleWakeEnd(game, thread, client, wakeNumber, durationMs) {
   persistGame(client, game);
 
   game.wakeTimeout = setTimeout(async () => {
-    if (game.phase !== 'playing') return;
+    try {
+      if (game.phase !== 'playing') return;
 
-    // Advance immediately so old wake buttons can't be used during the between-night delay.
-    game.currentWakeNumber = wakeNumber + 1;
-    persistGame(client, game);
+      // Advance immediately so old wake buttons can't be used during the between-night delay.
+      game.currentWakeNumber = wakeNumber + 1;
+      persistGame(client, game);
 
-    await sendTracked(thread, client, game, { content: `🔊 Night ${wakeNumber} close your eyes…`, tts: true });
-    await deleteTrackedNightMessages(thread, game, client);
+      await sendTracked(thread, client, game, { content: `🔊 Night ${wakeNumber} close your eyes…`, tts: true });
+      await deleteTrackedNightMessages(thread, game, client);
 
-    await sleep(getNightDelayMs());
-    if (game.phase !== 'playing') return;
-    await runWakeStep(game, thread, client);
+      await sleep(getNightDelayMs());
+      if (game.phase !== 'playing') return;
+      await runWakeStep(game, thread, client);
+    } catch (err) {
+      console.error(`[CheeseThief] Wake-end timer error (wake ${wakeNumber}):`, err);
+    }
   }, durationMs);
 }
 
@@ -221,8 +225,12 @@ async function startDiscussion(game, thread, client) {
   await thread.send({ content: '🗣️ **Discussion Phase**\nYou have **3 minutes** before the final accusation.' }).catch(() => {});
 
   game.wakeTimeout = setTimeout(async () => {
-    if (game.phase !== 'discussion') return;
-    await startVotingPhase(game, client);
+    try {
+      if (game.phase !== 'discussion') return;
+      await startVotingPhase(game, client);
+    } catch (err) {
+      console.error('[CheeseThief] Discussion timer error:', err);
+    }
   }, DISCUSSION_DURATION_MS);
 }
 
@@ -260,8 +268,12 @@ async function startVotingPhase(game, client) {
   }).catch(() => {});
 
   game.revealTimeout = setTimeout(async () => {
-    if (game.phase !== 'voting') return;
-    await tallyVotes(game, client);
+    try {
+      if (game.phase !== 'voting') return;
+      await tallyVotes(game, client);
+    } catch (err) {
+      console.error('[CheeseThief] Voting timer error:', err);
+    }
   }, VOTE_DURATION_MS);
 }
 
@@ -543,17 +555,18 @@ module.exports = {
     const { customId, channelId, user } = interaction;
     if (!customId.startsWith('ct_')) return;
 
-    if (customId.startsWith('ct_join_') || customId.startsWith('ct_leave_') || customId.startsWith('ct_start_') || customId.startsWith('ct_cancel_')) {
-      const threadId = customId.split('_')[2];
-      const game = client.cheeseThiefManager.getGame(threadId);
-      return handleLobbyButtons(interaction, client, game, threadId);
-    }
+    try {
+      if (customId.startsWith('ct_join_') || customId.startsWith('ct_leave_') || customId.startsWith('ct_start_') || customId.startsWith('ct_cancel_')) {
+        const threadId = customId.split('_')[2];
+        const game = client.cheeseThiefManager.getGame(threadId);
+        return await handleLobbyButtons(interaction, client, game, threadId);
+      }
 
-    const game = client.cheeseThiefManager.getGame(channelId);
+      const game = client.cheeseThiefManager.getGame(channelId);
 
-    if (!game) {
-      return interaction.reply({ content: 'There is no active Cheese Thief game.', flags: MessageFlags.Ephemeral });
-    }
+      if (!game) {
+        return interaction.reply({ content: 'There is no active Cheese Thief game.', flags: MessageFlags.Ephemeral });
+      }
 
     if (customId === 'ct_secret') {
       if (game.phase !== 'playing' && game.phase !== 'discussion' && game.phase !== 'voting') {
@@ -689,6 +702,11 @@ module.exports = {
 
     if (customId === 'ct_close_session') {
       if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+      const acknowledged = await interaction.deferReply({ flags: MessageFlags.Ephemeral }).then(() => true).catch((err) => {
+        console.error('[CheeseThief] Failed to defer close-session reply:', err);
+        return false;
+      });
+      if (!acknowledged) return;
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (thread) {
         await thread.send({ content: '🔒 Session closed. Archiving thread.' }).catch(() => {});
@@ -696,7 +714,18 @@ module.exports = {
         await thread.setArchived(true).catch(() => {});
       }
       client.cheeseThiefManager.deleteGame(game.threadId);
-      return interaction.reply({ content: '✅ Session closed.', flags: MessageFlags.Ephemeral });
+      return interaction.editReply({ content: '✅ Session closed.' }).catch((err) => {
+        console.error('[CheeseThief] Failed to edit close-session reply:', err);
+      });
+    }
+    } catch (error) {
+      console.error('[CheeseThief button error]', error);
+      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
+      }
     }
   },
 };
