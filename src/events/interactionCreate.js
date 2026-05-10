@@ -254,7 +254,7 @@ module.exports = {
         return;
       }
 
-    }  // end isModalSubmit
+    } // end isModalSubmit
 
     // ── Button interactions ──────────────────────────────────────────────────
     if (!interaction.isButton()) return;
