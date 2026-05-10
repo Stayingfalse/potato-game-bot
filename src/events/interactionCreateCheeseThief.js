@@ -691,9 +691,6 @@ module.exports = {
       if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
       const acknowledged = await interaction.deferReply({ flags: MessageFlags.Ephemeral }).then(() => true).catch((err) => {
         console.error('[CheeseThief] Failed to defer close-session reply:', err);
-        if (!interaction.replied && !interaction.deferred) {
-          interaction.reply({ content: '❌ Unable to close the session right now. Please try again.', flags: MessageFlags.Ephemeral }).catch(() => {});
-        }
         return false;
       });
       if (!acknowledged) return;
