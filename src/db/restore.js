@@ -55,6 +55,10 @@ async function restoreCheeseThief(client, CheeseThiefRepository) {
       thiefId: row.thief_id ?? null,
       accompliceId: row.accomplice_id ?? null,
       stolenAtWake: row.stolen_at_wake ?? null,
+      // In-memory only — start empty after a restart; players must reopen Secret Info
+      ephemeralTokens: new Map(),
+      playerLogs: new Map(),
+      discussionReadyPlayers: new Set(),
       wakeTimeout: null,
       revealTimeout: null,
       gameNumber: row.game_number ?? 1,
