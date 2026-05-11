@@ -10,7 +10,7 @@ class CheeseThiefGameState {
     this.messageId = null;
     this.readyMessageId = null;
 
-    this.phase = 'lobby'; // lobby|playing|discussion|voting|ended
+    this.phase = 'lobby'; // lobby|playing|accomplice|discussion|voting|ended
     this.players = new Map();
     this.readyPlayers = new Set();
     this.votes = new Map();
@@ -22,7 +22,13 @@ class CheeseThiefGameState {
     this.accompliceId = null;
     this.stolenAtWake = null;
 
+    // In-memory only (not persisted — regenerated on each game start / restored as empty on resume)
+    this.ephemeralTokens      = new Map(); // userId → { token, applicationId }
+    this.playerLogs           = new Map(); // userId → string[]
+    this.discussionReadyPlayers = new Set();
+
     this.wakeTimeout = null;
+    this.accompliceTimeout = null;
     this.revealTimeout = null;
     this.gameNumber = 1;
   }
@@ -76,8 +82,9 @@ class CheeseThiefManager {
   deleteGame(threadId) {
     const game = this.games.get(threadId);
     if (!game) return false;
-    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
-    if (game.revealTimeout) clearTimeout(game.revealTimeout);
+    if (game.wakeTimeout)       clearTimeout(game.wakeTimeout);
+    if (game.accompliceTimeout) clearTimeout(game.accompliceTimeout);
+    if (game.revealTimeout)     clearTimeout(game.revealTimeout);
     CheeseThiefRepository.remove(threadId);
     this.games.delete(threadId);
     return true;
@@ -121,8 +128,9 @@ class CheeseThiefManager {
     const game = this.games.get(threadId);
     if (!game) return null;
 
-    if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
-    if (game.revealTimeout) { clearTimeout(game.revealTimeout); game.revealTimeout = null; }
+    if (game.wakeTimeout)       { clearTimeout(game.wakeTimeout);       game.wakeTimeout       = null; }
+    if (game.accompliceTimeout) { clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
+    if (game.revealTimeout)     { clearTimeout(game.revealTimeout);     game.revealTimeout     = null; }
 
     game.gameNumber += 1;
     game.phase = openSignups ? 'lobby' : 'playing';
