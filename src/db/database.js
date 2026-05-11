@@ -4,7 +4,7 @@ const path = require('path');
 const fs   = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '../../data/bot.db');
+const DB_PATH = path.join(__dirname, '../../db/bot.db');
 
 // Ensure the data directory exists (needed for local dev without Docker volume).
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
