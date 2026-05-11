@@ -23,6 +23,19 @@ function persistGame(client, game) {
   client.herdMentalityManager?.saveGame(game.threadId);
 }
 
+/** Group game.answers by normalised text into the review-groups format.
+ * @returns {Array<{key: string, playerIds: string[]}>}
+ */
+function computeReviewGroups(game) {
+  const grouped = new Map();
+  for (const [userId, rawAnswer] of game.answers) {
+    const key = normalise(rawAnswer);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(userId);
+  }
+  return [...grouped.entries()].map(([key, playerIds]) => ({ key, playerIds }));
+}
+
 /** Normalise an answer string for comparison. */
 function normalise(str) {
   return str.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
@@ -344,13 +357,7 @@ async function revealRound(game, client) {
   game.phaseEndsAt = null;
 
   // Build normalised answer groups from the submitted answers.
-  const initialGroups = new Map();
-  for (const [userId, rawAnswer] of game.answers) {
-    const key = normalise(rawAnswer);
-    if (!initialGroups.has(key)) initialGroups.set(key, []);
-    initialGroups.get(key).push(userId);
-  }
-  game.reviewGroups = [...initialGroups.entries()].map(([key, playerIds]) => ({ key, playerIds }));
+  game.reviewGroups = computeReviewGroups(game);
   game.reviewMessageId = null;
   persistGame(client, game);
 
@@ -645,7 +652,7 @@ async function handleGameButtons(interaction, client, game) {
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can end the game.', flags: MessageFlags.Ephemeral });
     }
-    if (game.phase !== 'reviewing' && game.phase !== 'revealing') {
+    if (game.phase === 'ended' || game.phase === 'lobby') {
       return interaction.reply({ content: 'The game cannot be ended at this stage.', flags: MessageFlags.Ephemeral });
     }
     await interaction.reply({ content: '🛑 Host ended the game.', flags: MessageFlags.Ephemeral });
@@ -845,6 +852,7 @@ module.exports = {
   buildPreviewEmbed,
   buildPreviewComponents,
   normalise,
+  computeReviewGroups,
 
   async execute(interaction, client) {
     const { herdMentalityManager } = client;

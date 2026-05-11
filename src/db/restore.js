@@ -380,14 +380,8 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
       // Re-post the review embed so the host can still merge/score.
       // reviewGroups was restored from DB above; if missing, recompute from answers.
       if (!game.reviewGroups) {
-        const { normalise } = require('../events/interactionCreateHerdMentality');
-        const initialGroups = new Map();
-        for (const [userId, rawAnswer] of game.answers) {
-          const key = normalise(rawAnswer);
-          if (!initialGroups.has(key)) initialGroups.set(key, []);
-          initialGroups.get(key).push(userId);
-        }
-        game.reviewGroups = [...initialGroups.entries()].map(([key, playerIds]) => ({ key, playerIds }));
+        const { computeReviewGroups } = require('../events/interactionCreateHerdMentality');
+        game.reviewGroups = computeReviewGroups(game);
       }
 
       const { buildPreviewEmbed, buildPreviewComponents } = require('../events/interactionCreateHerdMentality');
