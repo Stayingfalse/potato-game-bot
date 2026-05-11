@@ -12,7 +12,7 @@ const {
 } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/herdmentality');
 
-const questions = require('../../data/herd_mentality_questions.json').questions;
+const questions = require('../data/herd_mentality_questions.json').questions;
 
 const ANSWER_DURATION_MS = 60_000;
 
