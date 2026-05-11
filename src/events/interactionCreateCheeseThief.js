@@ -376,8 +376,8 @@ async function startAccomplicePhase(game, thread, client) {
 // ── Discussion phase ───────────────────────────────────────────────────────────
 
 async function startDiscussion(game, thread, client) {
-  if (game.wakeTimeout)      { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
-  if (game.accompliceTimeout){ clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
+  if (game.wakeTimeout)       { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
+  if (game.accompliceTimeout) { clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
   game.phase       = 'discussion';
   game.phaseEndsAt = Date.now() + DISCUSSION_DURATION_MS;
   ensureDiscussionReady(game);
@@ -473,9 +473,9 @@ function buildWinners(game, outcome) {
 
 async function endGame(game, client, outcome) {
   if (game.phase === 'ended') return;
-  if (game.wakeTimeout)      { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
-  if (game.accompliceTimeout){ clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
-  if (game.revealTimeout)    { clearTimeout(game.revealTimeout);    game.revealTimeout    = null; }
+  if (game.wakeTimeout)       { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
+  if (game.accompliceTimeout) { clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
+  if (game.revealTimeout)     { clearTimeout(game.revealTimeout);    game.revealTimeout    = null; }
   game.phase = 'ended';
   persistGame(client, game);
 
