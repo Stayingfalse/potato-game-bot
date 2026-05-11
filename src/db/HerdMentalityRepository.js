@@ -7,12 +7,12 @@ const stmtUpsert = db.prepare(`
     (thread_id, guild_id, channel_id, host_id, host_username, message_id,
      question_message_id, phase, players, answers, current_question, round_number,
      pink_cow_holder_id, target_score, used_questions, phase_ends_at,
-     game_number, created_at)
+     game_number, review_groups, created_at)
   VALUES
     (@thread_id, @guild_id, @channel_id, @host_id, @host_username, @message_id,
      @question_message_id, @phase, @players, @answers, @current_question, @round_number,
      @pink_cow_holder_id, @target_score, @used_questions, @phase_ends_at,
-     @game_number, @created_at)
+     @game_number, @review_groups, @created_at)
   ON CONFLICT(thread_id) DO UPDATE SET
     guild_id             = excluded.guild_id,
     channel_id           = excluded.channel_id,
@@ -29,7 +29,8 @@ const stmtUpsert = db.prepare(`
     target_score         = excluded.target_score,
     used_questions       = excluded.used_questions,
     phase_ends_at        = excluded.phase_ends_at,
-    game_number          = excluded.game_number
+    game_number          = excluded.game_number,
+    review_groups        = excluded.review_groups
 `);
 
 const stmtGetAll = db.prepare('SELECT * FROM herd_mentality_games');
@@ -57,6 +58,7 @@ function upsert(game) {
     used_questions:      JSON.stringify([...(game.usedQuestions ?? new Set())]),
     phase_ends_at:       game.phaseEndsAt ?? null,
     game_number:         game.gameNumber ?? 1,
+    review_groups:       game.reviewGroups ? JSON.stringify(game.reviewGroups) : null,
     created_at:          game._createdAt ?? Date.now(),
   });
 }

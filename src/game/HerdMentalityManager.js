@@ -12,9 +12,9 @@ class HerdMentalityGameState {
     this.messageId = null;
     this.questionMessageId = null;
 
-    this.phase = 'lobby'; // lobby | answering | revealing | ended
+    this.phase = 'lobby'; // lobby | answering | reviewing | revealing | ended
     this.players = new Map(); // userId -> { id, username, score, hasPinkCow }
-    this.answers = new Map(); // userId -> string (normalised answer)
+    this.answers = new Map(); // userId -> string (raw answer)
     this.currentQuestion = null;
     this.roundNumber = 0;
     this.pinkCowHolderId = null;
@@ -24,6 +24,12 @@ class HerdMentalityGameState {
 
     this.answerTimeout = null;
     this.gameNumber = 1;
+
+    // Populated during the 'reviewing' phase; null otherwise.
+    // Array<{ key: string, playerIds: string[] }> where key is the normalised answer label.
+    this.reviewGroups = null;
+    // Message ID of the pre-score review embed so it can be updated after merges.
+    this.reviewMessageId = null;
   }
 }
 

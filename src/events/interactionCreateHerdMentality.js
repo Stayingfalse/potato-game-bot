@@ -115,6 +115,54 @@ function buildRevealEmbed(game, groupedAnswers) {
   return embed;
 }
 
+function buildPreviewEmbed(game) {
+  const embed = new EmbedBuilder()
+    .setTitle(`🐄 Round ${game.roundNumber} — Review Answers`)
+    .setDescription(`**Q: ${game.currentQuestion}**\n\n*Review the groups below. Merge any groups where players meant the same answer, then click **Score Answers**.*`)
+    .setColor(0xE67E22)
+    .setTimestamp();
+
+  const groups = game.reviewGroups ?? [];
+  if (groups.length === 0) {
+    embed.addFields({ name: 'No answers submitted', value: '*Nobody answered this round.*' });
+  } else {
+    groups.forEach((g, idx) => {
+      const names = g.playerIds.map(id => `<@${id}>`).join(', ');
+      const count = g.playerIds.length;
+      embed.addFields({
+        name: `Group ${idx + 1}: "${g.key}" — ${count} player${count !== 1 ? 's' : ''}`,
+        value: names,
+      });
+    });
+  }
+
+  embed.setFooter({ text: 'Host only: Merge Answers combines two groups · Score Answers locks in the results' });
+  return embed;
+}
+
+function buildPreviewComponents(canMerge = true) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('hm_merge_answers')
+        .setLabel('Merge Answers')
+        .setEmoji('🔀')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!canMerge),
+      new ButtonBuilder()
+        .setCustomId('hm_score_answers')
+        .setLabel('Score Answers')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('hm_end_game')
+        .setLabel('End Game')
+        .setEmoji('🛑')
+        .setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
 function buildRevealComponents() {
   const components = [
     new ActionRowBuilder().addComponents(
@@ -163,14 +211,27 @@ function buildEndComponents() {
 
 // ── Game logic ─────────────────────────────────────────────────────────────────
 
-/** Calculate scores for the round and return grouped answers map. */
-function scoreRound(game) {
-  // Group answers by normalised text.
-  const groupedAnswers = new Map(); // normalisedAnswer -> [userId, ...]
-  for (const [userId, rawAnswer] of game.answers) {
-    const key = normalise(rawAnswer);
-    if (!groupedAnswers.has(key)) groupedAnswers.set(key, []);
-    groupedAnswers.get(key).push(userId);
+/** Calculate scores for the round and return grouped answers map.
+ * @param {object} game
+ * @param {Array<{key: string, playerIds: string[]}>|null} precomputedGroups
+ *   When provided (from the reviewing phase after any host merges), these groups
+ *   are used directly instead of re-grouping from game.answers.
+ */
+function scoreRound(game, precomputedGroups = null) {
+  // Build the working groupedAnswers map.
+  const groupedAnswers = new Map(); // key -> [userId, ...]
+
+  if (precomputedGroups) {
+    for (const { key, playerIds } of precomputedGroups) {
+      groupedAnswers.set(key, [...playerIds]);
+    }
+  } else {
+    // Group answers by normalised text.
+    for (const [userId, rawAnswer] of game.answers) {
+      const key = normalise(rawAnswer);
+      if (!groupedAnswers.has(key)) groupedAnswers.set(key, []);
+      groupedAnswers.get(key).push(userId);
+    }
   }
 
   // Players who didn't answer get an empty unique answer each.
@@ -279,8 +340,18 @@ async function startRound(game, client, { keepRoundNumber = false } = {}) {
 async function revealRound(game, client) {
   if (game.phase !== 'answering') return;
   if (game.answerTimeout) { clearTimeout(game.answerTimeout); game.answerTimeout = null; }
-  game.phase = 'revealing';
+  game.phase = 'reviewing';
   game.phaseEndsAt = null;
+
+  // Build normalised answer groups from the submitted answers.
+  const initialGroups = new Map();
+  for (const [userId, rawAnswer] of game.answers) {
+    const key = normalise(rawAnswer);
+    if (!initialGroups.has(key)) initialGroups.set(key, []);
+    initialGroups.get(key).push(userId);
+  }
+  game.reviewGroups = [...initialGroups.entries()].map(([key, playerIds]) => ({ key, playerIds }));
+  game.reviewMessageId = null;
   persistGame(client, game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -292,7 +363,26 @@ async function revealRound(game, client) {
     if (qMsg) await qMsg.edit({ embeds: [buildRoundEmbed(game)], components: [] }).catch(() => {});
   }
 
-  const groupedAnswers = scoreRound(game);
+  const canMerge = game.reviewGroups.length >= 2;
+  const msg = await thread.send({
+    embeds: [buildPreviewEmbed(game)],
+    components: buildPreviewComponents(canMerge),
+  }).catch(() => null);
+
+  if (msg) {
+    game.reviewMessageId = msg.id;
+    persistGame(client, game);
+  }
+}
+
+/** Apply scoring to the (possibly host-merged) groups and post the final reveal embed. */
+async function scoreAndReveal(game, client) {
+  if (game.phase !== 'reviewing') return;
+  game.phase = 'revealing';
+
+  const groupedAnswers = scoreRound(game, game.reviewGroups);
+  game.reviewGroups = null;
+  game.reviewMessageId = null;
   persistGame(client, game);
 
   const winners = checkWinners(game);
@@ -301,6 +391,9 @@ async function revealRound(game, client) {
     await endGame(game, client, winners);
     return;
   }
+
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
 
   await thread.send({
     embeds: [buildRevealEmbed(game, groupedAnswers)],
@@ -482,6 +575,58 @@ async function handleGameButtons(interaction, client, game) {
     return;
   }
 
+  // ── Merge Answers (host only, reviewing phase) ───────────────────────────────
+  if (customId === 'hm_merge_answers') {
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can merge answer groups.', flags: MessageFlags.Ephemeral });
+    }
+    if (game.phase !== 'reviewing') {
+      return interaction.reply({ content: 'Answer review is not currently active.', flags: MessageFlags.Ephemeral });
+    }
+    if (!game.reviewGroups || game.reviewGroups.length < 2) {
+      return interaction.reply({ content: 'There are fewer than 2 groups — nothing to merge.', flags: MessageFlags.Ephemeral });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId('hm_merge_modal')
+      .setTitle('Merge Answer Groups');
+
+    const keepInput = new TextInputBuilder()
+      .setCustomId('hm_merge_keep')
+      .setLabel('Keep group number')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder(`1 – ${game.reviewGroups.length}`)
+      .setRequired(true)
+      .setMaxLength(3);
+
+    const absorbInput = new TextInputBuilder()
+      .setCustomId('hm_merge_absorb')
+      .setLabel('Merge group number into it')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder(`1 – ${game.reviewGroups.length}`)
+      .setRequired(true)
+      .setMaxLength(3);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(keepInput),
+      new ActionRowBuilder().addComponents(absorbInput),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Score Answers (host only, reviewing phase) ───────────────────────────────
+  if (customId === 'hm_score_answers') {
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can score the round.', flags: MessageFlags.Ephemeral });
+    }
+    if (game.phase !== 'reviewing') {
+      return interaction.reply({ content: 'Answer review is not currently active.', flags: MessageFlags.Ephemeral });
+    }
+    await interaction.reply({ content: '✅ Scoring answers…', flags: MessageFlags.Ephemeral });
+    await scoreAndReveal(game, client);
+    return;
+  }
+
   // ── Next round (host only) ───────────────────────────────────────────────────
   if (customId === 'hm_next_round') {
     if (user.id !== game.hostId) {
@@ -499,6 +644,9 @@ async function handleGameButtons(interaction, client, game) {
   if (customId === 'hm_end_game') {
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can end the game.', flags: MessageFlags.Ephemeral });
+    }
+    if (game.phase !== 'reviewing' && game.phase !== 'revealing') {
+      return interaction.reply({ content: 'The game cannot be ended at this stage.', flags: MessageFlags.Ephemeral });
     }
     await interaction.reply({ content: '🛑 Host ended the game.', flags: MessageFlags.Ephemeral });
     await endGame(game, client, []);
@@ -525,6 +673,8 @@ async function handleGameButtons(interaction, client, game) {
     game.pinkCowHolderId = null;
     game.phaseEndsAt = null;
     game.usedQuestions = new Set();
+    game.reviewGroups = null;
+    game.reviewMessageId = null;
     for (const p of game.players.values()) {
       p.score = 0;
       p.hasPinkCow = false;
@@ -555,6 +705,8 @@ async function handleGameButtons(interaction, client, game) {
     game.pinkCowHolderId = null;
     game.phaseEndsAt = null;
     game.usedQuestions = new Set();
+    game.reviewGroups = null;
+    game.reviewMessageId = null;
 
     // Keep only the host; others must re-join.
     const host = game.players.get(game.hostId);
@@ -633,11 +785,66 @@ async function handleAnswerModal(interaction, client, game) {
   }
 }
 
+async function handleMergeModal(interaction, client, game) {
+  if (game.phase !== 'reviewing') {
+    return interaction.reply({ content: 'The review phase has ended.', flags: MessageFlags.Ephemeral });
+  }
+  if (interaction.user.id !== game.hostId) {
+    return interaction.reply({ content: 'Only the host can merge answer groups.', flags: MessageFlags.Ephemeral });
+  }
+
+  const keepStr = interaction.fields.getTextInputValue('hm_merge_keep').trim();
+  const absorbStr = interaction.fields.getTextInputValue('hm_merge_absorb').trim();
+  const keepIdx = parseInt(keepStr, 10) - 1;
+  const absorbIdx = parseInt(absorbStr, 10) - 1;
+  const groups = game.reviewGroups ?? [];
+
+  if (
+    isNaN(keepIdx) || isNaN(absorbIdx) ||
+    keepIdx < 0 || keepIdx >= groups.length ||
+    absorbIdx < 0 || absorbIdx >= groups.length
+  ) {
+    return interaction.reply({
+      content: `Invalid group numbers. Please enter numbers between **1** and **${groups.length}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  if (keepIdx === absorbIdx) {
+    return interaction.reply({ content: 'Cannot merge a group into itself.', flags: MessageFlags.Ephemeral });
+  }
+
+  // Move all players from the absorbed group into the kept group.
+  groups[keepIdx].playerIds.push(...groups[absorbIdx].playerIds);
+  const absorbedLabel = groups[absorbIdx].key;
+  groups.splice(absorbIdx, 1);
+  persistGame(client, game);
+
+  // Edit the review message so the host sees the updated groups.
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (thread && game.reviewMessageId) {
+    const reviewMsg = await thread.messages.fetch(game.reviewMessageId).catch(() => null);
+    if (reviewMsg) {
+      await reviewMsg.edit({
+        embeds: [buildPreviewEmbed(game)],
+        components: buildPreviewComponents(groups.length >= 2),
+      }).catch(() => {});
+    }
+  }
+
+  await interaction.reply({
+    content: `✅ Merged **"${absorbedLabel}"** into group ${keepIdx + 1} (${groups.length} group${groups.length !== 1 ? 's' : ''} remaining).`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 // ── Module export (interactionCreate event) ────────────────────────────────────
 
 module.exports = {
   name: 'interactionCreate',
   startRound,
+  buildPreviewEmbed,
+  buildPreviewComponents,
+  normalise,
 
   async execute(interaction, client) {
     const { herdMentalityManager } = client;
@@ -669,13 +876,21 @@ module.exports = {
 
     // ── Handle modal submissions ───────────────────────────────────────────────
     if (interaction.isModalSubmit()) {
-      if (interaction.customId !== 'hm_answer_modal') return;
-
-      const game = herdMentalityManager.getGame(interaction.channelId);
-      if (!game) {
-        return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+      if (interaction.customId === 'hm_answer_modal') {
+        const game = herdMentalityManager.getGame(interaction.channelId);
+        if (!game) {
+          return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+        }
+        return handleAnswerModal(interaction, client, game);
       }
-      return handleAnswerModal(interaction, client, game);
+
+      if (interaction.customId === 'hm_merge_modal') {
+        const game = herdMentalityManager.getGame(interaction.channelId);
+        if (!game) {
+          return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+        }
+        return handleMergeModal(interaction, client, game);
+      }
     }
   },
 };

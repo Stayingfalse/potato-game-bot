@@ -349,6 +349,8 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
       phaseEndsAt:        row.phase_ends_at ?? null,
       answerTimeout:      null,
       gameNumber:         row.game_number ?? 1,
+      reviewGroups:       row.review_groups ? JSON.parse(row.review_groups) : null,
+      reviewMessageId:    null,
       _createdAt:         row.created_at,
     };
 
@@ -374,6 +376,30 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
       const { startRound } = require('../events/interactionCreateHerdMentality');
       game.answers = new Map();
       await startRound(game, client, { keepRoundNumber: true });
+    } else if (row.phase === 'reviewing') {
+      // Re-post the review embed so the host can still merge/score.
+      // reviewGroups was restored from DB above; if missing, recompute from answers.
+      if (!game.reviewGroups) {
+        const { normalise } = require('../events/interactionCreateHerdMentality');
+        const initialGroups = new Map();
+        for (const [userId, rawAnswer] of game.answers) {
+          const key = normalise(rawAnswer);
+          if (!initialGroups.has(key)) initialGroups.set(key, []);
+          initialGroups.get(key).push(userId);
+        }
+        game.reviewGroups = [...initialGroups.entries()].map(([key, playerIds]) => ({ key, playerIds }));
+      }
+
+      const { buildPreviewEmbed, buildPreviewComponents } = require('../events/interactionCreateHerdMentality');
+      const canMerge = game.reviewGroups.length >= 2;
+      const msg = await thread.send({
+        content: '🔄 Bot restarted. Review answers and score when ready.',
+        embeds: [buildPreviewEmbed(game)],
+        components: buildPreviewComponents(canMerge),
+      }).catch(() => null);
+      if (msg) {
+        game.reviewMessageId = msg.id;
+      }
     } else if (row.phase === 'revealing') {
       // Re-post the reveal controls so the host can proceed.
       const { ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');

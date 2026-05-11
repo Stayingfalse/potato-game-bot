@@ -170,6 +170,11 @@ if (!wwColumns.has('voice_player_message_ids')) {
   db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
 }
 
+const hmColumns = new Set(db.prepare('PRAGMA table_info(herd_mentality_games)').all().map(col => col.name));
+if (!hmColumns.has('review_groups')) {
+  db.exec('ALTER TABLE herd_mentality_games ADD COLUMN review_groups TEXT');
+}
+
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 
 const STATS_JSON = path.join(__dirname, '../../data/stats.json');
