@@ -28,7 +28,7 @@ services:
       # MCP_SERVER_PORT: "3100"
       # CONTEXT_LOG_RETENTION_DAYS: "30"
     volumes:
-      - ./db:/app/db
+      - ./data:/app/data
     ports:
       # Expose the MCP context server port so external MCP clients (e.g.
       # Claude Desktop) can connect. Remove this section if you don't need

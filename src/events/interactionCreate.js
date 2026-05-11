@@ -25,7 +25,7 @@ const {
   getEffectiveRole,
   getRoleDisplayName,
 } = require('../utils/roles');
-const words = require('../../data/words.json');
+const words = require('../data/words.json');
 
 // Flatten all words from every category into a single pool at load time.
 const wordPool = words.categories.flatMap(c => c.words);
