@@ -291,6 +291,107 @@
       font-size: 11px;
     }
 
+    .wizard-settings {
+      margin-top: 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .wizard-settings-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+    .wizard-field {
+      margin-bottom: 10px;
+    }
+    .wizard-field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .wizard-field input,
+    .wizard-field select,
+    .wizard-field textarea {
+      width: 100%;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .wizard-field textarea {
+      min-height: 84px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .wizard-field input:focus,
+    .wizard-field select:focus,
+    .wizard-field textarea:focus {
+      border-color: var(--accent);
+    }
+    .wizard-hint {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .role-option-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .role-option-row {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 0.7fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .btn-small {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-small:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    .btn-add {
+      margin-top: 8px;
+      background: transparent;
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      width: 100%;
+      text-align: left;
+    }
+    .btn-add:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .btn-publish {
+      margin-top: 10px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-publish:hover { border-color: var(--accent); }
+    .btn-publish:disabled { opacity: 0.6; cursor: not-allowed; }
+
     .btn-save {
       margin-top: 14px;
       background: var(--accent);
@@ -406,6 +507,7 @@
   <script>
     // Extract guild ID from URL: /dashboard/guild/<guildId>
     const guildId = location.pathname.split('/').pop();
+    const ROLE_MENU_MAX_OPTIONS = 20;
 
     function escHtml(str) {
       return String(str).replace(/[&<>"']/g, c =>
@@ -549,13 +651,247 @@
       };
     }
 
+    function buildSelectOptionsHtml(items, selectedId, placeholder) {
+      const first = `<option value="">${escHtml(placeholder || 'Select...')}</option>`;
+      const rest = (Array.isArray(items) ? items : []).map((item) => {
+        const selected = String(item.id) === String(selectedId || '') ? 'selected' : '';
+        return `<option value="${escHtml(item.id)}" ${selected}>${escHtml(item.name)}</option>`;
+      }).join('');
+      return `${first}${rest}`;
+    }
+
+    function buildRoleMenuWizard(root, feat, currentExtra, guildMeta, apiFetch) {
+      if (!root) return null;
+      const channels = Array.isArray(guildMeta?.channels) ? guildMeta.channels : [];
+      const roles = Array.isArray(guildMeta?.roles) ? guildMeta.roles : [];
+      const roleNameById = new Map(roles.map((r) => [String(r.id), r.name]));
+
+      const safeRoleOptions = Array.isArray(currentExtra.roleOptions) && currentExtra.roleOptions.length
+        ? currentExtra.roleOptions.slice(0, ROLE_MENU_MAX_OPTIONS)
+        : [];
+
+      root.innerHTML = `
+        <div class="wizard-settings-title">Setup wizard</div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-menu-channel">Role menu channel</label>
+          <select id="wizard-${feat.id}-menu-channel">
+            ${buildSelectOptionsHtml(channels, currentExtra.menuChannelId, 'Select a channel')}
+          </select>
+          <div class="wizard-hint">Where the role-selection message will be posted.</div>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-title">Menu title</label>
+          <input id="wizard-${feat.id}-title" type="text" value="${escHtml(currentExtra.title || 'Role Menu: Roles')}" />
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-desc">Menu description</label>
+          <input id="wizard-${feat.id}-desc" type="text" value="${escHtml(currentExtra.description || 'Use the buttons below to toggle your roles.')}" />
+        </div>
+        <div class="wizard-field">
+          <label>Role options</label>
+          <div class="role-option-list" id="wizard-${feat.id}-role-options"></div>
+          <button type="button" class="btn-add" id="wizard-${feat.id}-add-role">+ Add role option</button>
+          <div class="wizard-hint">Each option creates one button users can press to add/remove that role.</div>
+        </div>
+        <button type="button" class="btn-publish" id="wizard-${feat.id}-publish">Publish role menu message</button>
+        <span class="save-feedback" id="wizard-${feat.id}-publish-feedback"></span>
+      `;
+
+      const optionsContainer = root.querySelector(`#wizard-${feat.id}-role-options`);
+      const addRoleBtn = root.querySelector(`#wizard-${feat.id}-add-role`);
+      const publishBtn = root.querySelector(`#wizard-${feat.id}-publish`);
+      const publishFeedback = root.querySelector(`#wizard-${feat.id}-publish-feedback`);
+
+      function makeRoleRow(option = {}) {
+        const roleId = String(option.roleId || '');
+        const roleName = roleNameById.get(roleId) || '';
+        const label = String(option.label || roleName || '').trim();
+        const emoji = String(option.emoji || '').trim();
+
+        const row = document.createElement('div');
+        row.className = 'role-option-row';
+        row.innerHTML = `
+          <select class="wizard-role-id">
+            ${buildSelectOptionsHtml(roles, roleId, 'Select role')}
+          </select>
+          <input class="wizard-role-label" type="text" value="${escHtml(label)}" placeholder="Button label" />
+          <input class="wizard-role-emoji" type="text" value="${escHtml(emoji)}" placeholder="Emoji" />
+          <button type="button" class="btn-small">Remove</button>
+        `;
+        row.querySelector('.btn-small').addEventListener('click', () => {
+          row.remove();
+        });
+        const roleSelect = row.querySelector('.wizard-role-id');
+        const labelInput = row.querySelector('.wizard-role-label');
+        roleSelect.addEventListener('change', () => {
+          if (!labelInput.value.trim()) {
+            labelInput.value = roleNameById.get(roleSelect.value) || '';
+          }
+        });
+        optionsContainer.appendChild(row);
+      }
+
+      if (safeRoleOptions.length) {
+        safeRoleOptions.forEach((option) => makeRoleRow(option));
+      } else {
+        makeRoleRow();
+      }
+
+      addRoleBtn.addEventListener('click', () => {
+        if (optionsContainer.querySelectorAll('.role-option-row').length >= ROLE_MENU_MAX_OPTIONS) return;
+        makeRoleRow();
+      });
+
+      publishBtn.addEventListener('click', async () => {
+        publishBtn.disabled = true;
+        publishFeedback.style.display = 'none';
+        try {
+          const response = await (apiFetch || fetch)(`/dashboard/api/guilds/${guildId}/role-menu/publish`, {
+            method: 'POST',
+          });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || `HTTP ${response.status}`);
+          }
+          const payload = await response.json().catch(() => ({}));
+          publishFeedback.textContent = `✓ Published (channel ID: ${payload.channelId})`;
+          publishFeedback.className = 'save-feedback ok';
+          publishFeedback.style.display = 'inline';
+        } catch (err) {
+          publishFeedback.textContent = `✗ Publish failed: ${err.message}`;
+          publishFeedback.className = 'save-feedback err';
+          publishFeedback.style.display = 'inline';
+        } finally {
+          publishBtn.disabled = false;
+        }
+      });
+
+      return {
+        getExtra(isEnabled) {
+          const menuChannelId = root.querySelector(`#wizard-${feat.id}-menu-channel`)?.value?.trim() || null;
+          const title = root.querySelector(`#wizard-${feat.id}-title`)?.value?.trim() || 'Role Menu: Roles';
+          const description = root.querySelector(`#wizard-${feat.id}-desc`)?.value?.trim() || 'Use the buttons below to toggle your roles.';
+          const roleOptions = [];
+
+          root.querySelectorAll('.role-option-row').forEach((row) => {
+            const roleId = row.querySelector('.wizard-role-id')?.value?.trim() || '';
+            const roleLabel = row.querySelector('.wizard-role-label')?.value?.trim() || '';
+            const roleEmoji = row.querySelector('.wizard-role-emoji')?.value?.trim() || '';
+            if (!roleId) return;
+            roleOptions.push({
+              roleId,
+              label: roleLabel || roleNameById.get(roleId) || 'Role',
+              emoji: roleEmoji || null,
+              style: 'secondary',
+            });
+          });
+
+          if (isEnabled) {
+            if (!menuChannelId) return { ok: false, message: 'Role menu channel is required.' };
+            if (!roleOptions.length) return { ok: false, message: 'Add at least one role option.' };
+          }
+
+          const extra = {
+            menuChannelId,
+            title,
+            description,
+            roleOptions,
+          };
+          if (currentExtra.roleMenuMessageId) {
+            extra.roleMenuMessageId = currentExtra.roleMenuMessageId;
+          }
+          return { ok: true, extra };
+        },
+      };
+    }
+
+    function buildWelcomeAutomationWizard(root, feat, currentExtra, guildMeta) {
+      if (!root) return null;
+      const channels = Array.isArray(guildMeta?.channels) ? guildMeta.channels : [];
+      const roles = Array.isArray(guildMeta?.roles) ? guildMeta.roles : [];
+      const templates = Array.isArray(currentExtra.templates) && currentExtra.templates.length
+        ? currentExtra.templates.join('\n')
+        : '';
+
+      root.innerHTML = `
+        <div class="wizard-settings-title">Setup wizard</div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-trigger-phrase">Trigger phrase</label>
+          <input id="wizard-${feat.id}-trigger-phrase" type="text" value="${escHtml(currentExtra.triggerPhrase || 'welcome')}" />
+          <div class="wizard-hint">Automation runs when an admin message contains this phrase and mentions a member.</div>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-trigger-channel">Introduce-yourself channel</label>
+          <select id="wizard-${feat.id}-trigger-channel">
+            ${buildSelectOptionsHtml(channels, currentExtra.triggerChannelId, 'Select a channel')}
+          </select>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-grant-role">Welcome/base role to grant</label>
+          <select id="wizard-${feat.id}-grant-role">
+            ${buildSelectOptionsHtml(roles, currentExtra.grantRoleId, 'Select a role')}
+          </select>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-roles-channel">Role-selection channel (optional)</label>
+          <select id="wizard-${feat.id}-roles-channel">
+            ${buildSelectOptionsHtml(channels, currentExtra.roleMenuChannelId, 'Select a channel')}
+          </select>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-templates">Welcome message templates (optional, one per line, use %s for mention)</label>
+          <textarea id="wizard-${feat.id}-templates" placeholder="%s, welcome to the server!">${escHtml(templates)}</textarea>
+          <div class="wizard-hint">If empty, built-in game-themed messages are used.</div>
+        </div>
+      `;
+
+      return {
+        getExtra(isEnabled) {
+          const triggerPhrase = root.querySelector(`#wizard-${feat.id}-trigger-phrase`)?.value?.trim() || 'welcome';
+          const triggerChannelId = root.querySelector(`#wizard-${feat.id}-trigger-channel`)?.value?.trim() || null;
+          const grantRoleId = root.querySelector(`#wizard-${feat.id}-grant-role`)?.value?.trim() || null;
+          const roleMenuChannelId = root.querySelector(`#wizard-${feat.id}-roles-channel`)?.value?.trim() || null;
+          const rawTemplates = root.querySelector(`#wizard-${feat.id}-templates`)?.value || '';
+          const templates = rawTemplates.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 30);
+
+          if (isEnabled) {
+            if (!triggerPhrase) return { ok: false, message: 'Trigger phrase is required.' };
+            if (!triggerChannelId) return { ok: false, message: 'Introduce-yourself channel is required.' };
+            if (!grantRoleId) return { ok: false, message: 'Welcome/base role is required.' };
+          }
+
+          return {
+            ok: true,
+            extra: {
+              triggerPhrase,
+              triggerChannelId,
+              grantRoleId,
+              roleMenuChannelId,
+              templates,
+            },
+          };
+        },
+      };
+    }
+
+    function buildFeatureWizard(root, feat, currentExtra, guildMeta, apiFetch) {
+      if (!root || !feat?.wizardType) return null;
+      if (feat.wizardType === 'rolemenu') {
+        return buildRoleMenuWizard(root, feat, currentExtra, guildMeta, apiFetch);
+      }
+      if (feat.wizardType === 'welcomeautomation') {
+        return buildWelcomeAutomationWizard(root, feat, currentExtra, guildMeta);
+      }
+      return null;
+    }
+
     // ── Build feature section ────────────────────────────────────────────────
-    function buildFeatureSection(feat, settings, isSuperAdmin, apiFetch) {
+    function buildFeatureSection(feat, settings, guildMeta, isSuperAdmin, apiFetch) {
       const safeSettings = settings && typeof settings === 'object' ? settings : {};
       const rawCurrent = safeSettings[feat.id];
       const current = rawCurrent && typeof rawCurrent === 'object'
         ? rawCurrent
-        : { enabled: true, channelIds: null };
+        : { enabled: feat.defaultEnabled === true, channelIds: null };
       const safeChannelIds = Array.isArray(current.channelIds) ? current.channelIds : null;
       const currentExtra = current.extra && typeof current.extra === 'object' ? current.extra : {};
       const extraFields = Array.isArray(feat.extraFields) ? feat.extraFields : [];
@@ -618,6 +954,7 @@
               `;
             }).join('')}
           </div>` : ''}
+          ${feat.wizardType ? `<div class="wizard-settings" id="wizard-${feat.id}"></div>` : ''}
           <div style="display:flex;align-items:center;margin-top:14px;">
             <button class="btn-save" id="save-${feat.id}">Save</button>
             <span class="save-feedback" id="feedback-${feat.id}"></span>
@@ -656,6 +993,9 @@
         });
       }
 
+      const wizardRoot = section.querySelector(`#wizard-${feat.id}`);
+      const wizardState = buildFeatureWizard(wizardRoot, feat, currentExtra, guildMeta, apiFetch);
+
       // Save button
       section.querySelector(`#save-${feat.id}`).addEventListener('click', async () => {
         const btn      = section.querySelector(`#save-${feat.id}`);
@@ -691,9 +1031,22 @@
           extra[field.key] = parsed;
         }
 
+        const isEnabled = section.querySelector(`#toggle-${feat.id}`).checked;
+        if (wizardState) {
+          const wizardResult = wizardState.getExtra(isEnabled);
+          if (!wizardResult.ok) {
+            feedback.textContent = `✗ ${wizardResult.message}`;
+            feedback.className = 'save-feedback err';
+            feedback.style.display = 'inline';
+            btn.disabled = false;
+            return;
+          }
+          Object.assign(extra, wizardResult.extra || {});
+        }
+
         const payload = {
           feature:    feat.id,
-          enabled:    section.querySelector(`#toggle-${feat.id}`).checked,
+          enabled:    isEnabled,
           channelIds: channelTagInput ? channelTagInput.getIds() : null,
           extra:      Object.keys(extra).length ? extra : null,
         };
@@ -757,7 +1110,7 @@
       try {
         if (isSuperAdmin) dbg.info('Fetching guild data, features list, and guilds list…');
 
-        const [guildData, features, guilds] = await Promise.all([
+        const [guildData, features, guilds, guildMeta] = await Promise.all([
           apiFetch(`/dashboard/api/guilds/${guildId}`).then(r => {
             if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('unauth'); }
             if (r.status === 403) { location.href = '/dashboard'; throw new Error('forbidden'); }
@@ -766,6 +1119,11 @@
           apiFetch('/dashboard/api/features').then(r => r.json()),
           apiFetch('/dashboard/api/guilds').then(r => {
             if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('Unauthorized: redirecting to login'); }
+            return r.json();
+          }),
+          apiFetch(`/dashboard/api/guilds/${guildId}/meta`).then(r => {
+            if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('unauth'); }
+            if (r.status === 403) { location.href = '/dashboard'; throw new Error('forbidden'); }
             return r.json();
           }),
         ]);
@@ -799,7 +1157,7 @@
         container.innerHTML = '';
 
         for (const feat of features) {
-          const section = buildFeatureSection(feat, guildData.features, isSuperAdmin, apiFetch);
+          const section = buildFeatureSection(feat, guildData.features, guildMeta, isSuperAdmin, apiFetch);
           container.appendChild(section);
         }
 

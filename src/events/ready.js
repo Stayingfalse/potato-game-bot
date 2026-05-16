@@ -19,7 +19,8 @@ module.exports = {
       PermissionFlagsBits.CreatePublicThreads |
       PermissionFlagsBits.CreatePrivateThreads |
       PermissionFlagsBits.SendMessagesInThreads |
-      PermissionFlagsBits.ManageThreads;
+      PermissionFlagsBits.ManageThreads |
+      PermissionFlagsBits.ManageRoles;
 
     const inviteUrl =
       `https://discord.com/api/oauth2/authorize` +

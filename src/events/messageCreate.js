@@ -1,5 +1,6 @@
 const { ROLES } = require('../utils/roles');
 const { buildGuessComponents } = require('../game/phases/playing');
+const { handleWelcomeAutomationMessage } = require('../features/welcomeAutomationFeature');
 
 /** Handle a message inside an active werewords playing-phase thread. */
 async function handleGameMessage(message, gameManager) {
@@ -33,6 +34,7 @@ module.exports = {
       // Game message handling only applies to guild channels.
       if (message.guild) {
         await handleGameMessage(message, client.gameManager);
+        await handleWelcomeAutomationMessage(message);
       }
 
       // ── SassyBot AI features (opt-in via SASSY_ENABLED=true) ─────────────────

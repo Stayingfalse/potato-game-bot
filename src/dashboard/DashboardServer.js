@@ -31,6 +31,7 @@ const fs     = require('fs');
 const path   = require('path');
 
 const settingsRepo = require('./SettingsRepository');
+const { publishRoleMenuMessage } = require('../features/roleMenuFeature');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,20 @@ const FEATURES = [
   { id: 'cheesethief',  label: 'Cheese Thief', hasChannels: true  },
   { id: 'herdmentality',label: 'Herd Mentality',hasChannels: true },
   { id: 'birthday',     label: 'Birthdays',    hasChannels: true  },
+  {
+    id: 'rolemenu',
+    label: 'Role Menu',
+    hasChannels: true,
+    defaultEnabled: false,
+    wizardType: 'rolemenu',
+  },
+  {
+    id: 'welcomeautomation',
+    label: 'Welcome Automation',
+    hasChannels: true,
+    defaultEnabled: false,
+    wizardType: 'welcomeautomation',
+  },
   {
     id: 'sassy',
     label: 'SassyBot',
@@ -215,6 +230,8 @@ class DashboardServer {
         this._sendJson(res, 403, { error: 'Forbidden' });
       } else if (err.status === 400) {
         this._sendJson(res, 400, { error: err.message });
+      } else if (err.status === 404) {
+        this._sendJson(res, 404, { error: err.message });
       } else {
         throw err;
       }
@@ -297,6 +314,16 @@ class DashboardServer {
       return this._sendJson(res, 200, { guildId, features: merged });
     }
 
+    // ── GET /dashboard/api/guilds/:guildId/meta ─────────────────────────────
+    const guildMetaMatch = p.match(/^\/dashboard\/api\/guilds\/([^/]+)\/meta$/);
+    if (method === 'GET' && guildMetaMatch) {
+      const session = this._requireSession(req);
+      const guildId = guildMetaMatch[1];
+      await this._assertGuildAccess(session, guildId);
+      const meta = await this._buildGuildMetadata(guildId);
+      return this._sendJson(res, 200, meta);
+    }
+
     // ── POST /dashboard/api/guilds/:guildId/features ───────────────────────
     const featApiMatch = p.match(/^\/dashboard\/api\/guilds\/([^/]+)\/features$/);
     if (method === 'POST' && featApiMatch) {
@@ -319,6 +346,16 @@ class DashboardServer {
         safeExtra,
       );
       return this._sendJson(res, 200, { ok: true });
+    }
+
+    // ── POST /dashboard/api/guilds/:guildId/role-menu/publish ───────────────
+    const publishRoleMenuMatch = p.match(/^\/dashboard\/api\/guilds\/([^/]+)\/role-menu\/publish$/);
+    if (method === 'POST' && publishRoleMenuMatch) {
+      const session = this._requireSession(req);
+      const guildId = publishRoleMenuMatch[1];
+      await this._assertGuildAccess(session, guildId);
+      const result = await publishRoleMenuMessage(this._client, guildId);
+      return this._sendJson(res, 200, { ok: true, ...result });
     }
 
     // ── GET /dashboard/api/features ────────────────────────────────────────
@@ -486,9 +523,30 @@ class DashboardServer {
   _mergeDefaults(stored) {
     const result = {};
     for (const feat of FEATURES) {
-      result[feat.id] = stored[feat.id] ?? { enabled: true, channelIds: null, extra: null };
+      const defaultEnabled = feat.defaultEnabled !== undefined ? !!feat.defaultEnabled : true;
+      result[feat.id] = stored[feat.id] ?? { enabled: defaultEnabled, channelIds: null, extra: null };
     }
     return result;
+  }
+
+  async _buildGuildMetadata(guildId) {
+    const guild = this._client.guilds.cache.get(guildId) || await this._client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) throw Object.assign(new Error('Guild not found'), { status: 404 });
+
+    await guild.channels.fetch().catch(() => null);
+    await guild.roles.fetch().catch(() => null);
+
+    const channels = guild.channels.cache
+      .filter((ch) => ch && ch.isTextBased() && !ch.isThread())
+      .map((ch) => ({ id: ch.id, name: ch.name, type: String(ch.type), position: ch.rawPosition ?? 0 }))
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+
+    const roles = guild.roles.cache
+      .filter((role) => role && role.id !== guild.id && !role.managed)
+      .map((role) => ({ id: role.id, name: role.name, position: role.position }))
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name));
+
+    return { guildId: guild.id, channels, roles };
   }
 
   // ── Discord API helpers ────────────────────────────────────────────────────
