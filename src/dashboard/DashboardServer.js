@@ -49,6 +49,11 @@ const FEATURES = [
   { id: 'sassy',        label: 'SassyBot',     hasChannels: true  },
 ];
 
+/**
+ * Returns the first non-empty, trimmed environment variable value.
+ * @param {...string} names
+ * @returns {string}
+ */
 function firstNonEmptyEnv(...names) {
   for (const name of names) {
     const raw = process.env[name];
@@ -86,7 +91,7 @@ class DashboardServer {
     this._baseUrl      = (process.env.DASHBOARD_URL || `http://localhost:${this._port}`).replace(/\/$/, '');
     this._redirectUri  = `${this._baseUrl}/dashboard/callback`;
     if (!this._clientId || !this._clientSecret) {
-      console.warn('[Dashboard] OAuth client credentials are incomplete. Set DISCORD_CLIENT_ID (or CLIENT_ID) and DISCORD_CLIENT_SECRET (or CLIENT_SECRET) before using dashboard OAuth.');
+      console.warn('[Dashboard] OAuth client credentials are incomplete. Set DISCORD_CLIENT_ID (or CLIENT_ID) and one of DISCORD_CLIENT_SECRET / CLIENT_SECRET / DISCORD_OAUTH_CLIENT_SECRET / OAUTH_CLIENT_SECRET before using dashboard OAuth.');
     }
 
     const superAdminRaw = process.env.SUPER_ADMIN_IDS || '';
