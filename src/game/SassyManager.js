@@ -11,17 +11,26 @@
 
 const { GoogleGenAI } = require('@google/genai');
 const { ChannelType } = require('discord.js');
+const settingsRepo = require('../dashboard/SettingsRepository');
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const GEMINI_MODEL       = process.env.GEMINI_MODEL        || 'gemini-2.0-flash';
 const DEEPSEEK_MODEL     = process.env.DEEPSEEK_MODEL      || 'deepseek-chat';
 const DEEPSEEK_BASE_URL  = process.env.DEEPSEEK_BASE_URL   || 'https://api.deepseek.com';
-const MAX_HISTORY_TURNS  = parseInt(process.env.MAX_HISTORY_TURNS  || '20', 10);
-const COOLDOWN_MS        = parseInt(process.env.COOLDOWN_MS        || '2000', 10);
-const INTERJECT_COOLDOWN = parseInt(process.env.INTERJECT_COOLDOWN || '180000', 10); // 3 min
-const ACTIVITY_WINDOW_MS = parseInt(process.env.ACTIVITY_WINDOW_MS || '60000', 10);  // 60 sec
 const HISTORY_TTL_MS     = parseInt(process.env.HISTORY_TTL_MS     || '86400000', 10); // 24 h
+
+function parseIntegerSetting(value, fallback, min = 0) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
+}
+
+const DEFAULT_SASSY_SETTINGS = {
+  maxHistoryTurns:   parseIntegerSetting(process.env.MAX_HISTORY_TURNS, 20, 1),
+  cooldownMs:        parseIntegerSetting(process.env.COOLDOWN_MS, 2000, 0),
+  interjectCooldown: parseIntegerSetting(process.env.INTERJECT_COOLDOWN, 180000, 0),
+  activityWindowMs:  parseIntegerSetting(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
+};
 
 // How many messages in a channel before refreshing AI-generated channel topic notes.
 const CHANNEL_NOTES_REFRESH_EVERY = parseInt(process.env.CHANNEL_NOTES_REFRESH_EVERY || '30', 10);
@@ -156,7 +165,7 @@ class SassyManager {
 
     const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
     console.log(`[SassyManager] Initialised — Gemini: ${GEMINI_MODEL}${hasDeepSeek ? `, DeepSeek: ${DEEPSEEK_MODEL}` : ' (DeepSeek disabled)'}`);
-    console.log(`[SassyManager] Interjection cooldown: ${INTERJECT_COOLDOWN / 1000}s | Activity window: ${ACTIVITY_WINDOW_MS / 1000}s`);
+    console.log(`[SassyManager] Interjection cooldown: ${DEFAULT_SASSY_SETTINGS.interjectCooldown / 1000}s | Activity window: ${DEFAULT_SASSY_SETTINGS.activityWindowMs / 1000}s`);
     console.log(`[SassyManager] History TTL: ${HISTORY_TTL_MS / MS_PER_HOUR}h`);
     if (INTERJECT_CHANNELS) {
       console.log(`[SassyManager] Interjecting in channels: ${[...INTERJECT_CHANNELS].join(', ')}`);
@@ -179,6 +188,10 @@ class SassyManager {
     const content     = message.content.trim();
     const isMentioned = message.mentions.has(message.client.user);
     const isDM        = message.channel.type === ChannelType.DM;
+    const guildSettings = this._getGuildSassySettings(guildId);
+
+    if (guildId && !guildSettings.enabled) return;
+    if (guildId && guildSettings.channelIds && !guildSettings.channelIds.includes(channelId)) return;
 
     let isReplyToBot = false;
     if (message.reference) {
@@ -210,14 +223,14 @@ class SassyManager {
     // ── PATH A: Direct reply (DM, mention, or reply-to-bot) ───────────────
     if (isDM || isMentioned || isReplyToBot) {
       const now = Date.now();
-      if (now - (this._directCooldowns.get(channelId) || 0) < COOLDOWN_MS) return;
+      if (now - (this._directCooldowns.get(channelId) || 0) < guildSettings.cooldownMs) return;
       this._directCooldowns.set(channelId, now);
 
       const userMessage = content.replace(/<@!?\d+>/g, '').trim() || '…(silence)';
 
       try {
         await message.channel.sendTyping();
-        const reply = await this._getDirectReply(channelId, userMessage, channelContext, userContext, isDM);
+        const reply = await this._getDirectReply(channelId, userMessage, channelContext, userContext, guildSettings.maxHistoryTurns, isDM);
         await message.reply(reply);
 
         // Log the bot's own reply so future context includes what the bot said.
@@ -239,9 +252,9 @@ class SassyManager {
     if (!this._isInterjectable(content)) return;
 
     const now = Date.now();
-    if (now - (this._interjectCooldowns.get(channelId) || 0) < INTERJECT_COOLDOWN) return;
+    if (now - (this._interjectCooldowns.get(channelId) || 0) < guildSettings.interjectCooldown) return;
 
-    const tier = this._resolveTier(channelId);
+    const tier = this._resolveTier(channelId, guildSettings.activityWindowMs);
     const roll = Math.random();
     if (roll > tier.chance) return;
 
@@ -267,9 +280,34 @@ class SassyManager {
 
   // ─── Activity tracking ─────────────────────────────────────────────────────
 
-  _getActivityCount(channelId) {
+  _getGuildSassySettings(guildId) {
+    if (!guildId) return { ...DEFAULT_SASSY_SETTINGS, enabled: true, channelIds: null };
+
+    let row = null;
+    try {
+      row = settingsRepo.getGuildSettings(guildId)?.sassy ?? null;
+    } catch (err) {
+      console.error('[SassyManager] Failed to load guild sassy settings:', err.message);
+    }
+
+    const extra = row && row.extra && typeof row.extra === 'object' ? row.extra : null;
+    const channelIds = Array.isArray(row?.channelIds) && row.channelIds.length > 0
+      ? row.channelIds.map((id) => String(id))
+      : null;
+
+    return {
+      enabled: row?.enabled !== false,
+      channelIds,
+      maxHistoryTurns: parseIntegerSetting(extra?.maxHistoryTurns, DEFAULT_SASSY_SETTINGS.maxHistoryTurns, 1),
+      cooldownMs: parseIntegerSetting(extra?.cooldownMs, DEFAULT_SASSY_SETTINGS.cooldownMs, 0),
+      interjectCooldown: parseIntegerSetting(extra?.interjectCooldown, DEFAULT_SASSY_SETTINGS.interjectCooldown, 0),
+      activityWindowMs: parseIntegerSetting(extra?.activityWindowMs, DEFAULT_SASSY_SETTINGS.activityWindowMs, 1),
+    };
+  }
+
+  _getActivityCount(channelId, activityWindowMs) {
     const now = Date.now();
-    const pruned = (this._activityWindows.get(channelId) || []).filter(t => now - t < ACTIVITY_WINDOW_MS);
+    const pruned = (this._activityWindows.get(channelId) || []).filter(t => now - t < activityWindowMs);
     this._activityWindows.set(channelId, pruned);
     return pruned.length;
   }
@@ -288,8 +326,8 @@ class SassyManager {
     this._recentMessages.set(channelId, msgs);
   }
 
-  _resolveTier(channelId) {
-    const count = this._getActivityCount(channelId);
+  _resolveTier(channelId, activityWindowMs) {
+    const count = this._getActivityCount(channelId, activityWindowMs);
     for (const tier of ACTIVITY_TIERS) {
       if (count >= tier.min) return tier;
     }
@@ -325,9 +363,9 @@ class SassyManager {
     return this._conversationHistory.get(channelId);
   }
 
-  _trimHistory(channelId) {
+  _trimHistory(channelId, maxHistoryTurns) {
     const history = this._conversationHistory.get(channelId) || [];
-    const maxEntries = MAX_HISTORY_TURNS * 2;
+    const maxEntries = maxHistoryTurns * 2;
     if (history.length > maxEntries) {
       this._conversationHistory.set(channelId, history.slice(-maxEntries));
     }
@@ -419,7 +457,7 @@ class SassyManager {
 
   // ─── Direct reply ──────────────────────────────────────────────────────────
 
-  async _getDirectReply(channelId, userMessage, channelContext, userContext, isDM = false) {
+  async _getDirectReply(channelId, userMessage, channelContext, userContext, maxHistoryTurns, isDM = false) {
     const history = this._getHistory(channelId);
 
     let systemInstruction = isDM ? SYSTEM_DIRECT_DM : SYSTEM_DIRECT;
@@ -431,7 +469,7 @@ class SassyManager {
     history.push({ role: 'user',  parts: [{ text: userMessage   }] });
     history.push({ role: 'model', parts: [{ text: responseText  }] });
     this._conversationHistory.set(channelId, history);
-    this._trimHistory(channelId);
+    this._trimHistory(channelId, maxHistoryTurns);
 
     if (this._contextRepo) {
       this._contextRepo.saveChatHistory(channelId, this._conversationHistory.get(channelId));

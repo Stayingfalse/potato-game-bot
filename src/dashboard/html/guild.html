@@ -248,6 +248,49 @@
 
     .channels-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
+    .extra-settings {
+      margin-top: 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .extra-settings-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .extra-field {
+      margin-bottom: 10px;
+    }
+    .extra-field:last-child {
+      margin-bottom: 0;
+    }
+    .extra-field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .extra-field input[type="number"] {
+      width: 100%;
+      max-width: 260px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .extra-field input[type="number"]:focus {
+      border-color: var(--accent);
+    }
+    .extra-field-hint {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
     .btn-save {
       margin-top: 14px;
       background: var(--accent);
@@ -437,6 +480,23 @@
         ? document.getElementById(containerOrId)
         : containerOrId;
       let ids = [...(initialIds || [])];
+      let activeInput = null;
+
+      function tryAddChannel(rawValue) {
+        const trimmed = String(rawValue || '').trim();
+        if (!trimmed) return { ok: true, added: false };
+
+        // Accept raw IDs, "#123...", and Discord channel mention format "<#123...>".
+        const match = trimmed.match(/^<#?(\d+)>?$|^#?(\d+)$/);
+        const channelId = (match && (match[1] || match[2])) || null;
+        if (!channelId) return { ok: false, added: false };
+
+        if (!ids.includes(channelId)) {
+          ids.push(channelId);
+          return { ok: true, added: true };
+        }
+        return { ok: true, added: false };
+      }
 
       function render() {
         if (!container) return;
@@ -453,14 +513,15 @@
           container.appendChild(tag);
         }
         const input = document.createElement('input');
+        activeInput = input;
         input.className = 'channel-input';
         input.placeholder = ids.length ? '' : 'Paste channel ID and press Enter (leave empty for all channels)';
         input.addEventListener('keydown', e => {
           if (e.key === 'Enter' && input.value.trim()) {
             e.preventDefault();
-            const val = input.value.trim();
-            if (/^\d+$/.test(val) && !ids.includes(val)) {
-              ids.push(val);
+            const result = tryAddChannel(input.value);
+            if (result.ok) {
+              input.value = '';
               render();
               container.dispatchEvent(new Event('change'));
             } else {
@@ -474,7 +535,18 @@
       }
 
       if (container) render();
-      return { getIds: () => [...ids] };
+      return {
+        getIds: () => [...ids],
+        commitPendingInput: () => {
+          if (!activeInput || !activeInput.value.trim()) return { ok: true };
+          const result = tryAddChannel(activeInput.value);
+          if (!result.ok) return { ok: false };
+          activeInput.value = '';
+          render();
+          container.dispatchEvent(new Event('change'));
+          return { ok: true };
+        },
+      };
     }
 
     // ── Build feature section ────────────────────────────────────────────────
@@ -485,6 +557,8 @@
         ? rawCurrent
         : { enabled: true, channelIds: null };
       const safeChannelIds = Array.isArray(current.channelIds) ? current.channelIds : null;
+      const currentExtra = current.extra && typeof current.extra === 'object' ? current.extra : {};
+      const extraFields = Array.isArray(feat.extraFields) ? feat.extraFields : [];
 
       const section = document.createElement('div');
       section.className = 'feature-section';
@@ -519,6 +593,30 @@
             <div class="channels-label">Restrict to channels (leave empty for all channels):</div>
             <div class="channel-tag-input" id="ch-input-${feat.id}"></div>
             <div class="channels-hint">Enter a Discord channel ID and press <kbd>Enter</kbd> to add it.</div>
+          </div>` : ''}
+          ${extraFields.length ? `
+          <div class="extra-settings">
+            <div class="extra-settings-title">Advanced settings (override env defaults for this server)</div>
+            ${extraFields.map((field) => {
+              const rawValue = currentExtra[field.key];
+              const numericValue = Number(rawValue);
+              const value = Number.isFinite(numericValue)
+                ? String(Math.trunc(numericValue))
+                : String(field.defaultValue ?? '');
+              return `
+                <div class="extra-field">
+                  <label for="extra-${feat.id}-${field.key}">${escHtml(field.label)}</label>
+                  <input
+                    type="number"
+                    id="extra-${feat.id}-${field.key}"
+                    data-extra-key="${escHtml(field.key)}"
+                    min="${Number.isFinite(Number(field.min)) ? Number(field.min) : 0}"
+                    value="${escHtml(value)}"
+                  />
+                  <div class="extra-field-hint">${escHtml(field.hint || '')} Default: <code>${escHtml(String(field.defaultValue ?? ''))}</code></div>
+                </div>
+              `;
+            }).join('')}
           </div>` : ''}
           <div style="display:flex;align-items:center;margin-top:14px;">
             <button class="btn-save" id="save-${feat.id}">Save</button>
@@ -565,10 +663,39 @@
         btn.disabled   = true;
         feedback.style.display = 'none';
 
+        if (channelTagInput) {
+          const pending = channelTagInput.commitPendingInput();
+          if (!pending.ok) {
+            feedback.textContent   = '✗ Invalid channel ID in input';
+            feedback.className     = 'save-feedback err';
+            feedback.style.display = 'inline';
+            btn.disabled = false;
+            return;
+          }
+        }
+
+        const extra = {};
+        for (const field of extraFields) {
+          const input = section.querySelector(`#extra-${feat.id}-${field.key}`);
+          if (!input) continue;
+          const parsed = Number.parseInt(input.value, 10);
+          const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
+          if (!Number.isFinite(parsed) || parsed < min) {
+            feedback.textContent   = `✗ ${field.label} must be ≥ ${min}`;
+            feedback.className     = 'save-feedback err';
+            feedback.style.display = 'inline';
+            input.focus();
+            btn.disabled = false;
+            return;
+          }
+          extra[field.key] = parsed;
+        }
+
         const payload = {
           feature:    feat.id,
           enabled:    section.querySelector(`#toggle-${feat.id}`).checked,
           channelIds: channelTagInput ? channelTagInput.getIds() : null,
+          extra:      Object.keys(extra).length ? extra : null,
         };
 
         if (isSuperAdmin) {
