@@ -13,6 +13,7 @@ const settingsRepo = require('../dashboard/SettingsRepository');
 const ROLE_MENU_FEATURE_ID = 'rolemenu';
 const ROLE_MENU_BUTTON_PREFIX = 'rmr:';
 const MAX_ROLE_OPTIONS = 20;
+const MAX_STORED_ROLE_MENUS = 25;
 
 const BUTTON_STYLE_MAP = {
   primary: ButtonStyle.Primary,
@@ -35,8 +36,9 @@ function normalizeEmoji(value) {
   const emoji = normalizeString(value);
   if (!emoji || emoji.length > 40) return null;
   const looksLikeCustom = /^<a?:\w{2,32}:\d{17,20}>$/.test(emoji);
-  const looksLikeUnicode = /^\p{Extended_Pictographic}[\uFE0F\u200D\p{Extended_Pictographic}]*$/u.test(emoji);
-  return looksLikeCustom || looksLikeUnicode ? emoji : null;
+  if (looksLikeCustom) return emoji;
+  if (emoji.startsWith('<') || emoji.endsWith('>')) return null;
+  return emoji;
 }
 
 function normalizeRoleOption(raw, index) {
@@ -61,6 +63,51 @@ function parseRoleOptions(extra) {
     .slice(0, MAX_ROLE_OPTIONS);
 }
 
+function normalizeMenuId(value, fallbackIndex = 0) {
+  const id = normalizeString(value);
+  if (id && /^[a-zA-Z0-9_-]{3,24}$/.test(id)) return id;
+  return `menu${fallbackIndex + 1}`;
+}
+
+function normalizeStoredRoleMenu(raw, index) {
+  if (!raw || typeof raw !== 'object') return null;
+  const roleOptions = parseRoleOptions({ roleOptions: raw.roleOptions });
+  if (!roleOptions.length) return null;
+  return {
+    menuId: normalizeMenuId(raw.menuId, index),
+    messageId: normalizeString(raw.messageId),
+    menuChannelId: normalizeRoleId(raw.menuChannelId),
+    title: normalizeString(raw.title) || 'Role Menu: Roles',
+    description: normalizeString(raw.description) || 'Use the buttons below to toggle your roles.',
+    roleOptions,
+  };
+}
+
+function parseStoredRoleMenus(extra) {
+  if (!extra || typeof extra !== 'object') return [];
+
+  const fromArray = Array.isArray(extra.roleMenus)
+    ? extra.roleMenus
+      .map((menu, index) => normalizeStoredRoleMenu(menu, index))
+      .filter(Boolean)
+      .slice(0, MAX_STORED_ROLE_MENUS)
+    : [];
+
+  if (fromArray.length) return fromArray;
+
+  const legacyRoleOptions = parseRoleOptions(extra);
+  if (!legacyRoleOptions.length) return [];
+
+  return [{
+    menuId: normalizeMenuId(extra.menuId || extra.roleMenuMessageId || 'menu1', 0),
+    messageId: normalizeString(extra.roleMenuMessageId),
+    menuChannelId: normalizeRoleId(extra.menuChannelId),
+    title: normalizeString(extra.title) || 'Role Menu: Roles',
+    description: normalizeString(extra.description) || 'Use the buttons below to toggle your roles.',
+    roleOptions: legacyRoleOptions,
+  }];
+}
+
 function getRoleMenuSettings(guildId) {
   let row = null;
   try {
@@ -80,23 +127,34 @@ function getRoleMenuSettings(guildId) {
     title: normalizeString(extra.title) || 'Role Menu: Roles',
     description: normalizeString(extra.description) || 'Use the buttons below to toggle your roles.',
     roleOptions: parseRoleOptions(extra),
+    roleMenus: parseStoredRoleMenus(extra),
     extra,
   };
 }
 
-function buildRoleMenuComponents(roleOptions) {
+function parseComponentEmoji(emoji) {
+  const custom = /^<(a?):(\w{2,32}):(\d{17,20})>$/.exec(String(emoji || ''));
+  if (!custom) return emoji;
+  return {
+    animated: custom[1] === 'a',
+    name: custom[2],
+    id: custom[3],
+  };
+}
+
+function buildRoleMenuComponents(roleOptions, menuId) {
   const rows = [];
   let currentRow = new ActionRowBuilder();
 
   for (let i = 0; i < roleOptions.length; i += 1) {
     const option = roleOptions[i];
     const button = new ButtonBuilder()
-      .setCustomId(`${ROLE_MENU_BUTTON_PREFIX}${option.roleId}`)
+      .setCustomId(`${ROLE_MENU_BUTTON_PREFIX}${menuId}:${option.roleId}`)
       .setLabel(option.label)
       .setStyle(option.style);
 
     if (option.emoji) {
-      button.setEmoji(option.emoji);
+      button.setEmoji(parseComponentEmoji(option.emoji));
     }
 
     currentRow.addComponents(button);
@@ -140,10 +198,24 @@ async function publishRoleMenuMessage(client, guildId) {
     throw Object.assign(new Error('Configured role menu channel is not a text channel.'), { status: 400 });
   }
 
+  const menuId = `menu_${Date.now().toString(36)}_${Math.floor(Math.random() * 4096).toString(36)}`;
+  const publishedMenu = {
+    menuId,
+    menuChannelId: config.menuChannelId,
+    title: config.title,
+    description: config.description,
+    roleOptions: config.roleOptions,
+  };
+
   const message = await channel.send({
-    content: buildRoleMenuMessageContent(config),
-    components: buildRoleMenuComponents(config.roleOptions),
+    content: buildRoleMenuMessageContent(publishedMenu),
+    components: buildRoleMenuComponents(publishedMenu.roleOptions, menuId),
   });
+
+  const nextRoleMenus = [
+    ...config.roleMenus.filter((menu) => menu.messageId !== message.id),
+    { ...publishedMenu, messageId: message.id },
+  ].slice(-MAX_STORED_ROLE_MENUS);
 
   const updatedExtra = {
     ...config.extra,
@@ -157,6 +229,19 @@ async function publishRoleMenuMessage(client, guildId) {
       style: Object.keys(BUTTON_STYLE_MAP).find((key) => BUTTON_STYLE_MAP[key] === option.style) || 'secondary',
     })),
     roleMenuMessageId: message.id,
+    roleMenus: nextRoleMenus.map((menu) => ({
+      menuId: menu.menuId,
+      messageId: menu.messageId,
+      menuChannelId: menu.menuChannelId,
+      title: menu.title,
+      description: menu.description,
+      roleOptions: menu.roleOptions.map((option) => ({
+        roleId: option.roleId,
+        label: option.label,
+        emoji: option.emoji,
+        style: Object.keys(BUTTON_STYLE_MAP).find((key) => BUTTON_STYLE_MAP[key] === option.style) || 'secondary',
+      })),
+    })),
   };
 
   settingsRepo.setFeature(guildId, ROLE_MENU_FEATURE_ID, true, config.channelIds, updatedExtra);
@@ -169,7 +254,11 @@ async function handleRoleMenuButton(interaction) {
   }
   if (!interaction.guildId || !interaction.member) return false;
 
-  const roleId = interaction.customId.slice(ROLE_MENU_BUTTON_PREFIX.length);
+  const rawToken = interaction.customId.slice(ROLE_MENU_BUTTON_PREFIX.length);
+  const firstColon = rawToken.indexOf(':');
+  const hasMenuId = firstColon > 0;
+  const menuId = hasMenuId ? rawToken.slice(0, firstColon) : null;
+  const roleId = hasMenuId ? rawToken.slice(firstColon + 1) : rawToken;
   if (!roleId) return false;
 
   const config = getRoleMenuSettings(interaction.guildId);
@@ -181,7 +270,30 @@ async function handleRoleMenuButton(interaction) {
     return true;
   }
 
-  if (!config.roleOptions.some((option) => option.roleId === roleId)) {
+  let menuConfig = null;
+  if (menuId) {
+    menuConfig = config.roleMenus.find((menu) => menu.menuId === menuId) || null;
+  }
+
+  if (!menuConfig && interaction.message?.id) {
+    menuConfig = config.roleMenus.find((menu) => menu.messageId === interaction.message.id) || null;
+  }
+
+  if (!menuConfig && interaction.channelId) {
+    menuConfig = config.roleMenus.find((menu) =>
+      menu.menuChannelId === interaction.channelId &&
+      menu.roleOptions.some((option) => option.roleId === roleId),
+    ) || null;
+  }
+
+  if (!menuConfig && config.roleOptions.length) {
+    menuConfig = {
+      roleOptions: config.roleOptions,
+    };
+  }
+
+  const selectedRoleOption = menuConfig?.roleOptions?.find((option) => option.roleId === roleId) || null;
+  if (!selectedRoleOption) {
     await interaction.reply({
       content: 'That role is no longer configured in the role menu.',
       flags: MessageFlags.Ephemeral,
