@@ -34,7 +34,7 @@ module.exports = {
       // Game message handling only applies to guild channels.
       if (message.guild) {
         await handleGameMessage(message, client.gameManager);
-        await handleWelcomeAutomationMessage(message);
+        await handleWelcomeAutomationMessage(message, client);
       }
 
       // ── SassyBot AI features (opt-in via SASSY_ENABLED=true) ─────────────────

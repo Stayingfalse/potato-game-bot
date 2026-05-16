@@ -506,6 +506,30 @@ class SassyManager {
     }
   }
 
+  /**
+   * Generate a one-off custom message (no history), with provider fallback.
+   * Intended for feature-specific copy such as welcome messages.
+   */
+  async generateWelcomeMessage(prompt, systemInstruction) {
+    const primary = this._nextProvider();
+    const secondary = primary === 'gemini' ? 'deepseek' : 'gemini';
+
+    try {
+      const text = await this._callStateless(primary, prompt, systemInstruction);
+      console.log(`[SassyManager] Welcome generation via ${primary}`);
+      return text;
+    } catch (primaryErr) {
+      const secondaryAvailable = secondary === 'gemini' || !!process.env.DEEPSEEK_API_KEY;
+      if (secondaryAvailable) {
+        console.error(`[SassyManager] ${primary} welcome generation failed, trying ${secondary}:`, primaryErr.message);
+        const text = await this._callStateless(secondary, prompt, systemInstruction);
+        console.log(`[SassyManager] Welcome generation via ${secondary} (fallback)`);
+        return text;
+      }
+      throw primaryErr;
+    }
+  }
+
   /** Single-turn generation (no history). */
   async _callStateless(provider, prompt, systemInstruction) {
     if (provider === 'deepseek') {

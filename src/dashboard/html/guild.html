@@ -691,7 +691,7 @@
           <label>Role options</label>
           <div class="role-option-list" id="wizard-${feat.id}-role-options"></div>
           <button type="button" class="btn-add" id="wizard-${feat.id}-add-role">+ Add role option</button>
-          <div class="wizard-hint">Each option creates one button users can press to add/remove that role.</div>
+          <div class="wizard-hint">Each option creates one button users can press to add/remove that role. Publish multiple times to keep multiple role menus active.</div>
         </div>
         <button type="button" class="btn-publish" id="wizard-${feat.id}-publish">Publish role menu message</button>
         <span class="save-feedback" id="wizard-${feat.id}-publish-feedback"></span>
@@ -797,6 +797,9 @@
             description,
             roleOptions,
           };
+          if (Array.isArray(currentExtra.roleMenus)) {
+            extra.roleMenus = currentExtra.roleMenus;
+          }
           if (currentExtra.roleMenuMessageId) {
             extra.roleMenuMessageId = currentExtra.roleMenuMessageId;
           }
@@ -839,6 +842,13 @@
           </select>
         </div>
         <div class="wizard-field">
+          <label class="toggle-label">
+            <input id="wizard-${feat.id}-auto-welcome-enabled" type="checkbox" ${currentExtra.autoWelcomeEnabled !== false ? 'checked' : ''} />
+            Auto-welcome new members when they join
+          </label>
+          <div class="wizard-hint">Sends an AI welcome in the introduce-yourself channel without requiring an admin trigger message.</div>
+        </div>
+        <div class="wizard-field">
           <label for="wizard-${feat.id}-templates">Welcome message templates (optional, one per line, use %s for mention)</label>
           <textarea id="wizard-${feat.id}-templates" placeholder="%s, welcome to the server!">${escHtml(templates)}</textarea>
           <div class="wizard-hint">If empty, built-in game-themed messages are used.</div>
@@ -851,6 +861,7 @@
           const triggerChannelId = root.querySelector(`#wizard-${feat.id}-trigger-channel`)?.value?.trim() || null;
           const grantRoleId = root.querySelector(`#wizard-${feat.id}-grant-role`)?.value?.trim() || null;
           const roleMenuChannelId = root.querySelector(`#wizard-${feat.id}-roles-channel`)?.value?.trim() || null;
+          const autoWelcomeEnabled = !!root.querySelector(`#wizard-${feat.id}-auto-welcome-enabled`)?.checked;
           const rawTemplates = root.querySelector(`#wizard-${feat.id}-templates`)?.value || '';
           const templates = rawTemplates.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 30);
 
@@ -867,6 +878,7 @@
               triggerChannelId,
               grantRoleId,
               roleMenuChannelId,
+              autoWelcomeEnabled,
               templates,
             },
           };
