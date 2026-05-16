@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -36,9 +37,8 @@ function normalizeEmoji(value) {
   const emoji = normalizeString(value);
   if (!emoji || emoji.length > 40) return null;
   const looksLikeCustom = /^<a?:\w{2,32}:\d{17,20}>$/.test(emoji);
-  if (looksLikeCustom) return emoji;
-  if (emoji.startsWith('<') || emoji.endsWith('>')) return null;
-  return emoji;
+  const looksLikeUnicode = /\p{Emoji}/u.test(emoji);
+  return looksLikeCustom || looksLikeUnicode ? emoji : null;
 }
 
 function normalizeRoleOption(raw, index) {
@@ -198,7 +198,7 @@ async function publishRoleMenuMessage(client, guildId) {
     throw Object.assign(new Error('Configured role menu channel is not a text channel.'), { status: 400 });
   }
 
-  const menuId = `menu_${Date.now().toString(36)}_${Math.floor(Math.random() * 4096).toString(36)}`;
+  const menuId = `menu_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
   const publishedMenu = {
     menuId,
     menuChannelId: config.menuChannelId,

@@ -95,7 +95,7 @@ function pickTemplate(templates) {
 function formatWelcomeMessage(template, userMention, roleMenuChannelId) {
   const base = template.includes('%s') ? template.replace('%s', userMention) : `${template} ${userMention}`;
   const roleLine = roleMenuChannelId ? ` Please head to <#${roleMenuChannelId}> to choose your roles.` : '';
-  return `${base}${roleLine} Please introduce yourself and Benwell / Potato will be around to give you access.`;
+  return `${base}${roleLine}`;
 }
 
 function ensureWelcomeRequirements(text, userMention, roleMenuChannelId) {
@@ -113,7 +113,10 @@ function ensureWelcomeRequirements(text, userMention, roleMenuChannelId) {
   if (!/(Benwell|Potato)/i.test(next)) {
     next = `${next} Benwell / Potato will be around to give you access.`;
   }
-  return next;
+  return next
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .trim();
 }
 
 async function buildWelcomeMessage({
