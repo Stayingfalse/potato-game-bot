@@ -487,11 +487,11 @@
         if (!trimmed) return { ok: true, added: false };
 
         const match = trimmed.match(/^<#?(\d+)>?$|^#?(\d+)$/);
-        const val = (match && (match[1] || match[2])) || null;
-        if (!val) return { ok: false, added: false };
+        const channelId = (match && (match[1] || match[2])) || null;
+        if (!channelId) return { ok: false, added: false };
 
-        if (!ids.includes(val)) {
-          ids.push(val);
+        if (!ids.includes(channelId)) {
+          ids.push(channelId);
           return { ok: true, added: true };
         }
         return { ok: true, added: false };
@@ -598,8 +598,9 @@
             <div class="extra-settings-title">Advanced settings (override env defaults for this server)</div>
             ${extraFields.map((field) => {
               const rawValue = currentExtra[field.key];
-              const value = Number.isFinite(Number(rawValue))
-                ? String(Math.trunc(Number(rawValue)))
+              const numericValue = Number(rawValue);
+              const value = Number.isFinite(numericValue)
+                ? String(Math.trunc(numericValue))
                 : String(field.defaultValue ?? '');
               return `
                 <div class="extra-field">

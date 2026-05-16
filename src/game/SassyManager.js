@@ -20,16 +20,16 @@ const DEEPSEEK_MODEL     = process.env.DEEPSEEK_MODEL      || 'deepseek-chat';
 const DEEPSEEK_BASE_URL  = process.env.DEEPSEEK_BASE_URL   || 'https://api.deepseek.com';
 const HISTORY_TTL_MS     = parseInt(process.env.HISTORY_TTL_MS     || '86400000', 10); // 24 h
 
-function parseSettingInt(value, fallback, min = 0) {
+function parseIntegerSetting(value, fallback, min = 0) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
 }
 
 const DEFAULT_SASSY_SETTINGS = {
-  maxHistoryTurns:   parseSettingInt(process.env.MAX_HISTORY_TURNS, 20, 1),
-  cooldownMs:        parseSettingInt(process.env.COOLDOWN_MS, 2000, 0),
-  interjectCooldown: parseSettingInt(process.env.INTERJECT_COOLDOWN, 180000, 0),
-  activityWindowMs:  parseSettingInt(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
+  maxHistoryTurns:   parseIntegerSetting(process.env.MAX_HISTORY_TURNS, 20, 1),
+  cooldownMs:        parseIntegerSetting(process.env.COOLDOWN_MS, 2000, 0),
+  interjectCooldown: parseIntegerSetting(process.env.INTERJECT_COOLDOWN, 180000, 0),
+  activityWindowMs:  parseIntegerSetting(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
 };
 
 // How many messages in a channel before refreshing AI-generated channel topic notes.
@@ -291,17 +291,17 @@ class SassyManager {
     }
 
     const extra = row && row.extra && typeof row.extra === 'object' ? row.extra : null;
-    const channelIds = Array.isArray(row?.channelIds) && row.channelIds.length
+    const channelIds = Array.isArray(row?.channelIds) && row.channelIds.length > 0
       ? row.channelIds.map((id) => String(id))
       : null;
 
     return {
       enabled: row?.enabled !== false,
       channelIds,
-      maxHistoryTurns: parseSettingInt(extra?.maxHistoryTurns, DEFAULT_SASSY_SETTINGS.maxHistoryTurns, 1),
-      cooldownMs: parseSettingInt(extra?.cooldownMs, DEFAULT_SASSY_SETTINGS.cooldownMs, 0),
-      interjectCooldown: parseSettingInt(extra?.interjectCooldown, DEFAULT_SASSY_SETTINGS.interjectCooldown, 0),
-      activityWindowMs: parseSettingInt(extra?.activityWindowMs, DEFAULT_SASSY_SETTINGS.activityWindowMs, 1),
+      maxHistoryTurns: parseIntegerSetting(extra?.maxHistoryTurns, DEFAULT_SASSY_SETTINGS.maxHistoryTurns, 1),
+      cooldownMs: parseIntegerSetting(extra?.cooldownMs, DEFAULT_SASSY_SETTINGS.cooldownMs, 0),
+      interjectCooldown: parseIntegerSetting(extra?.interjectCooldown, DEFAULT_SASSY_SETTINGS.interjectCooldown, 0),
+      activityWindowMs: parseIntegerSetting(extra?.activityWindowMs, DEFAULT_SASSY_SETTINGS.activityWindowMs, 1),
     };
   }
 
