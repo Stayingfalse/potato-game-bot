@@ -25,7 +25,7 @@ function normalizeString(value) {
 
 function normalizeId(value) {
   const id = normalizeString(value);
-  return id && /^\d{5,30}$/.test(id) ? id : null;
+  return id && /^\d{17,20}$/.test(id) ? id : null;
 }
 
 function normalizeTemplateList(rawTemplates) {

@@ -28,12 +28,15 @@ function normalizeString(value) {
 
 function normalizeRoleId(value) {
   const id = normalizeString(value);
-  return id && /^\d{5,30}$/.test(id) ? id : null;
+  return id && /^\d{17,20}$/.test(id) ? id : null;
 }
 
 function normalizeEmoji(value) {
   const emoji = normalizeString(value);
-  return emoji && emoji.length <= 20 ? emoji : null;
+  if (!emoji || emoji.length > 40) return null;
+  const looksLikeCustom = /^<a?:\w{2,32}:\d{17,20}>$/.test(emoji);
+  const looksLikeUnicode = /^\p{Extended_Pictographic}[\uFE0F\u200D\p{Extended_Pictographic}]*$/u.test(emoji);
+  return looksLikeCustom || looksLikeUnicode ? emoji : null;
 }
 
 function normalizeRoleOption(raw, index) {
@@ -213,7 +216,8 @@ async function handleRoleMenuButton(interaction) {
     return true;
   }
 
-  if (role.managed || role.id === interaction.guild.id) {
+  const isEveryoneRole = role.id === interaction.guild.id;
+  if (role.managed || isEveryoneRole) {
     await interaction.reply({
       content: 'That role cannot be self-assigned.',
       flags: MessageFlags.Ephemeral,
@@ -229,7 +233,10 @@ async function handleRoleMenuButton(interaction) {
     return true;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  let member = interaction.member && interaction.member.roles?.cache ? interaction.member : null;
+  if (!member) {
+    member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  }
   if (!member) {
     await interaction.reply({
       content: 'Could not resolve your server membership.',

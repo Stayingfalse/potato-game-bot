@@ -507,6 +507,7 @@
   <script>
     // Extract guild ID from URL: /dashboard/guild/<guildId>
     const guildId = location.pathname.split('/').pop();
+    const ROLE_MENU_MAX_OPTIONS = 20;
 
     function escHtml(str) {
       return String(str).replace(/[&<>"']/g, c =>
@@ -666,7 +667,7 @@
       const roleNameById = new Map(roles.map((r) => [String(r.id), r.name]));
 
       const safeRoleOptions = Array.isArray(currentExtra.roleOptions) && currentExtra.roleOptions.length
-        ? currentExtra.roleOptions.slice(0, 20)
+        ? currentExtra.roleOptions.slice(0, ROLE_MENU_MAX_OPTIONS)
         : [];
 
       root.innerHTML = `
@@ -737,7 +738,7 @@
       }
 
       addRoleBtn.addEventListener('click', () => {
-        if (optionsContainer.querySelectorAll('.role-option-row').length >= 20) return;
+        if (optionsContainer.querySelectorAll('.role-option-row').length >= ROLE_MENU_MAX_OPTIONS) return;
         makeRoleRow();
       });
 
@@ -753,7 +754,7 @@
             throw new Error(payload.error || `HTTP ${response.status}`);
           }
           const payload = await response.json().catch(() => ({}));
-          publishFeedback.textContent = `✓ Published in <#${payload.channelId}>`;
+          publishFeedback.textContent = `✓ Published (channel ID: ${payload.channelId})`;
           publishFeedback.className = 'save-feedback ok';
           publishFeedback.style.display = 'inline';
         } catch (err) {
@@ -882,7 +883,7 @@
       const rawCurrent = safeSettings[feat.id];
       const current = rawCurrent && typeof rawCurrent === 'object'
         ? rawCurrent
-        : { enabled: feat.defaultEnabled !== false, channelIds: null };
+        : { enabled: feat.defaultEnabled === true, channelIds: null };
       const safeChannelIds = Array.isArray(current.channelIds) ? current.channelIds : null;
       const currentExtra = current.extra && typeof current.extra === 'object' ? current.extra : {};
       const extraFields = Array.isArray(feat.extraFields) ? feat.extraFields : [];
