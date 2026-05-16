@@ -37,6 +37,10 @@ function normalizeTemplateList(rawTemplates) {
   return cleaned.length ? cleaned : DEFAULT_THEMES;
 }
 
+function normalizeTriggerPhrase(value) {
+  return normalizeString(value) || 'welcome';
+}
+
 function getWelcomeAutomationSettings(guildId) {
   let row = null;
   try {
@@ -48,6 +52,7 @@ function getWelcomeAutomationSettings(guildId) {
   const extra = row && row.extra && typeof row.extra === 'object' ? row.extra : {};
   return {
     enabled: row?.enabled === true,
+    triggerPhrase: normalizeTriggerPhrase(extra.triggerPhrase),
     triggerChannelId: normalizeId(extra.triggerChannelId),
     grantRoleId: normalizeId(extra.grantRoleId),
     roleMenuChannelId: normalizeId(extra.roleMenuChannelId),
@@ -74,11 +79,11 @@ function formatWelcomeMessage(template, userMention, roleMenuChannelId) {
 async function handleWelcomeAutomationMessage(message) {
   if (!message.guild || message.author.bot || message.system) return;
   if (!isAdminMember(message.member)) return;
-  if (!message.content || !/welcome/i.test(message.content)) return;
-  if (!message.mentions?.members?.size) return;
-
   const config = getWelcomeAutomationSettings(message.guild.id);
   if (!config.enabled) return;
+  const lowerContent = String(message.content || '').toLowerCase();
+  if (!lowerContent.includes(config.triggerPhrase.toLowerCase())) return;
+  if (!message.mentions?.members?.size) return;
   if (!config.triggerChannelId || !config.grantRoleId) return;
   if (message.channelId !== config.triggerChannelId) return;
 

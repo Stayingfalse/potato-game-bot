@@ -816,6 +816,11 @@
       root.innerHTML = `
         <div class="wizard-settings-title">Setup wizard</div>
         <div class="wizard-field">
+          <label for="wizard-${feat.id}-trigger-phrase">Trigger phrase</label>
+          <input id="wizard-${feat.id}-trigger-phrase" type="text" value="${escHtml(currentExtra.triggerPhrase || 'welcome')}" />
+          <div class="wizard-hint">Automation runs when an admin message contains this phrase and mentions a member.</div>
+        </div>
+        <div class="wizard-field">
           <label for="wizard-${feat.id}-trigger-channel">Introduce-yourself channel</label>
           <select id="wizard-${feat.id}-trigger-channel">
             ${buildSelectOptionsHtml(channels, currentExtra.triggerChannelId, 'Select a channel')}
@@ -842,6 +847,7 @@
 
       return {
         getExtra(isEnabled) {
+          const triggerPhrase = root.querySelector(`#wizard-${feat.id}-trigger-phrase`)?.value?.trim() || 'welcome';
           const triggerChannelId = root.querySelector(`#wizard-${feat.id}-trigger-channel`)?.value?.trim() || null;
           const grantRoleId = root.querySelector(`#wizard-${feat.id}-grant-role`)?.value?.trim() || null;
           const roleMenuChannelId = root.querySelector(`#wizard-${feat.id}-roles-channel`)?.value?.trim() || null;
@@ -849,6 +855,7 @@
           const templates = rawTemplates.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 30);
 
           if (isEnabled) {
+            if (!triggerPhrase) return { ok: false, message: 'Trigger phrase is required.' };
             if (!triggerChannelId) return { ok: false, message: 'Introduce-yourself channel is required.' };
             if (!grantRoleId) return { ok: false, message: 'Welcome/base role is required.' };
           }
@@ -856,6 +863,7 @@
           return {
             ok: true,
             extra: {
+              triggerPhrase,
               triggerChannelId,
               grantRoleId,
               roleMenuChannelId,
@@ -1027,8 +1035,8 @@
         if (wizardState) {
           const wizardResult = wizardState.getExtra(isEnabled);
           if (!wizardResult.ok) {
-            feedback.textContent   = `✗ ${wizardResult.message}`;
-            feedback.className     = 'save-feedback err';
+            feedback.textContent = `✗ ${wizardResult.message}`;
+            feedback.className = 'save-feedback err';
             feedback.style.display = 'inline';
             btn.disabled = false;
             return;
