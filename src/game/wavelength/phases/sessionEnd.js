@@ -32,12 +32,35 @@ async function runEndSequence(game, client, scores) {
 
   if (!thread) return;
 
-  // ── Post session summary + rematch controls ────────────────────────────────
+  // ── Post session summary ───────────────────────────────────────────────────
   const goal = evaluateSessionGoal(game);
-  await thread.send({
-    embeds: [buildSessionSummaryEmbed(game)],
-    components: buildRematchComponents(goal.complete),
-  }).catch(() => {});
+
+  if (game.autoAdvanceRounds && !goal.complete) {
+    // Auto-advance: post summary + advance indicator, then start next round automatically.
+    await thread.send({
+      embeds: [buildSessionSummaryEmbed(game)],
+      components: buildAutoAdvanceControls(game),
+    }).catch(() => {});
+
+    await thread.send({
+      content: '🔄 **Auto-advance is ON** — starting next round in 5 seconds…',
+    }).catch(() => {});
+
+    game.autoAdvanceTimeout = setTimeout(async () => {
+      game.autoAdvanceTimeout = null;
+      if (game.phase !== 'ended') return;
+      const { startConfiguredRound } = require('../interactionHandler');
+      const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
+      if (!resetGame) return;
+      await startConfiguredRound(resetGame, client);
+    }, 5_000);
+  } else {
+    // Manual advance: post summary + rematch controls.
+    await thread.send({
+      embeds: [buildSessionSummaryEmbed(game)],
+      components: buildRematchComponents(goal.complete, game),
+    }).catch(() => {});
+  }
 }
 
 /**
@@ -81,8 +104,12 @@ function buildSessionSummaryEmbed(game) {
 
 /**
  * Rematch / Close buttons (only the host can use them).
+ * Includes an auto-advance toggle button.
+ * @param {boolean} disableNextRound
+ * @param {object} [game]  If provided, shows the current auto-advance state on the toggle.
  */
-function buildRematchComponents(disableNextRound = false) {
+function buildRematchComponents(disableNextRound = false, game = null) {
+  const autoAdv = game?.autoAdvanceRounds ?? false;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('wl_rematch_same')
@@ -95,6 +122,30 @@ function buildRematchComponents(disableNextRound = false) {
       .setLabel('New Game (Open Signups)')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('📋'),
+    new ButtonBuilder()
+      .setCustomId('wl_toggle_autoadvance')
+      .setLabel(autoAdv ? '✅ Auto-advance: ON' : '❌ Auto-advance: OFF')
+      .setStyle(autoAdv ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('wl_close_session')
+      .setLabel('End Game & Close Session')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🔒'),
+  );
+  return [row];
+}
+
+/**
+ * Controls shown during auto-advance countdown — allows host to toggle auto-advance off.
+ * @param {object} game
+ */
+function buildAutoAdvanceControls(game) {
+  const autoAdv = game?.autoAdvanceRounds ?? true;
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('wl_toggle_autoadvance')
+      .setLabel(autoAdv ? '✅ Auto-advance: ON' : '❌ Auto-advance: OFF')
+      .setStyle(autoAdv ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('wl_close_session')
       .setLabel('End Game & Close Session')
@@ -183,6 +234,7 @@ module.exports = {
   runEndSequence,
   buildSessionSummaryEmbed,
   buildRematchComponents,
+  buildAutoAdvanceControls,
   computeSessionTotals,
   evaluateSessionGoal,
 };

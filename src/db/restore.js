@@ -214,6 +214,8 @@ async function restoreWavelength(client, WavelengthRepository) {
   const {
     buildSessionModePromptEmbed,
     buildSessionModePromptComponents,
+    buildGameOptionsEmbed,
+    buildGameOptionsComponents,
   } = require('../game/wavelength/phases/sessionConfig');
 
   for (const row of rows) {
@@ -244,12 +246,15 @@ async function restoreWavelength(client, WavelengthRepository) {
       clue:            row.clue,
       guesses,
       guessTimeout:    null,
+      autoAdvanceTimeout: null,
       sessionMode:     row.session_mode ? JSON.parse(row.session_mode) : null,
       clueOrderState:  row.clue_order_state
         ? JSON.parse(row.clue_order_state)
         : { roundRobinIndex: 0, snakeIndex: 0, snakeDirection: 1, clueTurnsByPlayer: {} },
       gameNumber:      row.game_number,
       sessionHistory:  [],
+      gamePace:        row.game_pace ?? 'realtime',
+      autoAdvanceRounds: row.auto_advance_rounds === 1,
       _createdAt:      row.created_at,
     };
 
@@ -272,11 +277,20 @@ async function restoreWavelength(client, WavelengthRepository) {
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume Wavelength game…' }).catch(() => {});
 
     if (row.phase === 'setup') {
-      await thread.send({
-        content: `⚙️ <@${game.hostId}> choose a session mode to resume this game.`,
-        embeds: [buildSessionModePromptEmbed(game)],
-        components: buildSessionModePromptComponents(),
-      }).catch(() => {});
+      if (game.sessionMode) {
+        // Session mode was already set — re-show the game options prompt.
+        await thread.send({
+          content: `⚙️ <@${game.hostId}> — configure game options before resuming Round ${game.gameNumber}.`,
+          embeds: [buildGameOptionsEmbed(game)],
+          components: buildGameOptionsComponents(game),
+        }).catch(() => {});
+      } else {
+        await thread.send({
+          content: `⚙️ <@${game.hostId}> choose a session mode to resume this game.`,
+          embeds: [buildSessionModePromptEmbed(game)],
+          components: buildSessionModePromptComponents(),
+        }).catch(() => {});
+      }
     } else if (row.phase === 'cluing') {
       // Re-post the "Open Clue Giver Panel" button.
       await thread.send({
@@ -298,20 +312,22 @@ async function restoreWavelength(client, WavelengthRepository) {
         components: buildGuessPromptComponents(),
       }).catch(() => {});
 
-      // Restart 3-minute auto-submit fallback.
-      game.guessTimeout = setTimeout(async () => {
-        if (game.phase !== 'guessing') return;
-        for (const [, g] of game.guesses) g.submitted = true;
-        const t = await client.channels.fetch(game.threadId).catch(() => null);
-        if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
-        await startRevealPhase(game, client);
-      }, 3 * 60 * 1_000);
+      // Restart auto-submit fallback only for realtime mode.
+      if (game.gamePace !== 'turnbased') {
+        game.guessTimeout = setTimeout(async () => {
+          if (game.phase !== 'guessing') return;
+          for (const [, g] of game.guesses) g.submitted = true;
+          const t = await client.channels.fetch(game.threadId).catch(() => null);
+          if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
+          await startRevealPhase(game, client);
+        }, 3 * 60 * 1_000);
+      }
     } else if (row.phase === 'reveal') {
       // Reveal already posted before crash — just re-post rematch buttons.
       const { buildRematchComponents } = require('../game/wavelength/phases/sessionEnd');
       await thread.send({
         content: '🔄 Bot restarted. You can still start a rematch or close the session:',
-        components: buildRematchComponents(),
+        components: buildRematchComponents(false, game),
       }).catch(() => {});
     }
   }

@@ -28,7 +28,7 @@ const {
 
 const { buildNudgeComponents, buildGuessPromptComponents } = require('./phases/guessing');
 const { startRevealPhase } = require('./phases/reveal');
-const { buildSessionSummaryEmbed, evaluateSessionGoal } = require('./phases/sessionEnd');
+const { buildSessionSummaryEmbed, buildRematchComponents, evaluateSessionGoal } = require('./phases/sessionEnd');
 const {
   DEFAULT_SESSION_MODE,
   formatClueOrder,
@@ -36,6 +36,8 @@ const {
   buildSessionModePromptComponents,
   buildSnakePointsComponents,
   buildEndlessClueOrderComponents,
+  buildGameOptionsEmbed,
+  buildGameOptionsComponents,
 } = require('./phases/sessionConfig');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const WavelengthRepository = require('../../db/WavelengthRepository');
@@ -80,7 +82,14 @@ async function startConfiguredRound(game, client) {
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return false;
 
-  await thread.send({ content: `🔄 **Round ${game.gameNumber} starting!**`, embeds: [buildGameThreadEmbed(game)] }).catch(() => {});
+  const paceLine = game.gamePace === 'turnbased'
+    ? '🐢 **Turn-based mode** — there\'s no time limit. All guessers will be pinged when it\'s time to guess.'
+    : '⚡ **Realtime mode** — guessers have **3 minutes** to submit before auto-lock.';
+
+  await thread.send({
+    content: `🔄 **Round ${game.gameNumber} starting!** ${paceLine}`,
+    embeds: [buildGameThreadEmbed(game)],
+  }).catch(() => {});
 
   const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
   if (boardMsg) {
@@ -101,6 +110,21 @@ async function startConfiguredRound(game, client) {
   }).catch(() => {});
 
   return true;
+}
+
+/**
+ * Post the game-options configuration prompt in the thread.
+ * Called after session mode is confirmed; the host picks pace + auto-advance then clicks Confirm.
+ */
+async function promptGameOptions(game, client) {
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
+
+  await thread.send({
+    content: `⚙️ <@${game.hostId}> — configure game options before Round ${game.gameNumber} starts:`,
+    embeds: [buildGameOptionsEmbed(game)],
+    components: buildGameOptionsComponents(game),
+  }).catch(() => {});
 }
 
 /**
@@ -135,10 +159,10 @@ async function handleWavelengthInteraction(interaction, client) {
       targetClueTurns: times,
     });
     await interaction.reply({
-      content: `✅ Session mode set: **Round Robin**, everyone clues **${times}** time(s). Starting Round 1…`,
+      content: `✅ Session mode set: **Round Robin**, everyone clues **${times}** time(s). Now choose game options…`,
       flags: MessageFlags.Ephemeral,
     });
-    await startConfiguredRound(game, client);
+    await promptGameOptions(game, client);
     return;
   }
 
@@ -170,22 +194,39 @@ async function handleWavelengthInteraction(interaction, client) {
           await bMsg.edit({ embeds: [buildPublicClueEmbed(game)], components: [] }).catch(() => {});
         }
       }
-      await thread.send({
-        content: `💬 **${game.players.get(game.clueGiverId)?.username ?? 'The Clue Giver'}** plays: **"${game.clue}"**`,
-        components: buildGuessPromptComponents(),
-      }).catch(() => {});
-    }
 
-    // 3-minute auto-submit fallback: anyone who hasn't submitted gets locked at current position.
-    game.guessTimeout = setTimeout(async () => {
-      if (game.phase !== 'guessing') return;
-      for (const [, g] of game.guesses) {
-        g.submitted = true;
+      // Build guesser mention list.
+      const pendingMentions = [...game.guesses.keys()]
+        .filter(id => !game.guesses.get(id).submitted)
+        .map(id => `<@${id}>`)
+        .join(' ');
+
+      if (game.gamePace === 'turnbased') {
+        // Turn-based: no timer — ping guessers so they know it's their turn.
+        await thread.send({
+          content:
+            `💬 **${game.players.get(game.clueGiverId)?.username ?? 'The Clue Giver'}** plays: **"${game.clue}"**\n\n` +
+            `📣 ${pendingMentions} — it's your turn to guess! Open your panel below (no time limit).`,
+          components: buildGuessPromptComponents(),
+        }).catch(() => {});
+      } else {
+        // Realtime: post prompt and set 3-minute auto-submit timer.
+        await thread.send({
+          content: `💬 **${game.players.get(game.clueGiverId)?.username ?? 'The Clue Giver'}** plays: **"${game.clue}"**`,
+          components: buildGuessPromptComponents(),
+        }).catch(() => {});
+
+        game.guessTimeout = setTimeout(async () => {
+          if (game.phase !== 'guessing') return;
+          for (const [, g] of game.guesses) {
+            g.submitted = true;
+          }
+          const t = await client.channels.fetch(game.threadId).catch(() => null);
+          if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
+          await startRevealPhase(game, client);
+        }, 3 * 60 * 1_000);
       }
-      const t = await client.channels.fetch(game.threadId).catch(() => null);
-      if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
-      await startRevealPhase(game, client);
-    }, 3 * 60 * 1_000);
+    }
 
     return;
   }
@@ -360,8 +401,8 @@ async function handleWavelengthInteraction(interaction, client) {
       clueOrder: 'snake',
       targetPoints,
     });
-    await interaction.update({ content: `✅ Session mode set: **Snake Draft**, first to **${targetPoints}** points. Starting Round 1…`, components: [] });
-    await startConfiguredRound(game, client);
+    await interaction.update({ content: `✅ Session mode set: **Snake Draft**, first to **${targetPoints}** points. Now choose game options…`, components: [] });
+    await promptGameOptions(game, client);
     return;
   }
 
@@ -397,7 +438,77 @@ async function handleWavelengthInteraction(interaction, client) {
       clueOrder,
     });
     await interaction.update({
-      content: `✅ Session mode set: **Endless** with **${formatClueOrder(clueOrder)}**. Starting Round 1…`,
+      content: `✅ Session mode set: **Endless** with **${formatClueOrder(clueOrder)}**. Now choose game options…`,
+      components: [],
+    });
+    await promptGameOptions(game, client);
+    return;
+  }
+
+  // ── wl_pace_realtime — host selects realtime mode ────────────────────────
+  if (customId === 'wl_pace_realtime') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure game options.', flags: MessageFlags.Ephemeral });
+    }
+    client.wavelengthManager.setGameOptions(game.threadId, 'realtime', game.autoAdvanceRounds ?? false);
+    return interaction.update({
+      embeds: [buildGameOptionsEmbed(game)],
+      components: buildGameOptionsComponents(game),
+    });
+  }
+
+  // ── wl_pace_turnbased — host selects turn-based mode ─────────────────────
+  if (customId === 'wl_pace_turnbased') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can configure game options.', flags: MessageFlags.Ephemeral });
+    }
+    client.wavelengthManager.setGameOptions(game.threadId, 'turnbased', game.autoAdvanceRounds ?? false);
+    return interaction.update({
+      embeds: [buildGameOptionsEmbed(game)],
+      components: buildGameOptionsComponents(game),
+    });
+  }
+
+  // ── wl_toggle_autoadvance — toggle auto-advance rounds ───────────────────
+  if (customId === 'wl_toggle_autoadvance') {
+    if (!game) {
+      return interaction.reply({ content: 'No active game found.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can toggle auto-advance.', flags: MessageFlags.Ephemeral });
+    }
+    const newVal = client.wavelengthManager.toggleAutoAdvance(game.threadId);
+    if (game.phase === 'setup') {
+      // In setup: update the game options embed in-place.
+      return interaction.update({
+        embeds: [buildGameOptionsEmbed(game)],
+        components: buildGameOptionsComponents(game),
+      });
+    }
+    // In-game toggle: just acknowledge.
+    return interaction.reply({
+      content: `🔄 **Auto-advance rounds** is now **${newVal ? 'ON ✅' : 'OFF ❌'}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  // ── wl_confirm_options — host confirms game options, start first round ────
+  if (customId === 'wl_confirm_options') {
+    if (!game || game.phase !== 'setup') {
+      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can start the round.', flags: MessageFlags.Ephemeral });
+    }
+    await interaction.update({
+      content: '✅ Game options confirmed! Starting Round 1…',
+      embeds: [],
       components: [],
     });
     await startConfiguredRound(game, client);
@@ -629,6 +740,12 @@ async function handleWavelengthInteraction(interaction, client) {
       });
     }
 
+    // Cancel any pending auto-advance timer (host is manually advancing).
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
+    }
+
     await interaction.deferUpdate();
 
     const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
@@ -646,6 +763,12 @@ async function handleWavelengthInteraction(interaction, client) {
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
+    }
+
+    // Cancel any pending auto-advance timer.
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
     }
 
     await interaction.deferUpdate();
@@ -678,6 +801,12 @@ async function handleWavelengthInteraction(interaction, client) {
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+    }
+
+    // Cancel any pending auto-advance timer.
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
     }
 
     await interaction.deferUpdate();
@@ -715,4 +844,4 @@ async function handleWavelengthInteraction(interaction, client) {
   }
 }
 
-module.exports = { handleWavelengthInteraction };
+module.exports = { handleWavelengthInteraction, startConfiguredRound };
