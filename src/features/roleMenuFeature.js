@@ -432,8 +432,12 @@ async function handleRoleMenuButton(interaction) {
         const otherRoleIds = menuConfig.roleOptions
           .map((option) => option.roleId)
           .filter((candidateId) => candidateId !== role.id && member.roles.cache.has(candidateId));
-        for (const otherRoleId of otherRoleIds) {
-          const otherRole = await interaction.guild.roles.fetch(otherRoleId).catch(() => null);
+        const otherRoles = await Promise.all(otherRoleIds.map(async (otherRoleId) => {
+          const cached = interaction.guild.roles.cache.get(otherRoleId);
+          if (cached) return cached;
+          return interaction.guild.roles.fetch(otherRoleId).catch(() => null);
+        }));
+        for (const otherRole of otherRoles) {
           if (!otherRole) continue;
           const otherIsEveryone = otherRole.id === interaction.guild.id;
           if (otherRole.managed || otherIsEveryone) continue;

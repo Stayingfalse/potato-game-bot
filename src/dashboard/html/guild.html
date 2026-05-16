@@ -781,7 +781,7 @@
         const opts = ['<option value="">Create new menu</option>']
           .concat(publishedMenus.map((menu) => {
             const channelName = channels.find((c) => String(c.id) === String(menu.menuChannelId))?.name || menu.menuChannelId || 'unknown channel';
-            const label = `${menu.title || 'Role Menu'} • #${channelName} • ${menu.messageId || 'draft'}`;
+            const label = `${menu.title || 'Role Menu'} in #${channelName} (${menu.messageId ? 'published' : 'draft'})`;
             const selected = String(menu.menuId || '') === String(selectedMenuId || '') ? 'selected' : '';
             return `<option value="${escHtml(menu.menuId || '')}" ${selected}>${escHtml(label)}</option>`;
           }));

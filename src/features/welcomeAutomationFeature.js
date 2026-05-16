@@ -131,7 +131,7 @@ function ensureRoleGrantWelcomeRequirements(text, userMention, roleMenuChannelId
   if (!next.includes(userMention)) {
     next = `${userMention} ${next}`;
   }
-  next = next.replace(/<@&\d{17,20}>/g, 'your base access role');
+  next = next.replace(/<@&\d+>/g, 'your base access role');
   if (!/role/i.test(next)) {
     next = `${next} Your base access role is now active.`;
   }
