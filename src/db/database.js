@@ -202,6 +202,12 @@ if (!wlColumns.has('session_mode')) {
 if (!wlColumns.has('clue_order_state')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
 }
+if (!wlColumns.has('game_pace')) {
+  db.exec("ALTER TABLE wavelength_games ADD COLUMN game_pace TEXT NOT NULL DEFAULT 'realtime'");
+}
+if (!wlColumns.has('auto_advance_rounds')) {
+  db.exec('ALTER TABLE wavelength_games ADD COLUMN auto_advance_rounds INTEGER NOT NULL DEFAULT 0');
+}
 
 const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
 if (!wwColumns.has('session_mode')) {

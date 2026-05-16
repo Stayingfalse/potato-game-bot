@@ -33,10 +33,13 @@ class WavelengthGameState {
     // Guessers start at position 50 and nudge before submitting.
     this.guesses = new Map();
 
-    this.guessTimeout   = null;       // setTimeout handle for auto-submit fallback
+    this.guessTimeout        = null;   // setTimeout handle for auto-submit fallback (realtime only)
+    this.autoAdvanceTimeout  = null;   // setTimeout handle for auto-advance between rounds
     this.gameNumber     = 1;          // Round counter within this session.
     this.sessionHistory = [];         // Array of { roundNumber, clueGiverId, target, clue, spectrum, guesses, scores }
     this.sessionMode    = null;       // { type, clueOrder, targetClueTurns?, targetPoints? }
+    this.gamePace       = 'realtime'; // 'realtime' | 'turnbased'
+    this.autoAdvanceRounds = false;   // When true, next round starts automatically after reveal
     this.clueOrderState = {
       roundRobinIndex:   0,
       snakeIndex:        0,
@@ -82,6 +85,10 @@ class WavelengthManager {
       clearTimeout(game.guessTimeout);
       game.guessTimeout = null;
     }
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
+    }
     WavelengthRepository.remove(threadId);
     this.games.delete(threadId);
   }
@@ -98,6 +105,10 @@ class WavelengthManager {
     if (game.guessTimeout) {
       clearTimeout(game.guessTimeout);
       game.guessTimeout = null;
+    }
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
     }
 
     game.gameNumber++;
@@ -127,6 +138,10 @@ class WavelengthManager {
       clearTimeout(game.guessTimeout);
       game.guessTimeout = null;
     }
+    if (game.autoAdvanceTimeout) {
+      clearTimeout(game.autoAdvanceTimeout);
+      game.autoAdvanceTimeout = null;
+    }
 
     game.gameNumber      = 1;
     game.boardMessageId  = null;
@@ -139,6 +154,8 @@ class WavelengthManager {
     game.guesses         = new Map();
     game.sessionHistory  = [];
     game.sessionMode     = null;
+    game.gamePace        = 'realtime';
+    game.autoAdvanceRounds = false;
     game.clueOrderState  = {
       roundRobinIndex:   0,
       snakeIndex:        0,
@@ -148,6 +165,25 @@ class WavelengthManager {
 
     WavelengthRepository.upsert(game);
     return game;
+  }
+
+  /** Set game-pace and auto-advance options. */
+  setGameOptions(threadId, gamePace, autoAdvanceRounds) {
+    const game = this.games.get(threadId);
+    if (!game) return null;
+    game.gamePace = gamePace;
+    game.autoAdvanceRounds = autoAdvanceRounds;
+    WavelengthRepository.upsert(game);
+    return game;
+  }
+
+  /** Toggle the auto-advance-rounds flag. Returns the new value. */
+  toggleAutoAdvance(threadId) {
+    const game = this.games.get(threadId);
+    if (!game) return null;
+    game.autoAdvanceRounds = !game.autoAdvanceRounds;
+    WavelengthRepository.upsert(game);
+    return game.autoAdvanceRounds;
   }
 
   setSessionMode(threadId, sessionMode) {
