@@ -378,7 +378,7 @@
     });
 
     function dbgNow() {
-      return new Date().toISOString().replace('T', ' ').replace('Z', '');
+      return new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
     }
 
     function dbgAppend(cls, text) {
@@ -613,7 +613,7 @@
           dbg.sep();
         }
       } catch (err) {
-        if (isSuperAdmin) dbg.error(`/api/me failed: ${err.message}`);
+        /* /api/me failed — we can't confirm super-admin status, debug panel stays hidden */
       }
 
       // Use debug-aware fetch for super-admins, plain fetch otherwise
