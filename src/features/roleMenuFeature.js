@@ -287,14 +287,14 @@ async function publishRoleMenuMessage(client, guildId, options = null) {
     roleMenus: nextRoleMenus.map((menu) => ({
       menuId: menu.menuId,
       messageId: menu.messageId,
-        menuChannelId: menu.menuChannelId,
-        title: menu.title,
-        description: menu.description,
-        singleSelect: !!menu.singleSelect,
-        roleOptions: menu.roleOptions.map((option) => ({
-          roleId: option.roleId,
-          label: option.label,
-          emoji: option.emoji,
+      menuChannelId: menu.menuChannelId,
+      title: menu.title,
+      description: menu.description,
+      singleSelect: !!menu.singleSelect,
+      roleOptions: menu.roleOptions.map((option) => ({
+        roleId: option.roleId,
+        label: option.label,
+        emoji: option.emoji,
         style: Object.keys(BUTTON_STYLE_MAP).find((key) => BUTTON_STYLE_MAP[key] === option.style) || 'secondary',
       })),
     })),
@@ -434,7 +434,9 @@ async function handleRoleMenuButton(interaction) {
           .filter((candidateId) => candidateId !== role.id && member.roles.cache.has(candidateId));
         const missingRoleIds = otherRoleIds.filter((otherRoleId) => !interaction.guild.roles.cache.has(otherRoleId));
         if (missingRoleIds.length) {
-          await interaction.guild.roles.fetch().catch(() => null);
+          await Promise.all(
+            missingRoleIds.map((otherRoleId) => interaction.guild.roles.fetch(otherRoleId).catch(() => null)),
+          );
         }
         const otherRoles = otherRoleIds
           .map((otherRoleId) => interaction.guild.roles.cache.get(otherRoleId) || null)

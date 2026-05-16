@@ -848,8 +848,13 @@
           }
           const responsePayload = await response.json().catch(() => ({}));
           if (Array.isArray(responsePayload.roleMenus)) {
+            const publishedMenuId = responsePayload.menuId || selectedMenuId || '';
             publishedMenus = responsePayload.roleMenus;
-            renderPublishedMenuOptions(responsePayload.menuId || selectedMenuId || '');
+            renderPublishedMenuOptions(publishedMenuId);
+            const publishedMenu = responsePayload.roleMenus.find((menu) => menu?.menuId === publishedMenuId);
+            if (publishedMenu) {
+              loadMenuIntoEditor(publishedMenu);
+            }
           }
           publishFeedback.textContent = `✓ Published (channel ID: ${responsePayload.channelId})`;
           publishFeedback.className = 'save-feedback ok';

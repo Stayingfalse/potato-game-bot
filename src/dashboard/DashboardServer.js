@@ -357,7 +357,11 @@ class DashboardServer {
       const rawBody = await this._readBody(req);
       let payload = null;
       if (rawBody) {
-        payload = JSON.parse(rawBody);
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          throw Object.assign(new Error('Invalid JSON payload'), { status: 400 });
+        }
       }
       const publishOptions = payload && typeof payload === 'object' && !Array.isArray(payload)
         ? payload
