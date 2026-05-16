@@ -86,7 +86,7 @@ class DashboardServer {
     this._baseUrl      = (process.env.DASHBOARD_URL || `http://localhost:${this._port}`).replace(/\/$/, '');
     this._redirectUri  = `${this._baseUrl}/dashboard/callback`;
     if (!this._clientId || !this._clientSecret) {
-      console.warn('[Dashboard] CLIENT_ID / client secret env vars are incomplete. OAuth callback will fail until both are set.');
+      console.warn('[Dashboard] OAuth client credentials are incomplete. OAuth callback will fail until both client ID and client secret are set.');
     }
 
     const superAdminRaw = process.env.SUPER_ADMIN_IDS || '';
@@ -466,8 +466,8 @@ class DashboardServer {
           if (httpStatus >= 400) {
             console.error('[Dashboard] Discord token exchange failed:', {
               status: httpStatus,
-              error: parsed.error,
-              error_description: parsed.error_description,
+              error: parsed?.error ?? null,
+              error_description: parsed?.error_description ?? null,
             });
           }
           resolve(parsed);
