@@ -86,7 +86,7 @@ class DashboardServer {
     this._baseUrl      = (process.env.DASHBOARD_URL || `http://localhost:${this._port}`).replace(/\/$/, '');
     this._redirectUri  = `${this._baseUrl}/dashboard/callback`;
     if (!this._clientId || !this._clientSecret) {
-      console.warn('[Dashboard] OAuth client credentials are incomplete. OAuth callback will fail until both client ID and client secret are set.');
+      console.warn('[Dashboard] OAuth client credentials are incomplete. Set DISCORD_CLIENT_ID (or CLIENT_ID) and DISCORD_CLIENT_SECRET (or CLIENT_SECRET) before using dashboard OAuth.');
     }
 
     const superAdminRaw = process.env.SUPER_ADMIN_IDS || '';
@@ -307,7 +307,7 @@ class DashboardServer {
     const tokenData = await this._discordTokenExchange(code);
     if (!tokenData.access_token) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end('OAuth token exchange failed. Check dashboard CLIENT_ID and client secret environment variables.');
+      res.end('OAuth token exchange failed. Verify DISCORD_CLIENT_ID/CLIENT_ID and DISCORD_CLIENT_SECRET/CLIENT_SECRET are configured.');
       return;
     }
 
