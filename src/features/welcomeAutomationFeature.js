@@ -16,6 +16,7 @@ const WELCOME_AI_SYSTEM_PROMPT = [
 
 const DEFAULT_JOIN_PROMPT_GUIDANCE = 'Ask them to introduce themselves in the introduce channel, keep it friendly and short.';
 const DEFAULT_ROLE_GRANT_PROMPT_GUIDANCE = 'Tell them their base role was granted and direct them to the roles channel to pick game roles.';
+const ROLE_MENTION_REPLACEMENT = 'your base access role';
 
 const DEFAULT_THEMES = [
   'Pull up a chair at the table, %s! We\'ve set up the board for you.',
@@ -137,9 +138,9 @@ function ensureRoleGrantWelcomeRequirements(text, userMention, roleMenuChannelId
   }
   if (baseRoleId) {
     const roleMentionPattern = new RegExp(`<@&${escapeRoleIdForRegex(baseRoleId)}>`, 'g');
-    next = next.replace(roleMentionPattern, 'your base access role');
+    next = next.replace(roleMentionPattern, ROLE_MENTION_REPLACEMENT);
   }
-  next = next.replace(/<@&\d+>/g, 'your base access role');
+  next = next.replace(/<@&\d+>/g, ROLE_MENTION_REPLACEMENT);
   if (!/role/i.test(next)) {
     next = `${next} Your base access role is now active.`;
   }
