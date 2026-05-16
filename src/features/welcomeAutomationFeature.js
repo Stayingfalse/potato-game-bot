@@ -69,6 +69,10 @@ function normalizePromptGuidance(value, fallback) {
   return normalized.slice(0, 600);
 }
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getWelcomeAutomationSettings(guildId) {
   let row = null;
   try {
@@ -125,13 +129,16 @@ function ensureJoinWelcomeRequirements(text, userMention, introduceChannelId) {
     .trim();
 }
 
-function ensureRoleGrantWelcomeRequirements(text, userMention, roleMenuChannelId) {
+function ensureRoleGrantWelcomeRequirements(text, userMention, roleMenuChannelId, baseRoleId = null) {
   let next = String(text || '').trim();
   if (!next) return '';
   if (!next.includes(userMention)) {
     next = `${userMention} ${next}`;
   }
-  next = next.replace(/<@&\d+>/g, 'your base access role');
+  if (baseRoleId) {
+    const roleMentionPattern = new RegExp(`<@&${escapeRegExp(baseRoleId)}>`, 'g');
+    next = next.replace(roleMentionPattern, 'your base access role');
+  }
   if (!/role/i.test(next)) {
     next = `${next} Your base access role is now active.`;
   }
@@ -148,6 +155,7 @@ async function buildWelcomeMessage({
   userMention,
   introduceChannelId,
   roleMenuChannelId,
+  baseRoleId,
   mode,
   joinPromptGuidance,
   roleGrantPromptGuidance,
@@ -189,7 +197,7 @@ async function buildWelcomeMessage({
       const aiText = await sassyManager.generateWelcomeMessage(prompt, WELCOME_AI_SYSTEM_PROMPT);
       const enforced = mode === 'join'
         ? ensureJoinWelcomeRequirements(aiText, userMention, introduceChannelId)
-        : ensureRoleGrantWelcomeRequirements(aiText, userMention, roleMenuChannelId);
+        : ensureRoleGrantWelcomeRequirements(aiText, userMention, roleMenuChannelId, baseRoleId);
       if (enforced) return enforced;
     } catch (err) {
       console.error('[WelcomeAutomation] AI welcome generation failed:', err.message);
@@ -200,7 +208,12 @@ async function buildWelcomeMessage({
   if (mode === 'join') {
     return ensureJoinWelcomeRequirements(formatWelcomeMessage(template, userMention, null), userMention, introduceChannelId);
   }
-  return ensureRoleGrantWelcomeRequirements(formatWelcomeMessage(template, userMention, roleMenuChannelId), userMention, roleMenuChannelId);
+  return ensureRoleGrantWelcomeRequirements(
+    formatWelcomeMessage(template, userMention, roleMenuChannelId),
+    userMention,
+    roleMenuChannelId,
+    baseRoleId,
+  );
 }
 
 async function handleWelcomeAutomationMessage(message, client = null) {
@@ -240,6 +253,7 @@ async function handleWelcomeAutomationMessage(message, client = null) {
     userMention: targetMember.toString(),
     introduceChannelId: config.triggerChannelId,
     roleMenuChannelId: config.roleMenuChannelId,
+    baseRoleId: role.id,
     mode: 'manual',
     joinPromptGuidance: config.joinPromptGuidance,
     roleGrantPromptGuidance: config.roleGrantPromptGuidance,
