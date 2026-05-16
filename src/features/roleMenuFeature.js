@@ -440,7 +440,6 @@ async function handleRoleMenuButton(interaction) {
           .map((otherRoleId) => interaction.guild.roles.cache.get(otherRoleId) || null)
           .filter(Boolean);
         for (const otherRole of otherRoles) {
-          if (!otherRole) continue;
           const otherIsEveryone = otherRole.id === interaction.guild.id;
           if (otherRole.managed || otherIsEveryone) continue;
           if (me.roles.highest.comparePositionTo(otherRole) <= 0) {

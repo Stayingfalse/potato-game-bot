@@ -825,6 +825,9 @@
         publishFeedback.style.display = 'none';
         try {
           const roleOptions = getRoleOptionsFromEditor();
+          if (!roleOptions.length) {
+            throw new Error('Add at least one role option.');
+          }
           const selectedMenuId = existingMenuSelect.value || null;
           const requestPayload = {
             menuId: selectedMenuId,

@@ -69,7 +69,7 @@ function normalizePromptGuidance(value, fallback) {
   return normalized.slice(0, 600);
 }
 
-function escapeRegExp(value) {
+function escapeRoleIdForRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -136,7 +136,7 @@ function ensureRoleGrantWelcomeRequirements(text, userMention, roleMenuChannelId
     next = `${userMention} ${next}`;
   }
   if (baseRoleId) {
-    const roleMentionPattern = new RegExp(`<@&${escapeRegExp(baseRoleId)}>`, 'g');
+    const roleMentionPattern = new RegExp(`<@&${escapeRoleIdForRegex(baseRoleId)}>`, 'g');
     next = next.replace(roleMentionPattern, 'your base access role');
   }
   if (!/role/i.test(next)) {
