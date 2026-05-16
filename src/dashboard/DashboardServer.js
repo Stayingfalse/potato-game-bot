@@ -47,7 +47,7 @@ function parseIntWithFallback(value, fallback, min = 1) {
 const DEFAULT_SASSY_OVERRIDES = {
   maxHistoryTurns:  parseIntWithFallback(process.env.MAX_HISTORY_TURNS, 20),
   cooldownMs:       parseIntWithFallback(process.env.COOLDOWN_MS, 2000, 0),
-  interjectCooldown:parseIntWithFallback(process.env.INTERJECT_COOLDOWN, 180000, 0),
+  interjectCooldown: parseIntWithFallback(process.env.INTERJECT_COOLDOWN, 180000, 0),
   activityWindowMs: parseIntWithFallback(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
 };
 

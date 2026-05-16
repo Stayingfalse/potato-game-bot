@@ -486,6 +486,7 @@
         const trimmed = String(rawValue || '').trim();
         if (!trimmed) return { ok: true, added: false };
 
+        // Accept raw IDs, "#123...", and Discord channel mention format "<#123...>".
         const match = trimmed.match(/^<#?(\d+)>?$|^#?(\d+)$/);
         const channelId = (match && (match[1] || match[2])) || null;
         if (!channelId) return { ok: false, added: false };
