@@ -17,6 +17,7 @@ const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
 const { buildSessionSummaryEmbed, buildRematchComponents } = require('../game/phases/sessionEnd');
 const { getGuildStats } = require('../db/StatsRepository');
 const { startGameTimer } = require('../game/phases/timer');
+const { handleRoleMenuButton } = require('../features/roleMenuFeature');
 const {
   ROLES,
   ROLE_DESCRIPTIONS,
@@ -260,6 +261,11 @@ module.exports = {
     if (!interaction.isButton()) return;
 
     const { customId, channelId, guildId, user } = interaction;
+
+    if (customId.startsWith('rmr:')) {
+      await handleRoleMenuButton(interaction);
+      return;
+    }
 
     // ── Dispatch Wavelength interactions ─────────────────────────────────────
     if (customId.startsWith('wl_')) {
