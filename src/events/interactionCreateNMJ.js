@@ -373,15 +373,9 @@ async function handleButton(interaction, client, game) {
     }
     const vote = customId === 'nmj_vote_success' ? 'success' : 'fail';
     const ch = game.challengeState;
-    const isFirstVote = ch.votes.size === 0;
     ch.votes.set(user.id, vote);
 
     await interaction.deferUpdate();
-
-    if (isFirstVote) {
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (thread) await purgeThreadMessages(thread, game.messageId, game.pendingMove?.playerId);
-    }
 
     const alive = game.alivePlayers();
     const allVoted = alive.every(id => ch.votes.has(id));
@@ -389,6 +383,11 @@ async function handleButton(interaction, client, game) {
       persistGame(client, game);
       return updateGameMessage(game, client);
     }
+
+    // All votes are in — the outcome is decided. Now that discussion is over,
+    // clear the challenged player's messages so the next round starts fresh.
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) await purgeThreadMessages(thread, game.messageId, game.pendingMove?.playerId);
 
     // Tally votes; tiebreak uses the original (challenged) player's vote.
     let successCount = 0;

@@ -40,17 +40,10 @@ function renderEliminated(game) {
   return game.eliminatedPlayers.map(id => `<@${id}>`).join(', ');
 }
 
-/** Renders the celeb history with both names and categories spoilered — visible to players is only who named them. */
-function renderCelebHistory(game) {
-  if (game.moves.length === 0) return '*No celebrities named yet.*';
-  return game.moves
-    .map((m, i) => `\`${String(i + 1).padStart(2, '0')}.\` ||${m.celebs.join(' / ')}|| *(||${m.category}||)* — <@${m.playerId}>`)
-    .join('\n');
-}
-
 /**
  * Renders the full celeb + category history in the clear.
- * Used for the spectator ephemeral view.
+ * Used for the spectator ephemeral view and the final roll call when the game ends.
+ * Never shown in the public game message while the game is still running.
  */
 function renderSpectatorHistory(game) {
   if (game.moves.length === 0) return '*No celebrities named yet.*';
@@ -160,9 +153,6 @@ function buildDeclareMessage(game, displayNames) {
       codeBlock(`${currentName ? `${currentName}'s turn` : 'Turn'}: <@${currentId}> must name a celebrity and a "No More…" category.`),
       '**Eliminated**',
       renderEliminated(game),
-      '',
-      '**Named So Far** *(hidden — spectators can peek with the 👁️ button)*',
-      renderCelebHistory(game),
     ],
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -256,16 +246,18 @@ function buildChallengeMessage(game) {
 // ── Stage: ended ──────────────────────────────────────────────────────────────
 
 function buildEndedMessage(game, resultText) {
-  const turn = bottomContainer(
-    [
-      codeBlock(resultText),
-      '**Eliminated**',
-      renderEliminated(game),
-      '',
-      '**Named So Far**',
-      renderCelebHistory(game),
-    ],
-  );
+  // No spectator peek here — the full history is revealed to everyone.
+  const turn = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      [
+        codeBlock(resultText),
+        '**Eliminated**',
+        renderEliminated(game),
+        '',
+        '**Final Roll Call — every celebrity & category named**',
+        renderSpectatorHistory(game),
+      ].join('\n'),
+    ));
   return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -294,6 +286,5 @@ module.exports = {
   renderPlayerOrder,
   renderChallengeCounts,
   renderEliminated,
-  renderCelebHistory,
   renderSpectatorHistory,
 };
