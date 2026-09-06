@@ -81,6 +81,26 @@ db.exec(`
     created_at           INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS nmj_games (
+    thread_id             TEXT PRIMARY KEY,
+    guild_id              TEXT NOT NULL,
+    channel_id            TEXT NOT NULL,
+    creator_id            TEXT NOT NULL,
+    message_id            TEXT,
+    status                TEXT NOT NULL DEFAULT 'recruiting',
+    players               TEXT NOT NULL DEFAULT '[]',
+    eliminated_players    TEXT NOT NULL DEFAULT '[]',
+    current_player_index  INTEGER NOT NULL DEFAULT 0,
+    banned_categories     TEXT NOT NULL DEFAULT '[]',
+    moves                 TEXT NOT NULL DEFAULT '[]',
+    pending_move          TEXT,
+    name_another_required INTEGER NOT NULL DEFAULT 0,
+    challenge_state       TEXT,
+    challenge_counts      TEXT NOT NULL DEFAULT '{}',
+    accepted_players      TEXT NOT NULL DEFAULT '[]',
+    created_at            INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS herd_mentality_games (
     thread_id            TEXT PRIMARY KEY,
     guild_id             TEXT NOT NULL,

@@ -11,12 +11,14 @@ async function restoreGames(client) {
   const GameRepository           = require('./GameRepository');
   const WavelengthRepository     = require('./WavelengthRepository');
   const HerdMentalityRepository  = require('./HerdMentalityRepository');
+  const NoMoreJockeysRepository  = require('./NoMoreJockeysRepository');
 
   await Promise.all([
     restoreCheeseThief(client, CheeseThiefRepository),
     restoreWerewords(client, GameRepository),
     restoreWavelength(client, WavelengthRepository),
     restoreHerdMentality(client, HerdMentalityRepository),
+    restoreNoMoreJockeys(client, NoMoreJockeysRepository),
   ]);
 }
 
@@ -428,6 +430,46 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
         ],
       }).catch(() => {});
     }
+  }
+}
+
+// ── No More Jockeys restore ─────────────────────────────────────────────────
+
+async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
+  const rows = NoMoreJockeysRepository.getAll();
+  if (rows.length === 0) return;
+
+  const { updateGameMessage } = require('../events/interactionCreateNMJ');
+  const { NoMoreJockeysGameState } = require('../game/NoMoreJockeysManager');
+
+  for (const row of rows) {
+    if (row.status === 'ended') {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      continue;
+    }
+
+    // Lobby (recruiting) games are trivial to re-start — drop them silently, matching the
+    // pattern used by the other game managers, rather than adding then immediately removing
+    // them from the in-memory map.
+    if (row.status === 'recruiting') {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      continue;
+    }
+
+    const game = NoMoreJockeysGameState.fromRow(row);
+    client.nmjManager.games.set(row.thread_id, game);
+
+    const thread = await client.channels.fetch(row.thread_id).catch(() => null);
+    if (!thread) {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      client.nmjManager.games.delete(row.thread_id);
+      continue;
+    }
+
+    // Re-render the single persistent message in place so its buttons are immediately
+    // wired to the restored game state — no separate "bot restarted" notice is needed
+    // since the game is fully playable again as soon as this edit completes.
+    await updateGameMessage(game, client, undefined, thread);
   }
 }
 
