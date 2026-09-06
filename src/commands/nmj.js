@@ -22,16 +22,14 @@ module.exports = {
     if (sub === 'start') {
       const { guildId, user, channel } = interaction;
 
-      // Tear down any existing game this user is hosting.
-      const existing = nmjManager.getGameByCreator(guildId, user.id);
-      if (existing) {
-        nmjManager.deleteGame(existing.threadId);
-        const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
-        if (oldThread) {
-          await oldThread.delete('Creator started a new No More Jockeys game').catch(async () => {
-            await oldThread.setArchived(true).catch(() => {});
-          });
-        }
+      // Fast path: if this user already has an active game (e.g. the interaction was
+      // delivered twice), point them at it instead of creating another thread.
+      const alreadyActive = nmjManager.getGameByCreator(guildId, user.id);
+      if (alreadyActive) {
+        return interaction.reply({
+          content: `You already have an active **No More Jockeys** game — join it in <#${alreadyActive.threadId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
       }
 
       let thread;
@@ -50,6 +48,20 @@ module.exports = {
             '• `Create Public Threads`\n' +
             '• `Send Messages in Threads`\n' +
             '• `Manage Threads`',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // The thread create above awaited a network round-trip, during which a duplicate
+      // interaction may have registered a game already. If so, delete the extra thread
+      // we just created and point the user at the original game.
+      const raceWinner = nmjManager.getGameByCreator(guildId, user.id);
+      if (raceWinner) {
+        await thread.delete('Duplicate No More Jockeys game thread').catch(async () => {
+          await thread.setArchived(true).catch(() => {});
+        });
+        return interaction.reply({
+          content: `You already have an active **No More Jockeys** game — join it in <#${raceWinner.threadId}>.`,
           flags: MessageFlags.Ephemeral,
         });
       }

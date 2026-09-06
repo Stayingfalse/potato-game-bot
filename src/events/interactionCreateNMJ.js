@@ -7,7 +7,7 @@ const {
   ActionRowBuilder,
   MessageFlags,
 } = require('discord.js');
-const { renderGameMessage } = require('../game/nmj/render');
+const { renderGameMessage, renderSpectatorHistory } = require('../game/nmj/render');
 const { findBestCategoryMatch } = require('../utils/fuzzyMatch');
 const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
 
@@ -18,11 +18,25 @@ function persistGame(client, game) {
   client.nmjManager?.saveGame(game.threadId);
 }
 
+/**
+ * Fetches display names for a game's players so they can be shown on buttons.
+ * Failures (unknown members, missing perms) fall back to plain mentions.
+ */
+async function fetchDisplayNames(thread, game) {
+  const names = new Map();
+  await Promise.all(game.players.map(async (id) => {
+    const member = await thread.members.fetch(id).catch(() => null);
+    if (member) names.set(id, member.displayName);
+  }));
+  return names;
+}
+
 /** Re-render and edit the single persistent NMJ message for this game. */
 async function updateGameMessage(game, client, resultText, preFetchedThread) {
   const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
-  const { components, flags } = renderGameMessage(game, resultText);
+  const displayNames = await fetchDisplayNames(thread, game);
+  const { components, flags } = renderGameMessage(game, resultText, { displayNames });
   if (game.messageId) {
     const msg = await thread.messages.fetch(game.messageId).catch(() => null);
     if (msg) {
@@ -37,13 +51,17 @@ async function updateGameMessage(game, client, resultText, preFetchedThread) {
   }
 }
 
-/** Deletes every message in the thread except the persistent game message. */
-async function purgeThreadMessages(thread, keepMessageId) {
+/**
+ * Deletes the challenged player's recent messages in the thread (except the persistent
+ * game message). Used when a challenge starts so the accused can't quietly delete or
+ * edit what they said. Other players' messages are left untouched.
+ */
+async function purgeThreadMessages(thread, keepMessageId, authorId) {
   try {
     let fetched;
     do {
       fetched = await thread.messages.fetch({ limit: 100 });
-      const toDelete = fetched.filter(m => m.id !== keepMessageId);
+      const toDelete = fetched.filter(m => m.id !== keepMessageId && (!authorId || m.author.id === authorId));
       if (toDelete.size > 0) {
         await thread.bulkDelete(toDelete, true).catch(async () => {
           // bulkDelete fails for messages >14 days old — fall back to individual deletes.
@@ -240,8 +258,18 @@ async function handleButton(interaction, client, game) {
       return interaction.reply({ content: 'Only the game creator can begin the game.', flags: MessageFlags.Ephemeral });
     }
     client.nmjManager.beginGame(game.threadId);
-    const { components, flags } = renderGameMessage(game);
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    const displayNames = thread ? await fetchDisplayNames(thread, game) : new Map();
+    const { components, flags } = renderGameMessage(game, undefined, { displayNames });
     return interaction.update({ components, flags });
+  }
+
+  // ── Spectator peek (available to anyone watching, players included) ─────
+  if (customId === 'nmj_spectate') {
+    return interaction.reply({
+      content: `👁️ **Spectator view — everything named so far:**\n${renderSpectatorHistory(game)}`,
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // ── Turn: declare ────────────────────────────────────────────────────────
@@ -345,15 +373,9 @@ async function handleButton(interaction, client, game) {
     }
     const vote = customId === 'nmj_vote_success' ? 'success' : 'fail';
     const ch = game.challengeState;
-    const isFirstVote = ch.votes.size === 0;
     ch.votes.set(user.id, vote);
 
     await interaction.deferUpdate();
-
-    if (isFirstVote) {
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (thread) await purgeThreadMessages(thread, game.messageId);
-    }
 
     const alive = game.alivePlayers();
     const allVoted = alive.every(id => ch.votes.has(id));
@@ -361,6 +383,11 @@ async function handleButton(interaction, client, game) {
       persistGame(client, game);
       return updateGameMessage(game, client);
     }
+
+    // All votes are in — the outcome is decided. Now that discussion is over,
+    // clear the challenged player's messages so the next round starts fresh.
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) await purgeThreadMessages(thread, game.messageId, game.pendingMove?.playerId);
 
     // Tally votes; tiebreak uses the original (challenged) player's vote.
     let successCount = 0;
