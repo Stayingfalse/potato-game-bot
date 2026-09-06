@@ -107,6 +107,7 @@ function renderRevealBreakdownText(game, round) {
 async function startRevealPhase(game, client) {
   if (game.phase === 'reveal' || game.phase === 'ended') return;
   game.phase = 'reveal';
+  WavelengthRepository.upsert(game);
 
   if (game.guessTimeout) {
     clearTimeout(game.guessTimeout);

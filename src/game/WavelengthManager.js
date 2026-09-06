@@ -116,7 +116,6 @@ class WavelengthManager {
     }
 
     game.gameNumber++;
-    game.messageId = null;
     game.phase = openSignups ? 'lobby' : 'cluing';
     game.clueGiverId = null;
     game.spectrumOptions = [];
@@ -142,7 +141,6 @@ class WavelengthManager {
     }
 
     game.gameNumber = 1;
-    game.messageId = null;
     game.phase = openSignups ? 'lobby' : 'setup';
     game.clueGiverId = null;
     game.spectrumOptions = [];

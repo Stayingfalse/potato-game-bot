@@ -55,6 +55,9 @@ db.exec(`
     session_mode         TEXT,
     clue_order_state     TEXT,
     game_number          INTEGER NOT NULL DEFAULT 1,
+    game_pace            TEXT NOT NULL DEFAULT 'realtime',
+    auto_advance_rounds  INTEGER NOT NULL DEFAULT 0,
+    session_history      TEXT NOT NULL DEFAULT '[]',
     created_at           INTEGER NOT NULL
   );
 
