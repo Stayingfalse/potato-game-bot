@@ -13,6 +13,7 @@ const WavelengthManager = require('./game/WavelengthManager');
 const HerdMentalityManager = require('./game/HerdMentalityManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
+const { NoMoreJockeysManager } = require('./game/NoMoreJockeysManager');
 const contextRepo = require('./db/ContextRepository');
 const McpServer = require('./mcp/McpServer');
 
@@ -46,6 +47,7 @@ client.cheeseThiefManager = new CheeseThiefManager();
 client.wavelengthManager = new WavelengthManager();
 client.herdMentalityManager = new HerdMentalityManager();
 client.birthdayManager = new BirthdayManager();
+client.nmjManager = new NoMoreJockeysManager();
 
 // Conditionally initialise SassyBot AI features.
 // Set SASSY_ENABLED=true and provide a GEMINI_API_KEY to activate.

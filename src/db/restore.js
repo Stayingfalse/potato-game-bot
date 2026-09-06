@@ -11,12 +11,14 @@ async function restoreGames(client) {
   const GameRepository           = require('./GameRepository');
   const WavelengthRepository     = require('./WavelengthRepository');
   const HerdMentalityRepository  = require('./HerdMentalityRepository');
+  const NoMoreJockeysRepository  = require('./NoMoreJockeysRepository');
 
   await Promise.all([
     restoreCheeseThief(client, CheeseThiefRepository),
     restoreWerewords(client, GameRepository),
     restoreWavelength(client, WavelengthRepository),
     restoreHerdMentality(client, HerdMentalityRepository),
+    restoreNoMoreJockeys(client, NoMoreJockeysRepository),
   ]);
 }
 
@@ -429,6 +431,70 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
       }).catch(() => {});
     }
   }
+}
+
+// ── No More Jockeys restore ─────────────────────────────────────────────────
+
+async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
+  const rows = NoMoreJockeysRepository.getAll();
+  if (rows.length === 0) return;
+
+  const { updateGameMessage } = require('../events/interactionCreateNMJ');
+
+  for (const row of rows) {
+    if (row.status === 'ended') {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      continue;
+    }
+
+    const game = {
+      guildId: row.guild_id,
+      channelId: row.channel_id,
+      threadId: row.thread_id,
+      creatorId: row.creator_id,
+      messageId: row.message_id,
+      status: row.status,
+      players: JSON.parse(row.players || '[]'),
+      eliminatedPlayers: JSON.parse(row.eliminated_players || '[]'),
+      currentPlayerIndex: row.current_player_index ?? 0,
+      bannedCategories: JSON.parse(row.banned_categories || '[]'),
+      moves: JSON.parse(row.moves || '[]'),
+      pendingMove: row.pending_move ? JSON.parse(row.pending_move) : null,
+      nameAnotherRequired: !!row.name_another_required,
+      challengeState: row.challenge_state ? deserializeChallengeState(JSON.parse(row.challenge_state)) : null,
+      challengeCounts: new Map(Object.entries(JSON.parse(row.challenge_counts || '{}'))),
+      acceptedPlayers: new Set(JSON.parse(row.accepted_players || '[]')),
+      _createdAt: row.created_at,
+      alivePlayers() {
+        return this.players.filter(id => !this.eliminatedPlayers.includes(id));
+      },
+      currentPlayerId() {
+        return this.players[this.currentPlayerIndex] ?? null;
+      },
+    };
+
+    client.nmjManager.games.set(row.thread_id, game);
+
+    if (row.status === 'recruiting') {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      client.nmjManager.games.delete(row.thread_id);
+      continue;
+    }
+
+    const thread = await client.channels.fetch(row.thread_id).catch(() => null);
+    if (!thread) {
+      NoMoreJockeysRepository.remove(row.thread_id);
+      client.nmjManager.games.delete(row.thread_id);
+      continue;
+    }
+
+    await updateGameMessage(game, client);
+    await thread.send({ content: '⚠️ Bot restarted. The game has resumed — use the buttons above to continue.' }).catch(() => {});
+  }
+}
+
+function deserializeChallengeState(raw) {
+  return { ...raw, votes: new Map(Object.entries(raw.votes || {})) };
 }
 
 module.exports = { restoreGames };
