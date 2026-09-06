@@ -98,7 +98,6 @@ async function endGame(game, client, resultText) {
   }
 
   if (thread) {
-    await thread.send({ content: resultText }).catch(() => {});
     await thread.setLocked(true).catch(() => {});
     await thread.setArchived(true).catch(() => {});
   }

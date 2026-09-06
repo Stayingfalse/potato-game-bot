@@ -448,14 +448,16 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
       continue;
     }
 
-    const game = NoMoreJockeysGameState.fromRow(row);
-    client.nmjManager.games.set(row.thread_id, game);
-
+    // Lobby (recruiting) games are trivial to re-start — drop them silently, matching the
+    // pattern used by the other game managers, rather than adding then immediately removing
+    // them from the in-memory map.
     if (row.status === 'recruiting') {
       NoMoreJockeysRepository.remove(row.thread_id);
-      client.nmjManager.games.delete(row.thread_id);
       continue;
     }
+
+    const game = NoMoreJockeysGameState.fromRow(row);
+    client.nmjManager.games.set(row.thread_id, game);
 
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);
     if (!thread) {
