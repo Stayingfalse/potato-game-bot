@@ -57,8 +57,12 @@ async function closeSession(game, client, reason) {
       closedReason: reason,
       includeControls: false,
     }, thread);
-    await thread.setLocked(true).catch(() => {});
-    await thread.setArchived(true).catch(() => {});
+    // Give players a few seconds to read the final closing message before the
+    // thread is locked and archived. Runs detached so callers don't block on it.
+    setTimeout(async () => {
+      await thread.setLocked(true).catch(() => {});
+      await thread.setArchived(true).catch(() => {});
+    }, 5_000);
   }
 
   client.wavelengthManager.deleteGame(game.threadId);

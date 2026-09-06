@@ -7,13 +7,13 @@ const db = require('./database');
 const stmtUpsert = db.prepare(`
   INSERT INTO wavelength_games
     (thread_id, guild_id, channel_id, host_id, host_username,
-     message_id, board_message_id, phase, players, clue_giver_id,
+     message_id, phase, players, clue_giver_id,
      spectrum_options, chosen_spectrum, target_position, clue,
      guesses, session_mode, clue_order_state, game_number,
      game_pace, auto_advance_rounds, session_history, created_at)
   VALUES
      (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
-     @message_id, @board_message_id, @phase, @players, @clue_giver_id,
+     @message_id, @phase, @players, @clue_giver_id,
      @spectrum_options, @chosen_spectrum, @target_position, @clue,
      @guesses, @session_mode, @clue_order_state, @game_number,
      @game_pace, @auto_advance_rounds, @session_history, @created_at)
@@ -23,7 +23,6 @@ const stmtUpsert = db.prepare(`
     host_id             = excluded.host_id,
     host_username       = excluded.host_username,
     message_id          = excluded.message_id,
-    board_message_id    = excluded.board_message_id,
     phase               = excluded.phase,
     players             = excluded.players,
     clue_giver_id       = excluded.clue_giver_id,
@@ -58,7 +57,6 @@ function upsert(game) {
     host_id:          game.hostId,
     host_username:    game.hostUsername,
     message_id:       game.messageId ?? null,
-    board_message_id: null,
     phase:            game.phase,
     players:          JSON.stringify([...game.players.values()]),
     clue_giver_id:    game.clueGiverId ?? null,

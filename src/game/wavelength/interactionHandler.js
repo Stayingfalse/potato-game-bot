@@ -36,12 +36,13 @@ async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   if (game.messageId) {
     const msg = await thread.messages.fetch(game.messageId).catch(() => null);
     if (msg) {
+      // The message still exists — only ever edit it in place. If the edit itself fails
+      // (e.g. a transient API error), do NOT fall through to sending a brand-new message,
+      // since that would leave two persistent game messages in the thread.
       const edited = await msg.edit(payload).catch(() => null);
-      if (edited) return true;
-      if (options.createIfMissing === false) return false;
-    } else if (options.createIfMissing === false) {
-      return false;
+      return !!edited;
     }
+    if (options.createIfMissing === false) return false;
   } else if (options.createIfMissing === false) {
     return false;
   }

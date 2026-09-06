@@ -222,11 +222,7 @@ async function restoreWavelength(client, WavelengthRepository) {
       continue;
     }
 
-    const game = WavelengthGameState.fromRow({
-      ...row,
-      session_history: row.session_history || '[]',
-    });
-    game.sessionHistory = JSON.parse(row.session_history || '[]');
+    const game = WavelengthGameState.fromRow(row);
     client.wavelengthManager.games.set(row.thread_id, game);
 
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);

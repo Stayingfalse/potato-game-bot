@@ -44,7 +44,6 @@ db.exec(`
     host_id              TEXT NOT NULL,
     host_username        TEXT NOT NULL,
     message_id           TEXT,
-    board_message_id     TEXT,
     phase                TEXT NOT NULL DEFAULT 'lobby',
     players              TEXT NOT NULL DEFAULT '[]',
     clue_giver_id        TEXT,
