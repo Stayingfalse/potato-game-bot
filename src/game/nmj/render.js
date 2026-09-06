@@ -12,6 +12,8 @@ const {
 } = require('discord.js');
 const { CHALLENGE_TOKENS_PER_PLAYER } = require('../NoMoreJockeysManager');
 
+// ── Shared content helpers ───────────────────────────────────────────────────
+
 /** Renders the player order list, marking eliminated players and the current turn. */
 function renderPlayerOrder(game) {
   if (game.players.length === 0) return '*No players yet.*';
@@ -38,10 +40,22 @@ function renderEliminated(game) {
   return game.eliminatedPlayers.map(id => `<@${id}>`).join(', ');
 }
 
+/** Renders the celeb history with both names and categories spoilered — visible to players is only who named them. */
 function renderCelebHistory(game) {
   if (game.moves.length === 0) return '*No celebrities named yet.*';
   return game.moves
-    .map((m, i) => `\`${String(i + 1).padStart(2, '0')}.\` ${m.celebs.join(' / ')} — <@${m.playerId}>`)
+    .map((m, i) => `\`${String(i + 1).padStart(2, '0')}.\` ||${m.celebs.join(' / ')}|| *(||${m.category}||)* — <@${m.playerId}>`)
+    .join('\n');
+}
+
+/**
+ * Renders the full celeb + category history in the clear.
+ * Used for the spectator ephemeral view.
+ */
+function renderSpectatorHistory(game) {
+  if (game.moves.length === 0) return '*No celebrities named yet.*';
+  return game.moves
+    .map((m, i) => `\`${String(i + 1).padStart(2, '0')}.\` **${m.celebs.join(' / ')}** — ${m.category} *(<@${m.playerId}>)*`)
     .join('\n');
 }
 
@@ -55,18 +69,45 @@ function baseHeader(game) {
   return `## No More Jockeys — ${stageNames[game.status] ?? game.status}`;
 }
 
-function statusBlock(game) {
+// ── Containers ───────────────────────────────────────────────────────────────
+
+/** Top box: header + the fixed game info (turn order & challenge tokens). */
+function fixedContainer(game) {
   const lines = [
-    `**Player Order**`,
+    `**Turn Order**`,
     renderPlayerOrder(game),
-    '',
-    `**Challenge Tokens**`,
-    renderChallengeCounts(game),
-    '',
-    `**Eliminated**`,
-    renderEliminated(game),
   ];
-  return lines.join('\n');
+  if (game.status === 'playing' || game.status === 'ended') {
+    lines.push('', `**Challenge Tokens**`, renderChallengeCounts(game));
+  }
+  return new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+}
+
+/** Adds the spectator (👁️) button at the top right of the given container. */
+function withSpectatorButton(container) {
+  return container.addSectionComponents(section =>
+    section
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('👀 **Spectator?** Peek at what\'s been named so far.'))
+      .setButtonAccessory(new ButtonBuilder().setCustomId('nmj_spectate').setEmoji('👁️').setStyle(ButtonStyle.Secondary)),
+  );
+}
+
+/** Adds the spectator button (right-aligned accessory in its own row) + action row(s) to a container. */
+function bottomContainer(lines, ...actionRows) {
+  const container = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
+  withSpectatorButton(container);
+  for (const row of actionRows) container.addActionRowComponents(row);
+  return container;
+}
+
+/** Wraps text in a code block so the current turn stands out. */
+function codeBlock(text) {
+  return `\`\`\`\n${text}\n\`\`\``;
 }
 
 // ── Stage: recruiting ───────────────────────────────────────────────────────
@@ -93,36 +134,45 @@ function buildRecruitingMessage(game) {
 // ── Stage: ordering ──────────────────────────────────────────────────────────
 
 function buildOrderingMessage(game) {
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `Spin the wheel to randomize turn order, then begin the game!\n\n**Player Order**\n${renderPlayerOrder(game)}`,
-    ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_spin').setLabel('Spin Wheel').setEmoji('🎡').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('nmj_begin').setLabel('Begin Game').setEmoji('🎬').setStyle(ButtonStyle.Success),
-      ),
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const fixed = fixedContainer(game);
+  const turn = bottomContainer(
+    [
+      codeBlock('Spin the wheel to randomize the turn order, then begin the game!'),
+      '**Eliminated**',
+      renderEliminated(game),
+    ],
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nmj_spin').setLabel('Spin Wheel').setEmoji('🎡').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('nmj_begin').setLabel('Begin Game').setEmoji('🎬').setStyle(ButtonStyle.Success),
+    ),
+  );
+  return { components: [fixed, turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ── Stage: playing — declare ─────────────────────────────────────────────────
 
-function buildDeclareMessage(game) {
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `It's <@${game.currentPlayerId()}>'s turn! They must name a celebrity and a "No More…" category.\n\n${statusBlock(game)}\n\n**Named So Far**\n${renderCelebHistory(game)}`,
-    ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_take_turn').setLabel('Take Turn').setEmoji('🎤').setStyle(ButtonStyle.Primary),
-      ),
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+function buildDeclareMessage(game, displayNames) {
+  const currentId = game.currentPlayerId();
+  const currentName = displayNames?.get(currentId);
+  const turn = bottomContainer(
+    [
+      '### 🎤 Current Turn',
+      codeBlock(`${currentName ? `${currentName}'s turn` : 'Turn'}: <@${currentId}> must name a celebrity and a "No More…" category.`),
+      '**Eliminated**',
+      renderEliminated(game),
+      '',
+      '**Named So Far** *(hidden — spectators can peek with the 👁️ button)*',
+      renderCelebHistory(game),
+    ],
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('nmj_take_turn')
+        .setLabel(currentName ? `${currentName}, Take Your Turn` : 'Take Your Turn')
+        .setEmoji('🎤')
+        .setStyle(ButtonStyle.Primary),
+    ),
+  );
+  return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ── Stage: playing — respond (Accept / Challenge / Name Another) ────────────
@@ -131,42 +181,41 @@ function buildRespondMessage(game) {
   const pending = game.pendingMove;
   const waitingOn = game.alivePlayers().filter(id => id !== pending.playerId && !game.acceptedPlayers.has(id));
 
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `<@${pending.playerId}> named: **${pending.celebs.join(' / ')}**\n` +
-      `Category: **${pending.category}**\n\n` +
-      `Waiting on: ${waitingOn.length ? waitingOn.map(id => `<@${id}>`).join(', ') : '*everyone has responded*'}\n\n${statusBlock(game)}`,
-    ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_accept').setLabel('Accept').setEmoji('✅').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('nmj_challenge').setLabel('Challenge').setEmoji('⚠️').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('nmj_name_another').setLabel('Name Another').setEmoji('❓').setStyle(ButtonStyle.Secondary),
-      ),
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const turn = bottomContainer(
+    [
+      '### 📣 Move On The Table',
+      codeBlock(`<@${pending.playerId}> named: ${pending.celebs.join(' / ')}\nCategory: ${pending.category}`),
+      `Waiting on: ${waitingOn.length ? waitingOn.map(id => `<@${id}>`).join(', ') : '*everyone has responded*'}`,
+      '',
+      '**Eliminated**',
+      renderEliminated(game),
+    ],
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nmj_accept').setLabel('Accept').setEmoji('✅').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('nmj_challenge').setLabel('Challenge').setEmoji('⚠️').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('nmj_name_another').setLabel('Name Another').setEmoji('❓').setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ── Stage: playing — name another ────────────────────────────────────────────
 
 function buildNameAnotherMessage(game) {
   const pending = game.pendingMove;
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `<@${pending.playerId}> has been asked to **name another** celebrity fitting **${pending.category}**, ` +
-      `or if they cannot, provide a brand new category.\n\n${statusBlock(game)}`,
-    ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_na_provide').setLabel('Name Another Celeb').setEmoji('🎤').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('nmj_na_cant').setLabel("Can't — New Category").setEmoji('🔄').setStyle(ButtonStyle.Secondary),
-      ),
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const turn = bottomContainer(
+    [
+      '### ❓ Name Another',
+      codeBlock(`<@${pending.playerId}> must name another celebrity fitting:\n${pending.category}\n— or provide a brand new category.`),
+      '**Eliminated**',
+      renderEliminated(game),
+    ],
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nmj_na_provide').setLabel('Name Another Celeb').setEmoji('🎤').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('nmj_na_cant').setLabel("Can't — New Category").setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ── Stage: playing — challenge / vote ────────────────────────────────────────
@@ -180,43 +229,55 @@ function buildChallengeMessage(game) {
   const votedIds = new Set(votes.map(([id]) => id));
   const stillToVote = game.alivePlayers().filter(id => !votedIds.has(id));
 
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `⚠️ **Challenge!**\n` +
-      `<@${ch.challengerId}> challenges <@${pending.playerId}>'s pick **${pending.celebs.join(' / ')}**, ` +
-      `claiming it violates: **${ch.matchedCategory ?? ch.claimedCategoryText}**\n\n` +
-      `Discuss in the thread, then cast your vote below. <@${pending.playerId}> has the tiebreaker vote.\n\n` +
-      `**Votes** — ✅ Successful: ${successCount}  •  ❌ Unsuccessful: ${failCount}\n` +
-      `Still to vote: ${stillToVote.length ? stillToVote.map(id => `<@${id}>`).join(', ') : '*none*'}\n\n${statusBlock(game)}`,
-    ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_vote_success').setLabel('Successful Challenge').setEmoji('✅').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('nmj_vote_fail').setLabel('Unsuccessful Challenge').setEmoji('❌').setStyle(ButtonStyle.Secondary),
+  const turn = bottomContainer(
+    [
+      '### ⚠️ Challenge!',
+      codeBlock(
+        `<@${ch.challengerId}> challenges <@${pending.playerId}>'s pick:\n` +
+        `${pending.celebs.join(' / ')}\n` +
+        `Claimed violation: ${ch.matchedCategory ?? ch.claimedCategoryText}`,
       ),
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+      `Discuss in the thread, then cast your vote below. <@${pending.playerId}> has the tiebreaker vote.`,
+      '',
+      `**Votes** — ✅ Successful: ${successCount}  •  ❌ Unsuccessful: ${failCount}`,
+      `Still to vote: ${stillToVote.length ? stillToVote.map(id => `<@${id}>`).join(', ') : '*none*'}`,
+      '',
+      '**Eliminated**',
+      renderEliminated(game),
+    ],
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nmj_vote_success').setLabel('Successful Challenge').setEmoji('✅').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('nmj_vote_fail').setLabel('Unsuccessful Challenge').setEmoji('❌').setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ── Stage: ended ──────────────────────────────────────────────────────────────
 
 function buildEndedMessage(game, resultText) {
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `${resultText}\n\n${statusBlock(game)}\n\n**Named So Far**\n${renderCelebHistory(game)}`,
-    ));
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const turn = bottomContainer(
+    [
+      codeBlock(resultText),
+      '**Eliminated**',
+      renderEliminated(game),
+      '',
+      '**Named So Far**',
+      renderCelebHistory(game),
+    ],
+  );
+  return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
  * Build the payload for the single persistent NMJ message, based on current game state.
+ * @param {object} game
+ * @param {string} [resultText] Final result text for the ended stage.
+ * @param {object} [options]
+ * @param {Map<string, string>} [options.displayNames] Map of userId → display name (for button labels).
  * @returns {{ components: any[], flags: number }}
  */
-function renderGameMessage(game, resultText) {
+function renderGameMessage(game, resultText, options = {}) {
   if (game.status === 'recruiting') return buildRecruitingMessage(game);
   if (game.status === 'ordering') return buildOrderingMessage(game);
   if (game.status === 'ended') return buildEndedMessage(game, resultText ?? 'Game has ended.');
@@ -225,7 +286,7 @@ function renderGameMessage(game, resultText) {
   if (game.challengeState) return buildChallengeMessage(game);
   if (game.pendingMove?.stage === 'name_another') return buildNameAnotherMessage(game);
   if (game.pendingMove?.stage === 'respond') return buildRespondMessage(game);
-  return buildDeclareMessage(game);
+  return buildDeclareMessage(game, options.displayNames);
 }
 
 module.exports = {
@@ -234,4 +295,5 @@ module.exports = {
   renderChallengeCounts,
   renderEliminated,
   renderCelebHistory,
+  renderSpectatorHistory,
 };
