@@ -85,6 +85,4 @@ module.exports = {
       return;
     }
   },
-
-  MIN_PLAYERS,
 };

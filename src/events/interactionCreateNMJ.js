@@ -19,8 +19,8 @@ function persistGame(client, game) {
 }
 
 /** Re-render and edit the single persistent NMJ message for this game. */
-async function updateGameMessage(game, client, resultText) {
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+async function updateGameMessage(game, client, resultText, preFetchedThread) {
+  const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
   const { components, flags } = renderGameMessage(game, resultText);
   if (game.messageId) {
@@ -88,7 +88,7 @@ async function endGame(game, client, resultText) {
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (thread) {
-    await updateGameMessage(game, client, resultText);
+    await updateGameMessage(game, client, resultText, thread);
   }
 
   const { components, flags } = renderGameMessage(game, resultText);

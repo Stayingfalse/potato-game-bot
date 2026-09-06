@@ -9,7 +9,7 @@
 function normalize(str) {
   return String(str ?? '')
     .toLowerCase()
-    .replace(/^no more\.*\s*/i, '')
+    .replace(/^no more[.\u2026]*\s*/i, '')
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
