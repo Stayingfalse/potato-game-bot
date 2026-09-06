@@ -1,6 +1,6 @@
 'use strict';
 
-const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, ChannelType, PermissionFlagsBits } = require('discord.js');
 const { renderGameMessage } = require('../game/nmj/render');
 const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
 
@@ -75,6 +75,15 @@ module.exports = {
       if (!game) {
         return interaction.reply({
           content: 'This command must be used inside an active No More Jockeys game thread.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const canEnd = interaction.user.id === game.creatorId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.ManageThreads);
+      if (!canEnd) {
+        return interaction.reply({
+          content: 'Only the game creator or a moderator with **Manage Threads** can end this game.',
           flags: MessageFlags.Ephemeral,
         });
       }

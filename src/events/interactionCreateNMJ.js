@@ -285,6 +285,9 @@ async function handleButton(interaction, client, game) {
     if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to challenge right now.', flags: MessageFlags.Ephemeral });
     }
+    if (!game.alivePlayers().includes(user.id)) {
+      return interaction.reply({ content: 'You are not an active player.', flags: MessageFlags.Ephemeral });
+    }
     if (user.id === game.pendingMove.playerId) {
       return interaction.reply({ content: 'You cannot challenge your own move.', flags: MessageFlags.Ephemeral });
     }
@@ -298,6 +301,9 @@ async function handleButton(interaction, client, game) {
   if (customId === 'nmj_name_another') {
     if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to respond to right now.', flags: MessageFlags.Ephemeral });
+    }
+    if (!game.alivePlayers().includes(user.id)) {
+      return interaction.reply({ content: 'You are not an active player.', flags: MessageFlags.Ephemeral });
     }
     if (user.id === game.pendingMove.playerId) {
       return interaction.reply({ content: 'You cannot ask yourself to name another.', flags: MessageFlags.Ephemeral });
@@ -422,6 +428,9 @@ async function handleModal(interaction, client, game) {
   if (customId === 'nmj_challenge_modal') {
     if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to challenge right now.', flags: MessageFlags.Ephemeral });
+    }
+    if (!game.alivePlayers().includes(user.id)) {
+      return interaction.reply({ content: 'You are not an active player.', flags: MessageFlags.Ephemeral });
     }
     if (user.id === game.pendingMove.playerId) {
       return interaction.reply({ content: 'You cannot challenge your own move.', flags: MessageFlags.Ephemeral });
