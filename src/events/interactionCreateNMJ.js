@@ -264,7 +264,6 @@ async function handleButton(interaction, client, game) {
     return interaction.update({ components, flags });
   }
 
-  // ── Turn: declare ────────────────────────────────────────────────────────
   // ── Spectator peek (available to anyone watching, players included) ─────
   if (customId === 'nmj_spectate') {
     return interaction.reply({
@@ -273,6 +272,7 @@ async function handleButton(interaction, client, game) {
     });
   }
 
+  // ── Turn: declare ────────────────────────────────────────────────────────
   if (customId === 'nmj_take_turn') {
     if (game.status !== 'playing' || game.pendingMove) {
       return interaction.reply({ content: 'It is not time to take a turn right now.', flags: MessageFlags.Ephemeral });
