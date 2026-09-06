@@ -52,8 +52,8 @@ function upsert(game) {
     moves: JSON.stringify(game.moves ?? []),
     pending_move: game.pendingMove ? JSON.stringify(game.pendingMove) : null,
     name_another_required: game.nameAnotherRequired ? 1 : 0,
-    challenge_state: game.challengeState ? JSON.stringify(game.challengeState) : null,
-    challenge_counts: JSON.stringify(game.challengeCounts ?? {}),
+    challenge_state: game.challengeState ? JSON.stringify(serializeChallengeState(game.challengeState)) : null,
+    challenge_counts: JSON.stringify(Object.fromEntries(game.challengeCounts ?? [])),
     accepted_players: JSON.stringify([...(game.acceptedPlayers ?? [])]),
     created_at: game._createdAt ?? Date.now(),
   });
@@ -65,6 +65,11 @@ function getAll() {
 
 function remove(threadId) {
   stmtDelete.run(threadId);
+}
+
+/** Converts an in-memory challengeState (with a Map `votes`) into a JSON-safe plain object. */
+function serializeChallengeState(challengeState) {
+  return { ...challengeState, votes: Object.fromEntries(challengeState.votes ?? []) };
 }
 
 module.exports = { upsert, getAll, remove };

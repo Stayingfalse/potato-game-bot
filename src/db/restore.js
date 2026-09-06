@@ -440,6 +440,7 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
   if (rows.length === 0) return;
 
   const { updateGameMessage } = require('../events/interactionCreateNMJ');
+  const { NoMoreJockeysGameState } = require('../game/NoMoreJockeysManager');
 
   for (const row of rows) {
     if (row.status === 'ended') {
@@ -447,32 +448,7 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
       continue;
     }
 
-    const game = {
-      guildId: row.guild_id,
-      channelId: row.channel_id,
-      threadId: row.thread_id,
-      creatorId: row.creator_id,
-      messageId: row.message_id,
-      status: row.status,
-      players: JSON.parse(row.players || '[]'),
-      eliminatedPlayers: JSON.parse(row.eliminated_players || '[]'),
-      currentPlayerIndex: row.current_player_index ?? 0,
-      bannedCategories: JSON.parse(row.banned_categories || '[]'),
-      moves: JSON.parse(row.moves || '[]'),
-      pendingMove: row.pending_move ? JSON.parse(row.pending_move) : null,
-      nameAnotherRequired: !!row.name_another_required,
-      challengeState: row.challenge_state ? deserializeChallengeState(JSON.parse(row.challenge_state)) : null,
-      challengeCounts: new Map(Object.entries(JSON.parse(row.challenge_counts || '{}'))),
-      acceptedPlayers: new Set(JSON.parse(row.accepted_players || '[]')),
-      _createdAt: row.created_at,
-      alivePlayers() {
-        return this.players.filter(id => !this.eliminatedPlayers.includes(id));
-      },
-      currentPlayerId() {
-        return this.players[this.currentPlayerIndex] ?? null;
-      },
-    };
-
+    const game = NoMoreJockeysGameState.fromRow(row);
     client.nmjManager.games.set(row.thread_id, game);
 
     if (row.status === 'recruiting') {
@@ -491,10 +467,6 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
     await updateGameMessage(game, client);
     await thread.send({ content: '⚠️ Bot restarted. The game has resumed — use the buttons above to continue.' }).catch(() => {});
   }
-}
-
-function deserializeChallengeState(raw) {
-  return { ...raw, votes: new Map(Object.entries(raw.votes || {})) };
 }
 
 module.exports = { restoreGames };

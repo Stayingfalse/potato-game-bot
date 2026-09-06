@@ -63,6 +63,30 @@ class NoMoreJockeysGameState {
   currentPlayerId() {
     return this.players[this.currentPlayerIndex] ?? null;
   }
+
+  /** Rehydrates a game state instance from a persisted `nmj_games` row. */
+  static fromRow(row) {
+    const game = new NoMoreJockeysGameState(row.guild_id, row.channel_id, row.thread_id, row.creator_id);
+    game.messageId = row.message_id;
+    game.status = row.status;
+    game.players = JSON.parse(row.players || '[]');
+    game.eliminatedPlayers = JSON.parse(row.eliminated_players || '[]');
+    game.currentPlayerIndex = row.current_player_index ?? 0;
+    game.bannedCategories = JSON.parse(row.banned_categories || '[]');
+    game.moves = JSON.parse(row.moves || '[]');
+    game.pendingMove = row.pending_move ? JSON.parse(row.pending_move) : null;
+    game.nameAnotherRequired = !!row.name_another_required;
+    game.challengeState = row.challenge_state ? deserializeChallengeState(JSON.parse(row.challenge_state)) : null;
+    game.challengeCounts = new Map(Object.entries(JSON.parse(row.challenge_counts || '{}')));
+    game.acceptedPlayers = new Set(JSON.parse(row.accepted_players || '[]'));
+    game._createdAt = row.created_at;
+    return game;
+  }
+}
+
+/** Converts a persisted challengeState (with a plain `votes` object) back into a Map. */
+function deserializeChallengeState(raw) {
+  return { ...raw, votes: new Map(Object.entries(raw.votes || {})) };
 }
 
 class NoMoreJockeysManager {
