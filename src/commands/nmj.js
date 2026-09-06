@@ -38,7 +38,7 @@ module.exports = {
       try {
         thread = await channel.threads.create({
           name: `No More Jockeys — ${user.username}`,
-          type: ChannelType.PrivateThread,
+          type: ChannelType.PublicThread,
           autoArchiveDuration: 1440,
           reason: `No More Jockeys game started by ${user.username}`,
         });
@@ -47,7 +47,7 @@ module.exports = {
         return interaction.reply({
           content:
             '❌ **Missing permissions.** The bot needs:\n' +
-            '• `Create Private Threads`\n' +
+            '• `Create Public Threads`\n' +
             '• `Send Messages in Threads`\n' +
             '• `Manage Threads`',
           flags: MessageFlags.Ephemeral,
@@ -65,8 +65,7 @@ module.exports = {
       }
 
       return interaction.reply({
-        content: `🎬 **No More Jockeys** game created! Join in <#${thread.id}>.`,
-        flags: MessageFlags.Ephemeral,
+        content: `🎬 **No More Jockeys** game created by <@${user.id}>! Join in <#${thread.id}>.`,
       });
     }
 
