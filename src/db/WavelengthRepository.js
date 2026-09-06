@@ -10,13 +10,13 @@ const stmtUpsert = db.prepare(`
      message_id, board_message_id, phase, players, clue_giver_id,
      spectrum_options, chosen_spectrum, target_position, clue,
      guesses, session_mode, clue_order_state, game_number,
-     game_pace, auto_advance_rounds, created_at)
+     game_pace, auto_advance_rounds, session_history, created_at)
   VALUES
      (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
      @message_id, @board_message_id, @phase, @players, @clue_giver_id,
      @spectrum_options, @chosen_spectrum, @target_position, @clue,
      @guesses, @session_mode, @clue_order_state, @game_number,
-     @game_pace, @auto_advance_rounds, @created_at)
+     @game_pace, @auto_advance_rounds, @session_history, @created_at)
   ON CONFLICT(thread_id) DO UPDATE SET
     guild_id            = excluded.guild_id,
     channel_id          = excluded.channel_id,
@@ -36,7 +36,8 @@ const stmtUpsert = db.prepare(`
     clue_order_state    = excluded.clue_order_state,
     game_number         = excluded.game_number,
     game_pace           = excluded.game_pace,
-    auto_advance_rounds = excluded.auto_advance_rounds
+    auto_advance_rounds = excluded.auto_advance_rounds,
+    session_history     = excluded.session_history
 `);
 
 const stmtGetAll = db.prepare(`SELECT * FROM wavelength_games`);
@@ -57,7 +58,7 @@ function upsert(game) {
     host_id:          game.hostId,
     host_username:    game.hostUsername,
     message_id:       game.messageId ?? null,
-    board_message_id: game.boardMessageId ?? null,
+    board_message_id: null,
     phase:            game.phase,
     players:          JSON.stringify([...game.players.values()]),
     clue_giver_id:    game.clueGiverId ?? null,
@@ -71,6 +72,7 @@ function upsert(game) {
     game_number:          game.gameNumber,
     game_pace:            game.gamePace ?? 'realtime',
     auto_advance_rounds:  game.autoAdvanceRounds ? 1 : 0,
+    session_history:      JSON.stringify(game.sessionHistory ?? []),
     created_at:           game._createdAt ?? Date.now(),
   });
 }

@@ -243,6 +243,9 @@ if (!wlColumns.has('game_pace')) {
 if (!wlColumns.has('auto_advance_rounds')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN auto_advance_rounds INTEGER NOT NULL DEFAULT 0');
 }
+if (!wlColumns.has('session_history')) {
+  db.exec("ALTER TABLE wavelength_games ADD COLUMN session_history TEXT NOT NULL DEFAULT '[]'");
+}
 
 const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
 if (!wwColumns.has('session_mode')) {

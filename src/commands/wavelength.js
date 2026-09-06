@@ -1,67 +1,107 @@
 'use strict';
 
-const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
-const { buildLobbyEmbed, buildLobbyComponents } = require('../game/wavelength/phases/lobby');
-const { upsert: upsertWL } = require('../db/WavelengthRepository');
+const {
+  SlashCommandBuilder,
+  MessageFlags,
+  ChannelType,
+  PermissionFlagsBits,
+} = require('discord.js');
+const { renderGameMessage } = require('../game/wavelength/render');
+const WavelengthRepository = require('../db/WavelengthRepository');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('wavelength')
-    .setDescription('Start a new Wavelength game lobby in this channel'),
+    .setDescription('Wavelength — cooperative clue-giving party game')
+    .addSubcommand(sub =>
+      sub.setName('start').setDescription('Start a new Wavelength game (creates a game thread)'),
+    )
+    .addSubcommand(sub =>
+      sub.setName('end').setDescription('End the Wavelength game running in this thread (must be used inside the game thread)'),
+    ),
 
   async execute(interaction, client) {
-    const { guildId, user, channel } = interaction;
+    const sub = interaction.options.getSubcommand();
     const { wavelengthManager } = client;
 
-    // If this user already hosts a Wavelength game in this guild, tear it down first.
-    const existing = wavelengthManager.getGameByHost(guildId, user.id);
-    if (existing) {
-      wavelengthManager.deleteGame(existing.threadId);
-      try {
-        const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
-        if (oldThread) {
-          await oldThread.delete('Host started a new Wavelength game').catch(async () => {
-            await oldThread.setArchived(true).catch(() => {});
-          });
-        }
-      } catch {
-        // Thread already gone.
+    if (sub === 'start') {
+      const { guildId, user, channel } = interaction;
+
+      const alreadyActive = wavelengthManager.getGameByHost(guildId, user.id);
+      if (alreadyActive) {
+        return interaction.reply({
+          content: `You already have an active **Wavelength** game — join it in <#${alreadyActive.threadId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
       }
-    }
 
-    // Create a private thread for the game.
-    let thread;
-    try {
-      thread = await channel.threads.create({
-        name: `Wavelength 〰️ — ${user.username}`,
-        type: ChannelType.PrivateThread,
-        autoArchiveDuration: 60,
-        reason: `Wavelength game started by ${user.username}`,
-      });
-      await thread.members.add(user.id);
-    } catch {
+      let thread;
+      try {
+        thread = await channel.threads.create({
+          name: `Wavelength 〰️ — ${user.username}`,
+          type: ChannelType.PublicThread,
+          autoArchiveDuration: 1440,
+          reason: `Wavelength game started by ${user.username}`,
+        });
+        await thread.members.add(user.id);
+      } catch {
+        return interaction.reply({
+          content:
+            '❌ **Missing permissions.** The bot needs:\n' +
+            '• `Create Public Threads`\n' +
+            '• `Send Messages in Threads`\n' +
+            '• `Manage Threads`',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const raceWinner = wavelengthManager.getGameByHost(guildId, user.id);
+      if (raceWinner) {
+        await thread.delete('Duplicate Wavelength game thread').catch(async () => {
+          await thread.setArchived(true).catch(() => {});
+        });
+        return interaction.reply({
+          content: `You already have an active **Wavelength** game — join it in <#${raceWinner.threadId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const game = wavelengthManager.createGame(guildId, channel.id, thread.id, user.id, user.username);
+      wavelengthManager.addPlayer(thread.id, user);
+
+      const { components, flags, files } = await renderGameMessage(game);
+      const msg = await thread.send({ components, flags, ...(files ? { files } : {}) }).catch(() => null);
+      if (msg) {
+        game.messageId = msg.id;
+        WavelengthRepository.upsert(game);
+      }
+
       return interaction.reply({
-        content:
-          '❌ **Missing permissions.** The bot needs the following in this channel:\n' +
-          '• `Create Private Threads`\n' +
-          '• `Send Messages in Threads`\n' +
-          '• `Manage Threads`\n\n' +
-          '*Note: Private threads require a Community server or Boost Level 1+.*',
-        flags: MessageFlags.Ephemeral,
+        content: `🎬 **Wavelength** game created by <@${user.id}>! Join in <#${thread.id}>.`,
       });
     }
 
-    const game = wavelengthManager.createGame(guildId, channel.id, thread.id, user.id, user.username);
-    wavelengthManager.addPlayer(thread.id, user);
+    if (sub === 'end') {
+      const game = wavelengthManager.getGame(interaction.channelId);
+      if (!game) {
+        return interaction.reply({
+          content: 'This command must be used inside an active Wavelength game thread.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
 
-    // Post the lobby embed in the parent channel as the slash command reply.
-    const { resource } = await interaction.reply({
-      embeds: [buildLobbyEmbed(game)],
-      components: buildLobbyComponents(thread.id),
-      withResponse: true,
-    });
+      const canEnd = interaction.user.id === game.hostId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.ManageThreads);
+      if (!canEnd) {
+        return interaction.reply({
+          content: 'Only the game creator or a moderator with **Manage Threads** can end this game.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
 
-    game.messageId = resource.message.id;
-    upsertWL(game);
+      await interaction.reply({ content: '🛑 Ending the game…', flags: MessageFlags.Ephemeral });
+      const { closeSession } = require('../game/wavelength/phases/endGame');
+      await closeSession(game, client, `🛑 Game ended by <@${interaction.user.id}>.`);
+    }
   },
 };

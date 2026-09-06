@@ -5,58 +5,85 @@ const {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   AttachmentBuilder,
-  EmbedBuilder,
   MessageFlags,
 } = require('discord.js');
-
 const {
-  buildLobbyEmbed,
-  buildLobbyComponents,
-  buildActiveEmbed,
-  buildGameThreadEmbed,
-} = require('./phases/lobby');
-
-const {
-  buildCluingBoardEmbed,
   buildSpectrumPickComponents,
   buildClueSubmitComponents,
-  buildPublicClueEmbed,
 } = require('./phases/cluing');
-
-const { buildNudgeComponents, buildGuessPromptComponents } = require('./phases/guessing');
+const { buildNudgeComponents } = require('./phases/guessing');
 const { startRevealPhase } = require('./phases/reveal');
-const { buildSessionSummaryEmbed, buildRematchComponents, evaluateSessionGoal } = require('./phases/sessionEnd');
 const {
   DEFAULT_SESSION_MODE,
   formatClueOrder,
-  buildSessionModePromptEmbed,
-  buildSessionModePromptComponents,
   buildSnakePointsComponents,
   buildEndlessClueOrderComponents,
-  buildGameOptionsEmbed,
-  buildGameOptionsComponents,
 } = require('./phases/sessionConfig');
+const { evaluateSessionGoal } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
+const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('../../db/WavelengthRepository');
 
 const spectra = require('./spectra.json');
+const MIN_PLAYERS = 2;
 
-/** Pick 2 unique random spectra from the pool. */
-function sampleSpectra() {
-  const pool = [...spectra.spectra];
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+async function updateGameMessage(game, client, options = {}, preFetchedThread) {
+  const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return false;
+
+  const payload = await renderGameMessage(game, options);
+  if (game.messageId) {
+    const msg = await thread.messages.fetch(game.messageId).catch(() => null);
+    if (msg) {
+      const edited = await msg.edit(payload).catch(() => null);
+      if (edited) return true;
+      if (options.createIfMissing === false) return false;
+    } else if (options.createIfMissing === false) {
+      return false;
+    }
+  } else if (options.createIfMissing === false) {
+    return false;
   }
-  return pool.slice(0, 2);
+
+  const sent = await thread.send(payload).catch(() => null);
+  if (sent) {
+    game.messageId = sent.id;
+    WavelengthRepository.upsert(game);
+    return true;
+  }
+
+  return false;
 }
 
-/**
- * Check whether all guessers have submitted and fire reveal if so.
- */
+async function replaceCurrentInteractionMessage(interaction, game, options = {}) {
+  const payload = await renderGameMessage(game, options);
+  await interaction.update(payload);
+}
+
+function clearGuessTimeout(game) {
+  if (game.guessTimeout) {
+    clearTimeout(game.guessTimeout);
+    game.guessTimeout = null;
+  }
+}
+
+async function scheduleGuessTimeout(game, client) {
+  clearGuessTimeout(game);
+  if (game.phase !== 'guessing' || game.gamePace === 'turnbased') return;
+
+  game.guessTimeout = setTimeout(async () => {
+    if (game.phase !== 'guessing') return;
+    for (const [, guess] of game.guesses) {
+      guess.submitted = true;
+    }
+    WavelengthRepository.upsert(game);
+    await startRevealPhase(game, client);
+  }, 3 * 60 * 1_000);
+
+  WavelengthRepository.upsert(game);
+}
+
 async function checkAllSubmitted(game, client) {
   const allDone = [...game.guesses.values()].every(g => g.submitted);
   if (allDone) {
@@ -68,76 +95,15 @@ async function startConfiguredRound(game, client) {
   if (!game.sessionMode) {
     client.wavelengthManager.setSessionMode(game.threadId, { ...DEFAULT_SESSION_MODE });
   }
+
   client.wavelengthManager.startGame(game.threadId, spectra.spectra);
-  game.spectrumOptions = sampleSpectra();
-
-  if (game.channelId && game.messageId) {
-    const channel = await client.channels.fetch(game.channelId).catch(() => null);
-    if (channel) {
-      const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
-      if (lobbyMsg) await lobbyMsg.edit({ embeds: [buildActiveEmbed(game)], components: [] }).catch(() => {});
-    }
-  }
-
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return false;
-
-  const paceLine = game.gamePace === 'turnbased'
-    ? '🐢 **Turn-based mode** — there\'s no time limit. All guessers will be pinged when it\'s time to guess.'
-    : '⚡ **Realtime mode** — guessers have **3 minutes** to submit before auto-lock.';
-
-  await thread.send({
-    content: `🔄 **Round ${game.gameNumber} starting!** ${paceLine}`,
-    embeds: [buildGameThreadEmbed(game)],
-  }).catch(() => {});
-
-  const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
-  if (boardMsg) {
-    game.boardMessageId = boardMsg.id;
-    WavelengthRepository.upsert(game);
-  }
-
-  await thread.send({
-    content: `<@${game.clueGiverId}> — you're the **Clue Giver** this round! Click below to receive your private panel.`,
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('wl_open_cg_panel')
-          .setLabel('Open Clue Giver Panel')
-          .setStyle(ButtonStyle.Primary),
-      ),
-    ],
-  }).catch(() => {});
-
+  await updateGameMessage(game, client);
   return true;
 }
 
-/**
- * Post the game-options configuration prompt in the thread.
- * Called after session mode is confirmed; the host picks pace + auto-advance then clicks Confirm.
- */
-async function promptGameOptions(game, client) {
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-
-  await thread.send({
-    content: `⚙️ <@${game.hostId}> — configure game options before Round ${game.gameNumber} starts:`,
-    embeds: [buildGameOptionsEmbed(game)],
-    components: buildGameOptionsComponents(game),
-  }).catch(() => {});
-}
-
-/**
- * Dispatch all `wl_` button interactions and modal submissions.
- * Called from interactionCreate.js.
- *
- * @param {import('discord.js').Interaction} interaction
- * @param {import('discord.js').Client} client
- */
 async function handleWavelengthInteraction(interaction, client) {
   const { wavelengthManager } = client;
 
-  // ── Modal: clue submission ─────────────────────────────────────────────────
   if (interaction.isModalSubmit() && interaction.customId === 'wl_rr_times_modal') {
     const game = wavelengthManager.getGame(interaction.channelId);
     if (!game || game.phase !== 'setup') {
@@ -162,7 +128,7 @@ async function handleWavelengthInteraction(interaction, client) {
       content: `✅ Session mode set: **Round Robin**, everyone clues **${times}** time(s). Now choose game options…`,
       flags: MessageFlags.Ephemeral,
     });
-    await promptGameOptions(game, client);
+    await updateGameMessage(game, client);
     return;
   }
 
@@ -179,175 +145,85 @@ async function handleWavelengthInteraction(interaction, client) {
     if (!raw) {
       return interaction.reply({ content: 'Clue cannot be blank.', flags: MessageFlags.Ephemeral });
     }
-    game.clue  = raw;
+
+    game.clue = raw;
     game.phase = 'guessing';
     WavelengthRepository.upsert(game);
 
-    await interaction.reply({ content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`, flags: MessageFlags.Ephemeral });
-
-    // Update the board and post the public guess-prompt button.
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread) {
-      if (game.boardMessageId) {
-        const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-        if (bMsg) {
-          await bMsg.edit({ embeds: [buildPublicClueEmbed(game)], components: [] }).catch(() => {});
-        }
-      }
-
-      // Build guesser mention list.
-      const pendingMentions = [...game.guesses.keys()]
-        .filter(id => !game.guesses.get(id).submitted)
-        .map(id => `<@${id}>`)
-        .join(' ');
-
-      if (game.gamePace === 'turnbased') {
-        // Turn-based: no timer — ping guessers so they know it's their turn.
-        await thread.send({
-          content:
-            `💬 **${game.players.get(game.clueGiverId)?.username ?? 'The Clue Giver'}** plays: **"${game.clue}"**\n\n` +
-            `📣 ${pendingMentions} — it's your turn to guess! Open your panel below (no time limit).`,
-          components: buildGuessPromptComponents(),
-        }).catch(() => {});
-      } else {
-        // Realtime: post prompt and set 3-minute auto-submit timer.
-        await thread.send({
-          content: `💬 **${game.players.get(game.clueGiverId)?.username ?? 'The Clue Giver'}** plays: **"${game.clue}"**`,
-          components: buildGuessPromptComponents(),
-        }).catch(() => {});
-
-        game.guessTimeout = setTimeout(async () => {
-          if (game.phase !== 'guessing') return;
-          for (const [, g] of game.guesses) {
-            g.submitted = true;
-          }
-          const t = await client.channels.fetch(game.threadId).catch(() => null);
-          if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
-          await startRevealPhase(game, client);
-        }, 3 * 60 * 1_000);
-      }
-    }
-
+    await interaction.reply({
+      content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    await updateGameMessage(game, client);
+    await scheduleGuessTimeout(game, client);
     return;
   }
 
-  // ── All remaining handlers are button interactions ─────────────────────────
   if (!interaction.isButton()) return;
 
   const { customId, user } = interaction;
+  const game = wavelengthManager.getGame(interaction.channelId);
 
-  // ── Lobby buttons (customId encodes threadId as third segment) ─────────────
-  if (
-    customId.startsWith('wl_join_') ||
-    customId.startsWith('wl_leave_') ||
-    customId.startsWith('wl_start_') ||
-    customId.startsWith('wl_cancel_')
-  ) {
-    const threadId = customId.split('_')[2];
-    const game     = wavelengthManager.getGame(threadId);
-
-    // ── wl_join ──────────────────────────────────────────────────────────────
-    if (customId.startsWith('wl_join_')) {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'No active lobby to join.', flags: MessageFlags.Ephemeral });
-      }
-      const added = wavelengthManager.addPlayer(threadId, user);
-      if (!added) {
-        const reason = game.players.size >= 20 ? 'Lobby is full (20 players max).' : 'You are already in the game.';
-        return interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
-      }
-      const thread = await client.channels.fetch(threadId).catch(() => null);
-      if (thread) await thread.members.add(user.id).catch(() => {});
-      return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(threadId) });
+  if (customId === 'wl_join') {
+    if (!game || game.phase !== 'lobby') {
+      return interaction.reply({ content: 'No active lobby to join.', flags: MessageFlags.Ephemeral });
     }
-
-    // ── wl_leave ─────────────────────────────────────────────────────────────
-    if (customId.startsWith('wl_leave_')) {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'No active lobby.', flags: MessageFlags.Ephemeral });
-      }
-      const removed = wavelengthManager.removePlayer(threadId, user.id);
-      if (!removed) {
-        return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
-      }
-      const thread = await client.channels.fetch(threadId).catch(() => null);
-      if (thread) await thread.members.remove(user.id).catch(() => {});
-      return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(threadId) });
+    const added = wavelengthManager.addPlayer(game.threadId, user);
+    if (!added) {
+      const reason = game.players.size >= 20 ? 'Lobby is full (20 players max).' : 'You are already in the game.';
+      return interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
     }
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) await thread.members.add(user.id).catch(() => {});
+    return replaceCurrentInteractionMessage(interaction, game);
+  }
 
-    // ── wl_start ─────────────────────────────────────────────────────────────
-    if (customId.startsWith('wl_start_')) {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'No active lobby.', flags: MessageFlags.Ephemeral });
-      }
-      if (user.id !== game.hostId) {
-        return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
-      }
-      if (game.players.size < 2) {
-        return interaction.reply({
-          content: `Need at least **2 players** to start. Currently: **${game.players.size}**.`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+  if (customId === 'wl_leave') {
+    if (!game || game.phase !== 'lobby') {
+      return interaction.reply({ content: 'No active lobby.', flags: MessageFlags.Ephemeral });
+    }
+    const removed = wavelengthManager.removePlayer(game.threadId, user.id);
+    if (!removed) {
+      return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
+    }
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) await thread.members.remove(user.id).catch(() => {});
+    return replaceCurrentInteractionMessage(interaction, game);
+  }
 
-      await interaction.deferUpdate();
-      game.phase = 'setup';
-      WavelengthRepository.upsert(game);
-
-      await interaction.editReply({
-        embeds: [buildSessionModePromptEmbed(game)],
-        components: [],
+  if (customId === 'wl_start') {
+    if (!game || game.phase !== 'lobby') {
+      return interaction.reply({ content: 'No active lobby.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
+    }
+    if (game.players.size < MIN_PLAYERS) {
+      return interaction.reply({
+        content: `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`,
+        flags: MessageFlags.Ephemeral,
       });
-
-      const thread = await client.channels.fetch(threadId).catch(() => null);
-      if (thread) {
-        await thread.send({
-          content: `⚙️ <@${game.hostId}> choose a **session mode** to begin Round ${game.gameNumber}.`,
-          embeds: [buildSessionModePromptEmbed(game)],
-          components: buildSessionModePromptComponents(),
-        }).catch(() => {});
-      }
-      return;
     }
 
-    // ── wl_cancel ────────────────────────────────────────────────────────────
-    if (customId.startsWith('wl_cancel_')) {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'No active lobby to cancel.', flags: MessageFlags.Ephemeral });
-      }
-      if (user.id !== game.hostId) {
-        return interaction.reply({ content: 'Only the host can cancel.', flags: MessageFlags.Ephemeral });
-      }
+    game.phase = 'setup';
+    WavelengthRepository.upsert(game);
+    return replaceCurrentInteractionMessage(interaction, game);
+  }
 
-      await interaction.deferUpdate();
-
-      const cancelledEmbed = new EmbedBuilder()
-        .setTitle('〰️ Wavelength — Session Cancelled')
-        .setDescription('The host cancelled the session before it started.')
-        .setColor(0x95A5A6)
-        .setTimestamp();
-      await interaction.editReply({ embeds: [cancelledEmbed], components: [] });
-
-      const thread = await client.channels.fetch(threadId).catch(() => null);
-      if (thread) {
-        await thread.send({ content: '✖️ Session cancelled. This thread will be archived shortly.' }).catch(() => {});
-        setTimeout(async () => {
-          await thread.setLocked(true).catch(() => {});
-          await thread.setArchived(true).catch(() => {});
-        }, 5_000);
-      }
-
-      wavelengthManager.deleteGame(threadId);
-      return;
+  if (customId === 'wl_cancel') {
+    if (!game || game.phase !== 'lobby') {
+      return interaction.reply({ content: 'No active lobby to cancel.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the host can cancel.', flags: MessageFlags.Ephemeral });
     }
 
+    await interaction.deferUpdate();
+    const { closeSession } = require('./phases/endGame');
+    await closeSession(game, client, `✖️ Session cancelled by <@${user.id}> before the game started.`);
     return;
   }
 
-  // ── In-thread buttons — look up game by channelId (= threadId) ────────────
-  const game = wavelengthManager.getGame(interaction.channelId);
-
-  // ── wl_open_cg_panel — Clue Giver opens their private spectrum picker ─────
   if (customId === 'wl_mode_rr_times') {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
@@ -402,7 +278,7 @@ async function handleWavelengthInteraction(interaction, client) {
       targetPoints,
     });
     await interaction.update({ content: `✅ Session mode set: **Snake Draft**, first to **${targetPoints}** points. Now choose game options…`, components: [] });
-    await promptGameOptions(game, client);
+    await updateGameMessage(game, client);
     return;
   }
 
@@ -441,41 +317,21 @@ async function handleWavelengthInteraction(interaction, client) {
       content: `✅ Session mode set: **Endless** with **${formatClueOrder(clueOrder)}**. Now choose game options…`,
       components: [],
     });
-    await promptGameOptions(game, client);
+    await updateGameMessage(game, client);
     return;
   }
 
-  // ── wl_pace_realtime — host selects realtime mode ────────────────────────
-  if (customId === 'wl_pace_realtime') {
+  if (customId === 'wl_pace_realtime' || customId === 'wl_pace_turnbased') {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can configure game options.', flags: MessageFlags.Ephemeral });
     }
-    client.wavelengthManager.setGameOptions(game.threadId, 'realtime', game.autoAdvanceRounds ?? false);
-    return interaction.update({
-      embeds: [buildGameOptionsEmbed(game)],
-      components: buildGameOptionsComponents(game),
-    });
+    client.wavelengthManager.setGameOptions(game.threadId, customId === 'wl_pace_turnbased' ? 'turnbased' : 'realtime', game.autoAdvanceRounds ?? false);
+    return replaceCurrentInteractionMessage(interaction, game);
   }
 
-  // ── wl_pace_turnbased — host selects turn-based mode ─────────────────────
-  if (customId === 'wl_pace_turnbased') {
-    if (!game || game.phase !== 'setup') {
-      return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
-    }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure game options.', flags: MessageFlags.Ephemeral });
-    }
-    client.wavelengthManager.setGameOptions(game.threadId, 'turnbased', game.autoAdvanceRounds ?? false);
-    return interaction.update({
-      embeds: [buildGameOptionsEmbed(game)],
-      components: buildGameOptionsComponents(game),
-    });
-  }
-
-  // ── wl_toggle_autoadvance — toggle auto-advance rounds ───────────────────
   if (customId === 'wl_toggle_autoadvance') {
     if (!game) {
       return interaction.reply({ content: 'No active game found.', flags: MessageFlags.Ephemeral });
@@ -483,22 +339,31 @@ async function handleWavelengthInteraction(interaction, client) {
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can toggle auto-advance.', flags: MessageFlags.Ephemeral });
     }
+
     const newVal = client.wavelengthManager.toggleAutoAdvance(game.threadId);
-    if (game.phase === 'setup') {
-      // In setup: update the game options embed in-place.
-      return interaction.update({
-        embeds: [buildGameOptionsEmbed(game)],
-        components: buildGameOptionsComponents(game),
-      });
+
+    if (game.phase === 'ended') {
+      const { scheduleAutoAdvance } = require('./phases/endGame');
+      const goal = evaluateSessionGoal(game);
+      if (!newVal && game.autoAdvanceTimeout) {
+        clearTimeout(game.autoAdvanceTimeout);
+        game.autoAdvanceTimeout = null;
+        WavelengthRepository.upsert(game);
+      } else if (newVal && !goal.complete) {
+        scheduleAutoAdvance(game, client);
+      }
     }
-    // In-game toggle: just acknowledge.
+
+    if (game.phase === 'setup' || game.phase === 'ended') {
+      return replaceCurrentInteractionMessage(interaction, game);
+    }
+
     return interaction.reply({
       content: `🔄 **Auto-advance rounds** is now **${newVal ? 'ON ✅' : 'OFF ❌'}**.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  // ── wl_confirm_options — host confirms game options, start first round ────
   if (customId === 'wl_confirm_options') {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
@@ -506,11 +371,8 @@ async function handleWavelengthInteraction(interaction, client) {
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can start the round.', flags: MessageFlags.Ephemeral });
     }
-    await interaction.update({
-      content: '✅ Game options confirmed! Starting Round 1…',
-      embeds: [],
-      components: [],
-    });
+
+    await interaction.deferUpdate();
     await startConfiguredRound(game, client);
     return;
   }
@@ -529,7 +391,6 @@ async function handleWavelengthInteraction(interaction, client) {
     });
   }
 
-  // ── wl_spectrum_0 / wl_spectrum_1 — Clue Giver picks which spectrum ────────
   if (customId === 'wl_spectrum_0' || customId === 'wl_spectrum_1') {
     if (!game || game.phase !== 'cluing') {
       return interaction.reply({ content: 'No active cluing phase.', flags: MessageFlags.Ephemeral });
@@ -545,7 +406,6 @@ async function handleWavelengthInteraction(interaction, client) {
     game.chosenSpectrum = game.spectrumOptions[idx];
     WavelengthRepository.upsert(game);
 
-    // Generate the Clue Giver's canvas showing their target.
     let cgImageBuffer = null;
     try {
       cgImageBuffer = await generateClueGiverImage(game.chosenSpectrum, game.targetPosition);
@@ -558,13 +418,12 @@ async function handleWavelengthInteraction(interaction, client) {
     return interaction.update({
       content:
         `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
-        `🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!`,
+        '🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!',
       components: buildClueSubmitComponents(),
       files,
     });
   }
 
-  // ── wl_enter_clue — Clue Giver opens the clue modal ──────────────────────
   if (customId === 'wl_enter_clue') {
     if (!game || game.phase !== 'cluing') {
       return interaction.reply({ content: 'No active cluing phase.', flags: MessageFlags.Ephemeral });
@@ -593,7 +452,6 @@ async function handleWavelengthInteraction(interaction, client) {
     return interaction.showModal(modal);
   }
 
-  // ── wl_guess_panel — guesser opens their ephemeral nudge panel ────────────
   if (customId === 'wl_guess_panel') {
     if (!game || game.phase !== 'guessing') {
       return interaction.reply({ content: 'Guessing is not active right now.', flags: MessageFlags.Ephemeral });
@@ -605,7 +463,7 @@ async function handleWavelengthInteraction(interaction, client) {
       return interaction.reply({ content: 'You are not registered as a guesser in this game.', flags: MessageFlags.Ephemeral });
     }
 
-    const guess  = game.guesses.get(user.id);
+    const guess = game.guesses.get(user.id);
     const player = game.players.get(user.id);
 
     let imageBuffer = null;
@@ -615,7 +473,7 @@ async function handleWavelengthInteraction(interaction, client) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
 
-    const files      = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
+    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
     const components = buildNudgeComponents(user.id, guess.submitted, guess.position);
 
     return interaction.reply({
@@ -628,14 +486,10 @@ async function handleWavelengthInteraction(interaction, client) {
     });
   }
 
-  // ── wl_nudge_{userId}_{delta} — guesser nudges their marker ──────────────
   if (customId.startsWith('wl_nudge_')) {
-    // customId format: wl_nudge_{userId}_{delta}
-    // delta can be negative, e.g. wl_nudge_12345_-10
     const parts = customId.split('_');
-    // parts: ['wl', 'nudge', userId, delta]
     const targetUserId = parts[2];
-    const delta        = parseInt(parts[3], 10);
+    const delta = parseInt(parts[3], 10);
 
     if (user.id !== targetUserId) {
       return interaction.reply({ content: 'This is not your guess panel.', flags: MessageFlags.Ephemeral });
@@ -663,7 +517,7 @@ async function handleWavelengthInteraction(interaction, client) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
 
-    const files      = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
+    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
     const components = buildNudgeComponents(user.id, false, guess.position);
 
     return interaction.update({
@@ -673,7 +527,6 @@ async function handleWavelengthInteraction(interaction, client) {
     });
   }
 
-  // ── wl_submit_{userId} — guesser locks in their position ─────────────────
   if (customId.startsWith('wl_submit_')) {
     const targetUserId = customId.split('wl_submit_')[1];
 
@@ -695,7 +548,6 @@ async function handleWavelengthInteraction(interaction, client) {
     guess.submitted = true;
     WavelengthRepository.upsert(game);
 
-    // Update the guesser's ephemeral panel to show it's locked.
     const player = game.players.get(user.id);
     let imageBuffer = null;
     try {
@@ -712,19 +564,11 @@ async function handleWavelengthInteraction(interaction, client) {
       files,
     });
 
-    // Update the public board's submission count.
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread && game.boardMessageId) {
-      const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-      if (bMsg) await bMsg.edit({ embeds: [buildPublicClueEmbed(game)], components: [] }).catch(() => {});
-    }
-
-    // Check if everyone has submitted.
+    await updateGameMessage(game, client);
     await checkAllSubmitted(game, client);
     return;
   }
 
-  // ── wl_rematch_same ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_same') {
     if (!game || game.phase !== 'ended') {
       return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
@@ -740,23 +584,17 @@ async function handleWavelengthInteraction(interaction, client) {
       });
     }
 
-    // Cancel any pending auto-advance timer (host is manually advancing).
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
-
-    await interaction.deferUpdate();
+    await replaceCurrentInteractionMessage(interaction, game, {
+      resultText: '🔄 Starting the next round…',
+      includeControls: false,
+    });
 
     const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
     if (!resetGame) return;
-
     await startConfiguredRound(resetGame, client);
-
     return;
   }
 
-  // ── wl_rematch_open ───────────────────────────────────────────────────────
   if (customId === 'wl_rematch_open') {
     if (!game || game.phase !== 'ended') {
       return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
@@ -765,83 +603,37 @@ async function handleWavelengthInteraction(interaction, client) {
       return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
     }
 
-    // Cancel any pending auto-advance timer.
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
-
-    await interaction.deferUpdate();
+    await replaceCurrentInteractionMessage(interaction, game, {
+      resultText: '📋 Opening sign-ups for a new game…',
+      includeControls: false,
+    });
 
     const resetGame = client.wavelengthManager.resetForNewSession(game.threadId, true);
     if (!resetGame) return;
-
-    if (resetGame.channelId && resetGame.messageId) {
-      const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
-      if (channel) {
-        const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
-        if (lobbyMsg) {
-          await lobbyMsg.edit({ embeds: [buildLobbyEmbed(resetGame)], components: buildLobbyComponents(resetGame.threadId) }).catch(() => {});
-        }
-      }
-    }
-
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread) {
-      await thread.send({ content: '📋 **New game sign-ups are open!** Session scores and mode were reset. Join via the lobby button in the main channel.' }).catch(() => {});
-    }
-
+    await updateGameMessage(resetGame, client);
     return;
   }
 
-  // ── wl_close_session ─────────────────────────────────────────────────────
   if (customId === 'wl_close_session') {
-    if (!game || game.phase !== 'ended') {
-      return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
+    if (!game) {
+      return interaction.reply({ content: 'No active game in this thread.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
     }
 
-    // Cancel any pending auto-advance timer.
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
-
     await interaction.deferUpdate();
-
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread) {
-      await thread.send({
-        content: '🔒 **Session closed.** Thanks for playing Wavelength!',
-        embeds: [buildSessionSummaryEmbed(game)],
-      }).catch(() => {});
-      setTimeout(async () => {
-        await thread.setLocked(true).catch(() => {});
-        await thread.setArchived(true).catch(() => {});
-      }, 5_000);
-    }
-
-    if (game.channelId && game.messageId) {
-      const channel = await client.channels.fetch(game.channelId).catch(() => null);
-      if (channel) {
-        const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
-        if (lobbyMsg) {
-          const closedEmbed = new EmbedBuilder()
-            .setTitle('〰️ Wavelength — Session Ended')
-            .setDescription(`${game.gameNumber} round${game.gameNumber !== 1 ? 's' : ''} played. Thanks for playing!`)
-            .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
-            .setColor(0x5865F2)
-            .setTimestamp();
-          await lobbyMsg.edit({ embeds: [closedEmbed], components: [] }).catch(() => {});
-        }
-      }
-    }
-
-    client.wavelengthManager.deleteGame(game.threadId);
+    const { closeSession } = require('./phases/endGame');
+    await closeSession(game, client, `🔒 Session closed by <@${user.id}>. Thanks for playing Wavelength!`);
     return;
   }
+
+  return interaction.reply({ content: 'Unknown action.', flags: MessageFlags.Ephemeral });
 }
 
-module.exports = { handleWavelengthInteraction, startConfiguredRound };
+module.exports = {
+  handleWavelengthInteraction,
+  updateGameMessage,
+  startConfiguredRound,
+  scheduleGuessTimeout,
+};

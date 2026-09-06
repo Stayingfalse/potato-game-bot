@@ -51,7 +51,7 @@ A hidden-role bluffing game built around wake phases, private information, and o
 A party game of clever clues and spectrum guessing! One player gives a clue to help teammates guess where a target sits on a spectrum between two extremes.
 
 **How to Play:**
-- Use `/wavelength` to start a game
+- Use `/wavelength start` in any channel to open a public game thread, and `/wavelength end` inside that thread to end it early
 - The **Clue Giver** is shown a spectrum (e.g., "Cold ↔ Hot") and a secret target position
 - They give a one-word clue to help teammates guess the target
 - Other players adjust a dial and submit their guess

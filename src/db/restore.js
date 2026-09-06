@@ -211,63 +211,23 @@ async function restoreWavelength(client, WavelengthRepository) {
   const rows = WavelengthRepository.getAll();
   if (rows.length === 0) return;
 
-  const { startRevealPhase } = require('../game/wavelength/phases/reveal');
-  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-  const {
-    buildSessionModePromptEmbed,
-    buildSessionModePromptComponents,
-    buildGameOptionsEmbed,
-    buildGameOptionsComponents,
-  } = require('../game/wavelength/phases/sessionConfig');
+  const { WavelengthGameState } = require('../game/WavelengthManager');
+  const { updateGameMessage, scheduleGuessTimeout } = require('../game/wavelength/interactionHandler');
+  const { scheduleAutoAdvance } = require('../game/wavelength/phases/endGame');
+  const { evaluateSessionGoal } = require('../game/wavelength/phases/sessionEnd');
 
   for (const row of rows) {
-    if (row.phase === 'ended') {
-      WavelengthRepository.remove(row.thread_id);
-      continue;
-    }
-
-    const playersArray = JSON.parse(row.players);
-    const players      = new Map(playersArray.map(p => [p.id, p]));
-    const guessesObj   = JSON.parse(row.guesses);
-    const guesses      = new Map(Object.entries(guessesObj));
-
-    const game = {
-      guildId:         row.guild_id,
-      channelId:       row.channel_id,
-      threadId:        row.thread_id,
-      hostId:          row.host_id,
-      hostUsername:    row.host_username,
-      messageId:       row.message_id,
-      boardMessageId:  row.board_message_id,
-      phase:           row.phase,
-      players,
-      clueGiverId:     row.clue_giver_id,
-      spectrumOptions: row.spectrum_options ? JSON.parse(row.spectrum_options) : [],
-      chosenSpectrum:  row.chosen_spectrum  ? JSON.parse(row.chosen_spectrum)  : null,
-      targetPosition:  row.target_position,
-      clue:            row.clue,
-      guesses,
-      guessTimeout:    null,
-      autoAdvanceTimeout: null,
-      sessionMode:     row.session_mode ? JSON.parse(row.session_mode) : null,
-      clueOrderState:  row.clue_order_state
-        ? JSON.parse(row.clue_order_state)
-        : { roundRobinIndex: 0, snakeIndex: 0, snakeDirection: 1, clueTurnsByPlayer: {} },
-      gameNumber:      row.game_number,
-      sessionHistory:  [],
-      gamePace:        row.game_pace ?? 'realtime',
-      autoAdvanceRounds: row.auto_advance_rounds === 1,
-      _createdAt:      row.created_at,
-    };
-
-    client.wavelengthManager.games.set(row.thread_id, game);
-
-    // Lobby games are trivial to re-start — drop them silently.
     if (row.phase === 'lobby') {
       WavelengthRepository.remove(row.thread_id);
-      client.wavelengthManager.games.delete(row.thread_id);
       continue;
     }
+
+    const game = WavelengthGameState.fromRow({
+      ...row,
+      session_history: row.session_history || '[]',
+    });
+    game.sessionHistory = JSON.parse(row.session_history || '[]');
+    client.wavelengthManager.games.set(row.thread_id, game);
 
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);
     if (!thread) {
@@ -276,61 +236,19 @@ async function restoreWavelength(client, WavelengthRepository) {
       continue;
     }
 
-    await thread.send({ content: '⚠️ Bot restarted. Attempting to resume Wavelength game…' }).catch(() => {});
+    const restored = await updateGameMessage(game, client, { createIfMissing: false }, thread);
+    if (!restored) {
+      WavelengthRepository.remove(row.thread_id);
+      client.wavelengthManager.games.delete(row.thread_id);
+      continue;
+    }
 
-    if (row.phase === 'setup') {
-      if (game.sessionMode) {
-        // Session mode was already set — re-show the game options prompt.
-        await thread.send({
-          content: `⚙️ <@${game.hostId}> — configure game options before resuming Round ${game.gameNumber}.`,
-          embeds: [buildGameOptionsEmbed(game)],
-          components: buildGameOptionsComponents(game),
-        }).catch(() => {});
-      } else {
-        await thread.send({
-          content: `⚙️ <@${game.hostId}> choose a session mode to resume this game.`,
-          embeds: [buildSessionModePromptEmbed(game)],
-          components: buildSessionModePromptComponents(),
-        }).catch(() => {});
-      }
-    } else if (row.phase === 'cluing') {
-      // Re-post the "Open Clue Giver Panel" button.
-      await thread.send({
-        content: `<@${game.clueGiverId}> — the bot restarted. Click below to reopen your Clue Giver panel.`,
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('wl_open_cg_panel')
-              .setLabel('Open Clue Giver Panel')
-              .setStyle(ButtonStyle.Primary),
-          ),
-        ],
-      }).catch(() => {});
-    } else if (row.phase === 'guessing') {
-      // Re-post the public "View Guess Panel" button.
-      const { buildGuessPromptComponents } = require('../game/wavelength/phases/guessing');
-      await thread.send({
-        content: '🔄 Guessing resumed — click below to reopen your guess panel:',
-        components: buildGuessPromptComponents(),
-      }).catch(() => {});
+    if (game.phase === 'guessing' && game.gamePace !== 'turnbased') {
+      await scheduleGuessTimeout(game, client);
+    }
 
-      // Restart auto-submit fallback only for realtime mode.
-      if (game.gamePace !== 'turnbased') {
-        game.guessTimeout = setTimeout(async () => {
-          if (game.phase !== 'guessing') return;
-          for (const [, g] of game.guesses) g.submitted = true;
-          const t = await client.channels.fetch(game.threadId).catch(() => null);
-          if (t) await t.send({ content: '⏰ Time\'s up! All remaining guesses have been locked in.' }).catch(() => {});
-          await startRevealPhase(game, client);
-        }, 3 * 60 * 1_000);
-      }
-    } else if (row.phase === 'reveal') {
-      // Reveal already posted before crash — just re-post rematch buttons.
-      const { buildRematchComponents } = require('../game/wavelength/phases/sessionEnd');
-      await thread.send({
-        content: '🔄 Bot restarted. You can still start a rematch or close the session:',
-        components: buildRematchComponents(false, game),
-      }).catch(() => {});
+    if (game.phase === 'ended' && game.autoAdvanceRounds && !evaluateSessionGoal(game).complete) {
+      scheduleAutoAdvance(game, client);
     }
   }
 }
