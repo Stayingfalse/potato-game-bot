@@ -464,8 +464,10 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
       continue;
     }
 
-    await updateGameMessage(game, client);
-    await thread.send({ content: '⚠️ Bot restarted. The game has resumed — use the buttons above to continue.' }).catch(() => {});
+    // Re-render the single persistent message in place so its buttons are immediately
+    // wired to the restored game state — no separate "bot restarted" notice is needed
+    // since the game is fully playable again as soon as this edit completes.
+    await updateGameMessage(game, client, undefined, thread);
   }
 }
 
