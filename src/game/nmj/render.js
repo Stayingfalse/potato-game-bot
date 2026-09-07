@@ -150,7 +150,7 @@ function buildDeclareMessage(game, displayNames) {
   const turn = bottomContainer(
     [
       '### 🎤 Current Turn',
-      codeBlock(`${currentName ? `${currentName}'s turn` : 'Turn'}: <@${currentId}> must name a celebrity and a "No More…" category.`),
+      `${currentName ? `${currentName}'s turn` : 'Turn'}: <@${currentId}> must name a celebrity and a "No More…" category.`,
       '**Eliminated**',
       renderEliminated(game),
     ],
@@ -177,7 +177,8 @@ function buildRespondMessage(game) {
   const turn = bottomContainer(
     [
       '### 📣 Move On The Table',
-      codeBlock(`<@${pending.playerId}> named: ${pending.celebs.join(' / ')}\nCategory: ${pending.category}`),
+      `<@${pending.playerId}> named:`,
+      codeBlock(`${pending.celebs.join(' / ')}\nCategory: ${pending.category}`),
       '**Responses** (✅ Accepted • ⏳ Awaiting Accept/Challenge/Name Another)',
       statusLines,
       '',
@@ -200,7 +201,9 @@ function buildNameAnotherMessage(game) {
   const turn = bottomContainer(
     [
       '### ❓ Name Another',
-      codeBlock(`<@${pending.playerId}> must name another celebrity fitting:\n${pending.category}\n— or provide a brand new category.`),
+      `<@${pending.playerId}> must name another celebrity fitting:`,
+      codeBlock(pending.category),
+      '— or provide a brand new category.',
       '**Eliminated**',
       renderEliminated(game),
     ],
@@ -226,8 +229,8 @@ function buildChallengeMessage(game) {
   const turn = bottomContainer(
     [
       '### ⚠️ Challenge!',
+      `<@${ch.challengerId}> challenges <@${pending.playerId}>'s pick:`,
       codeBlock(
-        `<@${ch.challengerId}> challenges <@${pending.playerId}>'s pick:\n` +
         `${pending.celebs.join(' / ')}\n` +
         `Claimed violation: ${ch.matchedCategory ?? ch.claimedCategoryText}`,
       ),
@@ -254,7 +257,7 @@ function buildEndedMessage(game, resultText) {
   const turn = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       [
-        codeBlock(resultText),
+        `**${resultText}**`,
         '**Eliminated**',
         renderEliminated(game),
         '',
