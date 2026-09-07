@@ -73,8 +73,15 @@ async function restoreCheeseThief(client, CheeseThiefRepository) {
     client.cheeseThiefManager.games.set(row.thread_id, game);
 
     if (row.phase === 'lobby') {
-      CheeseThiefRepository.remove(row.thread_id);
-      client.cheeseThiefManager.games.delete(row.thread_id);
+      // Lobby games just need their thread (and the lobby message's join/leave/start buttons,
+      // which already carry the thread ID) to still exist — the game state was already
+      // restored above. Skip resumeCheeseThiefGame() since its "reopen Secret Info" notice
+      // only applies to in-progress rounds.
+      const thread = await client.channels.fetch(row.thread_id).catch(() => null);
+      if (!thread) {
+        CheeseThiefRepository.remove(row.thread_id);
+        client.cheeseThiefManager.games.delete(row.thread_id);
+      }
       continue;
     }
 
@@ -147,19 +154,19 @@ async function restoreWerewords(client, GameRepository) {
 
     client.gameManager.games.set(row.thread_id, game);
 
-    // Lobby and mode_select games are trivial to re-start — drop them silently so users aren't
-    // spammed with a "bot restarted" notice every time a new lobby is created.
-    if (row.phase === 'lobby' || row.phase === 'mode_select') {
-      GameRepository.remove(row.thread_id);
-      client.gameManager.games.delete(row.thread_id);
-      continue;
-    }
-
     // Fetch the thread — drop the game if Discord no longer knows about it.
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);
     if (!thread) {
       GameRepository.remove(row.thread_id);
       client.gameManager.games.delete(row.thread_id);
+      continue;
+    }
+
+    // Lobby and mode_select games just need their thread (and lobby message, whose join/leave/
+    // start buttons already carry the thread ID) to still exist — the game state was already
+    // restored above, so those buttons keep working. Skip the "bot restarted" notice for these
+    // phases so hosts aren't spammed every time a new lobby is created.
+    if (row.phase === 'lobby' || row.phase === 'mode_select') {
       continue;
     }
 
@@ -217,11 +224,6 @@ async function restoreWavelength(client, WavelengthRepository) {
   const { evaluateSessionGoal } = require('../game/wavelength/phases/sessionEnd');
 
   for (const row of rows) {
-    if (row.phase === 'lobby') {
-      WavelengthRepository.remove(row.thread_id);
-      continue;
-    }
-
     const game = WavelengthGameState.fromRow(row);
     client.wavelengthManager.games.set(row.thread_id, game);
 
@@ -293,16 +295,18 @@ async function restoreHerdMentality(client, HerdMentalityRepository) {
 
     client.herdMentalityManager.games.set(row.thread_id, game);
 
-    if (row.phase === 'lobby') {
+    const thread = await client.channels.fetch(row.thread_id).catch(() => null);
+    if (!thread) {
       HerdMentalityRepository.remove(row.thread_id);
       client.herdMentalityManager.games.delete(row.thread_id);
       continue;
     }
 
-    const thread = await client.channels.fetch(row.thread_id).catch(() => null);
-    if (!thread) {
-      HerdMentalityRepository.remove(row.thread_id);
-      client.herdMentalityManager.games.delete(row.thread_id);
+    // Lobby games just need their thread (and the lobby message's join/leave/start buttons,
+    // which already carry the thread ID) to still exist — the game state was already restored
+    // above. Skip the "bot restarted" notice so hosts aren't spammed every time a new lobby is
+    // created.
+    if (row.phase === 'lobby') {
       continue;
     }
 
@@ -358,14 +362,6 @@ async function restoreNoMoreJockeys(client, NoMoreJockeysRepository) {
 
   for (const row of rows) {
     if (row.status === 'ended') {
-      NoMoreJockeysRepository.remove(row.thread_id);
-      continue;
-    }
-
-    // Lobby (recruiting) games are trivial to re-start — drop them silently, matching the
-    // pattern used by the other game managers, rather than adding then immediately removing
-    // them from the in-memory map.
-    if (row.status === 'recruiting') {
       NoMoreJockeysRepository.remove(row.thread_id);
       continue;
     }
