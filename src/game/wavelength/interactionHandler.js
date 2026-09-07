@@ -33,8 +33,16 @@ async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   if (!thread) return false;
 
   const payload = await renderGameMessage(game, options);
-  if (game.messageId) {
-    const msg = await thread.messages.fetch(game.messageId).catch(() => null);
+
+  // Lobby and setup keep using the single persistent session message.
+  // From the first round onwards each round gets its own message, which is
+  // edited in place as the round advances and finished with the reveal image
+  // and updated scoreboard before the next round posts a fresh message.
+  const useRoundMessage = game.roundMessageId || game.phase === 'cluing' || game.phase === 'guessing' || game.phase === 'reveal';
+  const targetMessageId = useRoundMessage ? game.roundMessageId : game.messageId;
+
+  if (targetMessageId) {
+    const msg = await thread.messages.fetch(targetMessageId).catch(() => null);
     if (msg) {
       // The message still exists — only ever edit it in place. If the edit itself fails
       // (e.g. a transient API error), do NOT fall through to sending a brand-new message,
@@ -49,7 +57,11 @@ async function updateGameMessage(game, client, options = {}, preFetchedThread) {
 
   const sent = await thread.send(payload).catch(() => null);
   if (sent) {
-    game.messageId = sent.id;
+    if (useRoundMessage) {
+      game.roundMessageId = sent.id;
+    } else {
+      game.messageId = sent.id;
+    }
     WavelengthRepository.upsert(game);
     return true;
   }
@@ -585,10 +597,16 @@ async function handleWavelengthInteraction(interaction, client) {
       });
     }
 
-    await replaceCurrentInteractionMessage(interaction, game, {
-      resultText: '🔄 Starting the next round…',
-      includeControls: false,
-    });
+    // The completed round's message stays as the permanent record of that round
+    // (reveal image + scoreboard); the next round posts its own fresh message.
+    if (game.roundMessageId) {
+      await interaction.update({ components: [], attachments: [] });
+    } else {
+      await replaceCurrentInteractionMessage(interaction, game, {
+        resultText: '🔄 Starting the next round…',
+        includeControls: false,
+      });
+    }
 
     const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
     if (!resetGame) return;
@@ -604,9 +622,10 @@ async function handleWavelengthInteraction(interaction, client) {
       return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
     }
 
-    await replaceCurrentInteractionMessage(interaction, game, {
-      resultText: '📋 Opening sign-ups for a new game…',
-      includeControls: false,
+    await interaction.update({
+      content: '📋 Opening sign-ups for a new game…',
+      components: [],
+      ...(game.roundMessageId ? { attachments: [] } : {}),
     });
 
     const resetGame = client.wavelengthManager.resetForNewSession(game.threadId, true);

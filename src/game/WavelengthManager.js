@@ -11,6 +11,10 @@ class WavelengthGameState {
     this.hostUsername = hostUsername;
 
     this.messageId = null;
+    // One message per round: this tracks the current round's message, which is
+    // edited as the round advances (cluing → guessing → reveal) and then left
+    // in place when the next round posts a fresh message.
+    this.roundMessageId = null;
 
     /** @type {'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'} */
     this.phase = 'lobby';
@@ -42,6 +46,7 @@ class WavelengthGameState {
   static fromRow(row) {
     const game = new WavelengthGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
+    game.roundMessageId = row.round_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.clueGiverId = row.clue_giver_id;
@@ -117,6 +122,7 @@ class WavelengthManager {
 
     game.gameNumber++;
     game.phase = openSignups ? 'lobby' : 'cluing';
+    game.roundMessageId = null;
     game.clueGiverId = null;
     game.spectrumOptions = [];
     game.chosenSpectrum = null;
@@ -142,6 +148,7 @@ class WavelengthManager {
 
     game.gameNumber = 1;
     game.phase = openSignups ? 'lobby' : 'setup';
+    game.roundMessageId = null;
     game.clueGiverId = null;
     game.spectrumOptions = [];
     game.chosenSpectrum = null;
