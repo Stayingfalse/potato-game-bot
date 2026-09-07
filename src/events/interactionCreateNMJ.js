@@ -264,8 +264,11 @@ async function handleButton(interaction, client, game) {
     return interaction.update({ components, flags });
   }
 
-  // ── Spectator peek (available to anyone watching, players included) ─────
+  // ── Spectator peek (only for non-players and eliminated players) ────────
   if (customId === 'nmj_spectate') {
+    if (game.alivePlayers().includes(user.id)) {
+      return interaction.reply({ content: 'Active players cannot use the spectator peek.', flags: MessageFlags.Ephemeral });
+    }
     return interaction.reply({
       content: `👁️ **Spectator view — everything named so far:**\n${renderSpectatorHistory(game)}`,
       flags: MessageFlags.Ephemeral,
@@ -297,14 +300,22 @@ async function handleButton(interaction, client, game) {
     game.acceptedPlayers.add(user.id);
 
     const stillWaiting = game.alivePlayers().filter(id => id !== game.pendingMove.playerId && !game.acceptedPlayers.has(id));
+    let turnAdvanced = false;
     if (stillWaiting.length === 0) {
       // All players accepted — commit the move. Category & celeb become hidden going forward.
       game.moves.push({ playerId: game.pendingMove.playerId, celebs: game.pendingMove.celebs, category: game.pendingMove.category });
       game.bannedCategories.push(game.pendingMove.category);
       advanceTurn(game);
+      turnAdvanced = true;
     }
     persistGame(client, game);
     await interaction.deferUpdate();
+    if (turnAdvanced) {
+      // Clear the thread's chatter so the persistent game message doesn't get lost between turns.
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (thread) await purgeThreadMessages(thread, game.messageId);
+      return updateGameMessage(game, client, undefined, thread);
+    }
     return updateGameMessage(game, client);
   }
 
@@ -385,9 +396,8 @@ async function handleButton(interaction, client, game) {
     }
 
     // All votes are in — the outcome is decided. Now that discussion is over,
-    // clear the challenged player's messages so the next round starts fresh.
+    // clear the challenged player's messages so the vote result stands on its own.
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread) await purgeThreadMessages(thread, game.messageId, game.pendingMove?.playerId);
 
     // Tally votes; tiebreak uses the original (challenged) player's vote.
     let successCount = 0;
@@ -402,6 +412,9 @@ async function handleButton(interaction, client, game) {
     else outcome = ch.votes.get(pending.playerId) === 'success' ? 'success' : 'fail';
 
     if (outcome === 'success') {
+      // Turn is moving on — purge all thread chatter so the persistent game message doesn't get lost.
+      if (thread) await purgeThreadMessages(thread, game.messageId);
+
       game.eliminatedPlayers.push(pending.playerId);
       game.challengeCounts.set(ch.challengerId, (game.challengeCounts.get(ch.challengerId) ?? 0) + 1);
       const eliminatedIdx = game.players.indexOf(pending.playerId);
@@ -416,15 +429,17 @@ async function handleButton(interaction, client, game) {
       const idx = nextAliveIndex(game, eliminatedIdx);
       if (idx !== -1) game.currentPlayerIndex = idx;
       persistGame(client, game);
-      return updateGameMessage(game, client);
+      return updateGameMessage(game, client, undefined, thread);
     }
 
     // Unsuccessful challenge — challenger's token stays spent, move returns to Accept stage.
+    // Clear the challenged player's messages so they can't quietly delete or edit what they said.
+    if (thread) await purgeThreadMessages(thread, game.messageId, pending.playerId);
     game.pendingMove.stage = 'respond';
     game.acceptedPlayers = new Set();
     game.challengeState = null;
     persistGame(client, game);
-    return updateGameMessage(game, client);
+    return updateGameMessage(game, client, undefined, thread);
   }
 
   return interaction.reply({ content: 'Unknown action.', flags: MessageFlags.Ephemeral });
