@@ -169,13 +169,17 @@ function buildDeclareMessage(game, displayNames) {
 
 function buildRespondMessage(game) {
   const pending = game.pendingMove;
-  const waitingOn = game.alivePlayers().filter(id => id !== pending.playerId && !game.acceptedPlayers.has(id));
+  const responders = game.alivePlayers().filter(id => id !== pending.playerId);
+  const statusLines = responders.length
+    ? responders.map(id => `${game.acceptedPlayers.has(id) ? '✅' : '⏳'} <@${id}>`).join('\n')
+    : '*No other active players.*';
 
   const turn = bottomContainer(
     [
       '### 📣 Move On The Table',
       codeBlock(`<@${pending.playerId}> named: ${pending.celebs.join(' / ')}\nCategory: ${pending.category}`),
-      `Waiting on: ${waitingOn.length ? waitingOn.map(id => `<@${id}>`).join(', ') : '*everyone has responded*'}`,
+      '**Responses** (✅ Accepted • ⏳ Awaiting Accept/Challenge/Name Another)',
+      statusLines,
       '',
       '**Eliminated**',
       renderEliminated(game),
