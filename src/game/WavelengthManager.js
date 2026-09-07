@@ -4,14 +4,13 @@ const WavelengthRepository = require('../db/WavelengthRepository');
 
 class WavelengthGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
-    this.guildId       = guildId;
-    this.channelId     = channelId;   // Parent channel (where lobby embed lives)
-    this.threadId      = threadId;    // Private thread ID (game key)
-    this.hostId        = hostId;
-    this.hostUsername  = hostUsername;
+    this.guildId = guildId;
+    this.channelId = channelId;
+    this.threadId = threadId;
+    this.hostId = hostId;
+    this.hostUsername = hostUsername;
 
-    this.messageId     = null;        // Parent-channel lobby/status embed message ID
-    this.boardMessageId = null;       // In-thread live board message ID
+    this.messageId = null;
 
     /** @type {'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'} */
     this.phase = 'lobby';
@@ -19,43 +18,56 @@ class WavelengthGameState {
     /** @type {Map<string, {id:string, username:string, avatarURL:string}>} */
     this.players = new Map();
 
-    this.clueGiverId = null;          // userId of the randomly chosen Clue Giver
-
-    // Two spectrum options presented to the Clue Giver to pick from.
-    // Each is { left: string, right: string }.
+    this.clueGiverId = null;
     this.spectrumOptions = [];
-    this.chosenSpectrum  = null;      // { left, right } — set when Clue Giver picks
-
-    this.targetPosition = null;       // Integer 0–100 randomised on game start
-    this.clue           = null;       // String submitted by Clue Giver via modal
-
-    // Map<userId, { position: number, submitted: boolean }>
-    // Guessers start at position 50 and nudge before submitting.
+    this.chosenSpectrum = null;
+    this.targetPosition = null;
+    this.clue = null;
     this.guesses = new Map();
-
-    this.guessTimeout        = null;   // setTimeout handle for auto-submit fallback (realtime only)
-    this.autoAdvanceTimeout  = null;   // setTimeout handle for auto-advance between rounds
-    this.gameNumber     = 1;          // Round counter within this session.
-    this.sessionHistory = [];         // Array of { roundNumber, clueGiverId, target, clue, spectrum, guesses, scores }
-    this.sessionMode    = null;       // { type, clueOrder, targetClueTurns?, targetPoints? }
-    this.gamePace       = 'realtime'; // 'realtime' | 'turnbased'
-    this.autoAdvanceRounds = false;   // When true, next round starts automatically after reveal
+    this.guessTimeout = null;
+    this.autoAdvanceTimeout = null;
+    this.gameNumber = 1;
+    this.sessionHistory = [];
+    this.sessionMode = null;
+    this.gamePace = 'realtime';
+    this.autoAdvanceRounds = false;
     this.clueOrderState = {
-      roundRobinIndex:   0,
-      snakeIndex:        0,
-      snakeDirection:    1,
+      roundRobinIndex: 0,
+      snakeIndex: 0,
+      snakeDirection: 1,
       clueTurnsByPlayer: {},
     };
+  }
+
+  static fromRow(row) {
+    const game = new WavelengthGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
+    game.messageId = row.message_id;
+    game.phase = row.phase;
+    game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
+    game.clueGiverId = row.clue_giver_id;
+    game.spectrumOptions = row.spectrum_options ? JSON.parse(row.spectrum_options) : [];
+    game.chosenSpectrum = row.chosen_spectrum ? JSON.parse(row.chosen_spectrum) : null;
+    game.targetPosition = row.target_position;
+    game.clue = row.clue;
+    game.guesses = new Map(Object.entries(JSON.parse(row.guesses || '{}')));
+    game.sessionMode = row.session_mode ? JSON.parse(row.session_mode) : null;
+    game.clueOrderState = row.clue_order_state
+      ? JSON.parse(row.clue_order_state)
+      : { roundRobinIndex: 0, snakeIndex: 0, snakeDirection: 1, clueTurnsByPlayer: {} };
+    game.gameNumber = row.game_number;
+    game.sessionHistory = JSON.parse(row.session_history || '[]');
+    game.gamePace = row.game_pace ?? 'realtime';
+    game.autoAdvanceRounds = row.auto_advance_rounds === 1;
+    game._createdAt = row.created_at;
+    return game;
   }
 }
 
 class WavelengthManager {
   constructor() {
-    /** @type {Map<string, WavelengthGameState>} */
     this.games = new Map();
   }
 
-  /** Create and register a new game keyed by threadId. */
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
     const game = new WavelengthGameState(guildId, channelId, threadId, hostId, hostUsername);
     game._createdAt = Date.now();
@@ -64,12 +76,10 @@ class WavelengthManager {
     return game;
   }
 
-  /** Get game by threadId (the primary key). */
   getGame(threadId) {
     return this.games.get(threadId) ?? null;
   }
 
-  /** Find an existing game for a given host within a guild (used for pre-flight teardown). */
   getGameByHost(guildId, hostId) {
     for (const game of this.games.values()) {
       if (game.guildId === guildId && game.hostId === hostId) return game;
@@ -77,7 +87,6 @@ class WavelengthManager {
     return null;
   }
 
-  /** Remove a game and clear all its timers. */
   deleteGame(threadId) {
     const game = this.games.get(threadId);
     if (!game) return;
@@ -93,11 +102,6 @@ class WavelengthManager {
     this.games.delete(threadId);
   }
 
-  /**
-   * Reset state for a rematch.
-   * @param {string} threadId
-   * @param {boolean} openSignups  true = go back to lobby; false = restart immediately with same players
-   */
   resetForRematch(threadId, openSignups) {
     const game = this.games.get(threadId);
     if (!game) return null;
@@ -112,24 +116,17 @@ class WavelengthManager {
     }
 
     game.gameNumber++;
-    game.boardMessageId    = null;
-    game.phase             = openSignups ? 'lobby' : 'cluing';
-    game.clueGiverId       = null;
-    game.spectrumOptions   = [];
-    game.chosenSpectrum    = null;
-    game.targetPosition    = null;
-    game.clue              = null;
-    game.guesses           = new Map();
-
-    // Keep players, sessionHistory, and session mode.
+    game.phase = openSignups ? 'lobby' : 'cluing';
+    game.clueGiverId = null;
+    game.spectrumOptions = [];
+    game.chosenSpectrum = null;
+    game.targetPosition = null;
+    game.clue = null;
+    game.guesses = new Map();
     WavelengthRepository.upsert(game);
     return game;
   }
 
-  /**
-   * Reset state to begin a brand new session in the same thread.
-   * Preserves players only.
-   */
   resetForNewSession(threadId, openSignups) {
     const game = this.games.get(threadId);
     if (!game) return null;
@@ -143,23 +140,22 @@ class WavelengthManager {
       game.autoAdvanceTimeout = null;
     }
 
-    game.gameNumber      = 1;
-    game.boardMessageId  = null;
-    game.phase           = openSignups ? 'lobby' : 'setup';
-    game.clueGiverId     = null;
+    game.gameNumber = 1;
+    game.phase = openSignups ? 'lobby' : 'setup';
+    game.clueGiverId = null;
     game.spectrumOptions = [];
-    game.chosenSpectrum  = null;
-    game.targetPosition  = null;
-    game.clue            = null;
-    game.guesses         = new Map();
-    game.sessionHistory  = [];
-    game.sessionMode     = null;
-    game.gamePace        = 'realtime';
+    game.chosenSpectrum = null;
+    game.targetPosition = null;
+    game.clue = null;
+    game.guesses = new Map();
+    game.sessionHistory = [];
+    game.sessionMode = null;
+    game.gamePace = 'realtime';
     game.autoAdvanceRounds = false;
-    game.clueOrderState  = {
-      roundRobinIndex:   0,
-      snakeIndex:        0,
-      snakeDirection:    1,
+    game.clueOrderState = {
+      roundRobinIndex: 0,
+      snakeIndex: 0,
+      snakeDirection: 1,
       clueTurnsByPlayer: {},
     };
 
@@ -167,7 +163,6 @@ class WavelengthManager {
     return game;
   }
 
-  /** Set game-pace and auto-advance options. */
   setGameOptions(threadId, gamePace, autoAdvanceRounds) {
     const game = this.games.get(threadId);
     if (!game) return null;
@@ -177,7 +172,6 @@ class WavelengthManager {
     return game;
   }
 
-  /** Toggle the auto-advance-rounds flag. Returns the new value. */
   toggleAutoAdvance(threadId) {
     const game = this.games.get(threadId);
     if (!game) return null;
@@ -191,31 +185,29 @@ class WavelengthManager {
     if (!game) return null;
     game.sessionMode = sessionMode;
     game.clueOrderState = {
-      roundRobinIndex:   0,
-      snakeIndex:        0,
-      snakeDirection:    1,
+      roundRobinIndex: 0,
+      snakeIndex: 0,
+      snakeDirection: 1,
       clueTurnsByPlayer: {},
     };
     WavelengthRepository.upsert(game);
     return game;
   }
 
-  /** Add a player. Returns false if they're already in or the lobby is full (20 max). */
   addPlayer(threadId, user) {
     const game = this.games.get(threadId);
     if (!game) return false;
     if (game.players.has(user.id)) return false;
     if (game.players.size >= 20) return false;
     game.players.set(user.id, {
-      id:        user.id,
-      username:  user.username,
+      id: user.id,
+      username: user.username,
       avatarURL: user.displayAvatarURL({ extension: 'png', size: 128, forceStatic: true }),
     });
     WavelengthRepository.upsert(game);
     return true;
   }
 
-  /** Remove a player. Returns false if they weren't in the game. */
   removePlayer(threadId, userId) {
     const game = this.games.get(threadId);
     if (!game) return false;
@@ -224,21 +216,16 @@ class WavelengthManager {
     return removed;
   }
 
-  /**
-   * Prepare the game to start: assign a random Clue Giver, set a random target,
-   * and pick two spectrum options from the provided pool.
-   */
   startGame(threadId, spectraPool) {
     const game = this.games.get(threadId);
     if (!game) return;
 
     const playerIds = [...game.players.keys()];
     if (!game.sessionMode) return;
-    game.clueGiverId   = this.pickClueGiver(game, playerIds);
+    game.clueGiverId = this.pickClueGiver(game, playerIds);
     if (!game.clueGiverId) return;
-    game.targetPosition = Math.floor(Math.random() * 101); // 0–100 inclusive
+    game.targetPosition = Math.floor(Math.random() * 101);
 
-    // Fisher-Yates shuffle, pick 2.
     const pool = [...spectraPool];
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -246,7 +233,6 @@ class WavelengthManager {
     }
     game.spectrumOptions = pool.slice(0, 2);
 
-    // Initialise guesses for all non-Clue-Giver players.
     game.guesses = new Map();
     for (const id of playerIds) {
       if (id !== game.clueGiverId) {
@@ -291,10 +277,6 @@ class WavelengthManager {
     return selectedId;
   }
 
-  /**
-   * Advance the snake cursor for clue-giver order.
-   * Pattern for players [A,B,C] is A → B → C → C → B → A → A → ...
-   */
   advanceSnakeIndex(idx, dir, playerCount) {
     if (playerCount <= 1) return { idx: 0, dir: 1 };
     if (dir === 1) {
@@ -307,3 +289,4 @@ class WavelengthManager {
 }
 
 module.exports = WavelengthManager;
+module.exports.WavelengthGameState = WavelengthGameState;

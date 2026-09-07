@@ -44,7 +44,6 @@ db.exec(`
     host_id              TEXT NOT NULL,
     host_username        TEXT NOT NULL,
     message_id           TEXT,
-    board_message_id     TEXT,
     phase                TEXT NOT NULL DEFAULT 'lobby',
     players              TEXT NOT NULL DEFAULT '[]',
     clue_giver_id        TEXT,
@@ -56,6 +55,9 @@ db.exec(`
     session_mode         TEXT,
     clue_order_state     TEXT,
     game_number          INTEGER NOT NULL DEFAULT 1,
+    game_pace            TEXT NOT NULL DEFAULT 'realtime',
+    auto_advance_rounds  INTEGER NOT NULL DEFAULT 0,
+    session_history      TEXT NOT NULL DEFAULT '[]',
     created_at           INTEGER NOT NULL
   );
 
@@ -242,6 +244,9 @@ if (!wlColumns.has('game_pace')) {
 }
 if (!wlColumns.has('auto_advance_rounds')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN auto_advance_rounds INTEGER NOT NULL DEFAULT 0');
+}
+if (!wlColumns.has('session_history')) {
+  db.exec("ALTER TABLE wavelength_games ADD COLUMN session_history TEXT NOT NULL DEFAULT '[]'");
 }
 
 const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));

@@ -1,91 +1,54 @@
 'use strict';
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { describeSessionMode } = require('./sessionConfig');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-/**
- * Public lobby embed shown in the parent channel.
- */
-function buildLobbyEmbed(game) {
+function renderLobbyText(game) {
   const playerList = game.players.size === 0
     ? '*No players yet — be the first to join!*'
     : [...game.players.values()].map(p => `• ${p.username}`).join('\n');
 
-  return new EmbedBuilder()
-    .setTitle('〰️ Wavelength — Lobby Open')
-    .setDescription(
-      `**Host:** ${game.hostUsername}\n\n` +
-      `**Players (${game.players.size}/20):**\n${playerList}\n\n` +
-      `A random **Clue Giver** will be chosen when the game starts.\n` +
-      `The Clue Giver picks a spectrum and gives a clue. Everyone else nudges a marker to guess where they think the target sits!`
-    )
-    .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
-    .setColor(0x5865F2)
-    .setFooter({ text: 'Minimum 2 players to start' })
-    .setTimestamp();
+  return [
+    '## 〰️ Wavelength — Lobby Open',
+    `**Host:** <@${game.hostId}>`,
+    '',
+    `**Players (${game.players.size}/20):**`,
+    playerList,
+    '',
+    'A random **Clue Giver** will be chosen when the game starts.',
+    'The Clue Giver picks a spectrum and gives a clue. Everyone else nudges a marker to guess where they think the target sits!',
+    '',
+    '*Minimum 2 players to start.*',
+  ].join('\n');
 }
 
-/**
- * Lobby Join / Leave / Start / Cancel buttons.
- */
-function buildLobbyComponents(threadId) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`wl_join_${threadId}`)
-      .setLabel('Join')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('✋'),
-    new ButtonBuilder()
-      .setCustomId(`wl_leave_${threadId}`)
-      .setLabel('Leave')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🚪'),
-    new ButtonBuilder()
-      .setCustomId(`wl_start_${threadId}`)
-      .setLabel('Start Game')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('▶️'),
-    new ButtonBuilder()
-      .setCustomId(`wl_cancel_${threadId}`)
-      .setLabel('Cancel')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('✖️'),
-  );
-  return [row];
-}
-
-/**
- * "Round In Progress" embed shown in the parent channel while the session is active.
- */
-function buildActiveEmbed(game) {
-  const mode = describeSessionMode(game.sessionMode);
-  return new EmbedBuilder()
-    .setTitle('〰️ Wavelength — Round In Progress')
-    .setDescription(`**Round ${game.gameNumber}** is underway inside the thread.\n**Mode:** ${mode}`)
-    .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
-    .setColor(0xF39C12)
-    .setTimestamp();
-}
-
-/**
- * First message posted inside the private game thread at game start.
- */
-function buildGameThreadEmbed(game) {
-  const clueGiver = game.players.get(game.clueGiverId);
-  return new EmbedBuilder()
-    .setTitle(`〰️ Wavelength — Round ${game.gameNumber}`)
-    .setDescription(
-      `Welcome! **<@${game.clueGiverId}> (${clueGiver?.username ?? '?'})** is the Clue Giver this round.\n\n` +
-      `**Clue Giver:** You'll receive a private message with two spectrum options to choose from, then submit your clue.\n\n` +
-      `**Everyone else:** Once the clue is revealed, click **"View Guess Panel"** to position your marker on the spectrum.`
-    )
-    .setColor(0x5865F2)
-    .setTimestamp();
+function buildLobbyComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('wl_join')
+        .setLabel('Join')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✋'),
+      new ButtonBuilder()
+        .setCustomId('wl_leave')
+        .setLabel('Leave')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🚪'),
+      new ButtonBuilder()
+        .setCustomId('wl_start')
+        .setLabel('Start Game')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('▶️'),
+      new ButtonBuilder()
+        .setCustomId('wl_cancel')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji('✖️'),
+    ),
+  ];
 }
 
 module.exports = {
-  buildLobbyEmbed,
+  renderLobbyText,
   buildLobbyComponents,
-  buildActiveEmbed,
-  buildGameThreadEmbed,
 };
