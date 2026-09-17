@@ -83,10 +83,10 @@ function buildActionPrompt(game, displayNames) {
   return `<@${currentPlayerId}> - Please Give your name & category`;
 }
 
-async function sendActionPrompt(game, client, preFetchedThread) {
+async function sendActionPrompt(game, client, preFetchedThread, preFetchedDisplayNames) {
   const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
-  const displayNames = await fetchDisplayNames(thread, game);
+  const displayNames = preFetchedDisplayNames ?? await fetchDisplayNames(thread, game);
   const content = buildActionPrompt(game, displayNames);
   if (!content) return;
   await thread.send({ content }).catch((error) => {
@@ -305,7 +305,7 @@ async function handleButton(interaction, client, game) {
     const displayNames = thread ? await fetchDisplayNames(thread, game) : new Map();
     const { components, flags } = renderGameMessage(game, undefined, { displayNames });
     await interaction.update({ components, flags });
-    await sendActionPrompt(game, client, thread);
+    await sendActionPrompt(game, client, thread, displayNames);
     return;
   }
 
