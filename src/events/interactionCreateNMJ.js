@@ -51,6 +51,47 @@ async function updateGameMessage(game, client, resultText, preFetchedThread) {
   }
 }
 
+function formatMentions(userIds) {
+  return userIds.map(id => `<@${id}>`).join(' ');
+}
+
+function buildActionPrompt(game, displayNames) {
+  if (game.status !== 'playing') return null;
+
+  if (game.challengeState) {
+    const pending = game.pendingMove;
+    if (!pending) return null;
+    const recipients = game.alivePlayers();
+    if (recipients.length === 0) return null;
+    const challengerName = displayNames.get(game.challengeState.challengerId) ?? 'A player';
+    return `${formatMentions(recipients)} - ${challengerName} has challenged ${displayNames.get(pending.playerId) ?? 'the current player'} please vote successful or unsuccessful.`;
+  }
+
+  if (game.pendingMove?.stage === 'name_another') {
+    return `<@${game.pendingMove.playerId}> - You have been asked to Name Another.`;
+  }
+
+  if (game.pendingMove?.stage === 'respond') {
+    const recipients = game.alivePlayers().filter(id => id !== game.pendingMove.playerId);
+    if (recipients.length === 0) return null;
+    const playerName = displayNames.get(game.pendingMove.playerId) ?? 'A player';
+    return `${formatMentions(recipients)} - ${playerName} has given their name please confirm if you accept, challenge or wish for a name another.`;
+  }
+
+  const currentPlayerId = game.currentPlayerId();
+  if (!currentPlayerId) return null;
+  return `<@${currentPlayerId}> - Please Give your name & category`;
+}
+
+async function sendActionPrompt(game, client, preFetchedThread) {
+  const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
+  const displayNames = await fetchDisplayNames(thread, game);
+  const content = buildActionPrompt(game, displayNames);
+  if (!content) return;
+  await thread.send({ content }).catch(() => {});
+}
+
 /**
  * Deletes the challenged player's recent messages in the thread (except the persistent
  * game message). Used when a challenge starts so the accused can't quietly delete or
@@ -261,7 +302,9 @@ async function handleButton(interaction, client, game) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     const displayNames = thread ? await fetchDisplayNames(thread, game) : new Map();
     const { components, flags } = renderGameMessage(game, undefined, { displayNames });
-    return interaction.update({ components, flags });
+    await interaction.update({ components, flags });
+    await sendActionPrompt(game, client, thread);
+    return;
   }
 
   // ── Spectator peek (only for non-players and eliminated players) ────────
@@ -314,7 +357,9 @@ async function handleButton(interaction, client, game) {
       // Clear the thread's chatter so the persistent game message doesn't get lost between turns.
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (thread) await purgeThreadMessages(thread, game.messageId);
-      return updateGameMessage(game, client, undefined, thread);
+      await updateGameMessage(game, client, undefined, thread);
+      await sendActionPrompt(game, client, thread);
+      return;
     }
     return updateGameMessage(game, client);
   }
@@ -350,7 +395,9 @@ async function handleButton(interaction, client, game) {
     game.nameAnotherRequired = true;
     persistGame(client, game);
     await interaction.deferUpdate();
-    return updateGameMessage(game, client);
+    await updateGameMessage(game, client);
+    await sendActionPrompt(game, client);
+    return;
   }
 
   // ── Turn: name another ───────────────────────────────────────────────────
@@ -429,7 +476,9 @@ async function handleButton(interaction, client, game) {
       const idx = nextAliveIndex(game, eliminatedIdx);
       if (idx !== -1) game.currentPlayerIndex = idx;
       persistGame(client, game);
-      return updateGameMessage(game, client, undefined, thread);
+      await updateGameMessage(game, client, undefined, thread);
+      await sendActionPrompt(game, client, thread);
+      return;
     }
 
     // Unsuccessful challenge — challenger's token stays spent, move returns to Accept stage.
@@ -439,7 +488,9 @@ async function handleButton(interaction, client, game) {
     game.acceptedPlayers = new Set();
     game.challengeState = null;
     persistGame(client, game);
-    return updateGameMessage(game, client, undefined, thread);
+    await updateGameMessage(game, client, undefined, thread);
+    await sendActionPrompt(game, client, thread);
+    return;
   }
 
   return interaction.reply({ content: 'Unknown action.', flags: MessageFlags.Ephemeral });
@@ -463,7 +514,9 @@ async function handleModal(interaction, client, game) {
     game.acceptedPlayers = new Set();
     persistGame(client, game);
     await interaction.deferUpdate();
-    return updateGameMessage(game, client);
+    await updateGameMessage(game, client);
+    await sendActionPrompt(game, client);
+    return;
   }
 
   if (customId === 'nmj_challenge_modal') {
@@ -493,7 +546,9 @@ async function handleModal(interaction, client, game) {
     };
     persistGame(client, game);
     await interaction.deferUpdate();
-    return updateGameMessage(game, client);
+    await updateGameMessage(game, client);
+    await sendActionPrompt(game, client);
+    return;
   }
 
   if (customId === 'nmj_na_provide_modal') {
@@ -508,7 +563,9 @@ async function handleModal(interaction, client, game) {
     game.acceptedPlayers = new Set();
     persistGame(client, game);
     await interaction.deferUpdate();
-    return updateGameMessage(game, client);
+    await updateGameMessage(game, client);
+    await sendActionPrompt(game, client);
+    return;
   }
 
   if (customId === 'nmj_na_cant_modal') {
@@ -523,7 +580,9 @@ async function handleModal(interaction, client, game) {
     game.acceptedPlayers = new Set();
     persistGame(client, game);
     await interaction.deferUpdate();
-    return updateGameMessage(game, client);
+    await updateGameMessage(game, client);
+    await sendActionPrompt(game, client);
+    return;
   }
 
   return interaction.reply({ content: 'Unknown submission.', flags: MessageFlags.Ephemeral });
