@@ -89,7 +89,9 @@ async function sendActionPrompt(game, client, preFetchedThread) {
   const displayNames = await fetchDisplayNames(thread, game);
   const content = buildActionPrompt(game, displayNames);
   if (!content) return;
-  await thread.send({ content }).catch(() => {});
+  await thread.send({ content }).catch((error) => {
+    console.error('[NMJ] Failed to send action prompt:', error);
+  });
 }
 
 /**
