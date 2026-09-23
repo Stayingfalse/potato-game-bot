@@ -10,6 +10,7 @@ const PIVOT_X    = W / 2;
 const PIVOT_Y    = 270;
 const RADIUS     = 150;
 const BAR_H      = 40;   // arc thickness
+const LABEL_X_INSET = Math.round(RADIUS * 0.36);
 const LABEL_Y    = 298;  // concept labels baseline
 const INFO_Y     = 38;
 const INFO_H     = 78;
@@ -117,9 +118,9 @@ function drawLabels(ctx, spectrum) {
   ctx.fillStyle = '#FFFFFF';
 
   // Left label
-  ctx.fillText(spectrum.left,  PIVOT_X - RADIUS + 54, LABEL_Y);
+  ctx.fillText(spectrum.left,  PIVOT_X - RADIUS + LABEL_X_INSET, LABEL_Y);
   // Right label
-  ctx.fillText(spectrum.right, PIVOT_X + RADIUS - 54, LABEL_Y);
+  ctx.fillText(spectrum.right, PIVOT_X + RADIUS - LABEL_X_INSET, LABEL_Y);
 }
 
 /**
@@ -301,10 +302,14 @@ function drawRadialTriangle(ctx, point, color = '#E91E63', size = 10) {
 }
 
 function fillWedge(ctx, startPos, endPos, color) {
+  const clampedStart = clampPosition(startPos);
+  const clampedEnd = clampPosition(endPos);
+  if (clampedStart === clampedEnd) return;
+
   const innerRadius = RADIUS - BAR_H / 2;
   const outerRadius = RADIUS + BAR_H / 2;
-  const startAngle = posToCanvasAngle(startPos);
-  const endAngle = posToCanvasAngle(endPos);
+  const startAngle = posToCanvasAngle(clampedStart);
+  const endAngle = posToCanvasAngle(clampedEnd);
 
   ctx.save();
   ctx.beginPath();
