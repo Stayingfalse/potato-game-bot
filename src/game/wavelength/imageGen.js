@@ -92,6 +92,19 @@ function drawArc(ctx) {
   ctx.beginPath();
   ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
   ctx.stroke();
+
+  const tickPositions = [0, 25, 50, 75, 100];
+  for (const pos of tickPositions) {
+    const point = posToPoint(pos);
+    const inner = offsetFromPivot(point, pos === 50 ? -14 : -10);
+    const outer = offsetFromPivot(point, pos === 50 ? 16 : 10);
+    ctx.beginPath();
+    ctx.moveTo(inner.x, inner.y);
+    ctx.lineTo(outer.x, outer.y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = pos === 50 ? 3 : 2;
+    ctx.stroke();
+  }
 }
 
 /**
@@ -306,10 +319,10 @@ function fillWedge(ctx, startPos, endPos, color) {
 // ── Scoring bands (drawn as scoring wedges on reveal) ─────────────────────────
 function drawScoringBands(ctx, targetPosition) {
   const bands = [
-    { dist: TIER_WITHIN_TWENTY, color: '#F39C12' }, // orange outer
-    { dist: TIER_WITHIN_TEN, color: '#8E44AD' },    // purple mid
-    { dist: TIER_WITHIN_FIVE, color: '#2ECC71' },   // green bullseye
-  ];
+    { dist: TIER_WITHIN_TWENTY, color: 'rgba(243, 156, 18, 0.90)' }, // orange outer
+    { dist: TIER_WITHIN_TEN, color: 'rgba(142, 68, 173, 0.92)' },    // purple mid
+    { dist: TIER_WITHIN_FIVE, color: 'rgba(46, 204, 113, 0.95)' },   // green bullseye
+  ].sort((a, b) => b.dist - a.dist);
 
   for (const { dist, color } of bands) {
     fillWedge(ctx, targetPosition - dist, targetPosition + dist, color);
