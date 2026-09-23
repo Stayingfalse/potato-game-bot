@@ -98,6 +98,58 @@ function clearGuessTimeout(game) {
   }
 }
 
+function getRemainingGuessers(game) {
+  return [...game.players.values()].filter((player) => {
+    if (player.id === game.clueGiverId) return false;
+    const guess = game.guesses.get(player.id);
+    return guess && !guess.submitted;
+  });
+}
+
+function buildTurnPingContent(game, messageUrl) {
+  if (game.phase === 'cluing') {
+    return {
+      userIds: [game.clueGiverId],
+      content: `<@${game.clueGiverId}> — please give us your clue: ${messageUrl}`,
+    };
+  }
+
+  if (game.phase !== 'guessing') return null;
+
+  const remainingGuessers = getRemainingGuessers(game);
+  if (remainingGuessers.length === 0) return null;
+
+  const mentions = remainingGuessers.map((player) => `<@${player.id}>`).join(' ');
+  if (remainingGuessers.length === 1) {
+    return {
+      userIds: [remainingGuessers[0].id],
+      content: `${mentions} — just yourself left to guess: ${messageUrl}`,
+    };
+  }
+
+  return {
+    userIds: remainingGuessers.map((player) => player.id),
+    content: `${mentions} — please guess here: ${messageUrl}`,
+  };
+}
+
+async function sendTurnPing(game, client, preFetchedThread) {
+  const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
+  const messageId = game.roundMessageId ?? game.messageId;
+  if (!thread || !messageId) return false;
+
+  const messageUrl = `https://discord.com/channels/${game.guildId}/${thread.id}/${messageId}`;
+  const ping = buildTurnPingContent(game, messageUrl);
+  if (!ping) return false;
+
+  const sent = await thread.send({
+    content: ping.content,
+    allowedMentions: { users: ping.userIds },
+  }).catch(() => null);
+
+  return !!sent;
+}
+
 async function scheduleGuessTimeout(game, client) {
   clearGuessTimeout(game);
   if (game.phase !== 'guessing' || game.gamePace === 'turnbased') return;
@@ -128,6 +180,7 @@ async function startConfiguredRound(game, client) {
 
   client.wavelengthManager.startGame(game.threadId, spectra.spectra);
   await updateGameMessage(game, client);
+  await sendTurnPing(game, client);
   return true;
 }
 
@@ -186,6 +239,7 @@ async function handleWavelengthInteraction(interaction, client) {
     });
     await updateGameMessage(game, client);
     await scheduleGuessTimeout(game, client);
+    await sendTurnPing(game, client);
     return;
   }
 
@@ -606,6 +660,9 @@ async function handleWavelengthInteraction(interaction, client) {
     });
 
     await updateGameMessage(game, client);
+    if (getRemainingGuessers(game).length > 0) {
+      await sendTurnPing(game, client);
+    }
     await checkAllSubmitted(game, client);
     return;
   }
