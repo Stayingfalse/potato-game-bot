@@ -345,9 +345,11 @@ function drawScoringBands(ctx, targetPosition) {
   ].sort((a, b) => b.dist - a.dist);
 
   for (const { dist, color } of bands) {
-    fillWedge(ctx, targetPosition - dist, targetPosition + dist, color);
-    drawBandBoundary(ctx, targetPosition - dist, dist === TIER_WITHIN_FIVE ? 3 : 2);
-    drawBandBoundary(ctx, targetPosition + dist, dist === TIER_WITHIN_FIVE ? 3 : 2);
+    const startPos = targetPosition - dist;
+    const endPos = targetPosition + dist;
+    fillWedge(ctx, startPos, endPos, color);
+    if (startPos >= 0) drawBandBoundary(ctx, startPos, dist === TIER_WITHIN_FIVE ? 3 : 2);
+    if (endPos <= 100) drawBandBoundary(ctx, endPos, dist === TIER_WITHIN_FIVE ? 3 : 2);
   }
 }
 
