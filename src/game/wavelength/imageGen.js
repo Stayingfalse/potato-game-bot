@@ -5,18 +5,21 @@ const https = require('https');
 
 // ── Canvas layout constants ────────────────────────────────────────────────────
 const W          = 800;
-const H          = 220;
+const H          = 320;
 const BAR_X1     = 70;   // left edge of spectrum bar
 const BAR_X2     = 730;  // right edge of spectrum bar
-const BAR_Y      = 100;  // centre-line of bar
+const BAR_Y      = 185;  // centre-line of bar
 const BAR_H      = 40;   // bar height
-const LABEL_Y    = 185;  // concept labels baseline
-const SCORE_Y    = 30;   // tier band label y
+const LABEL_Y    = 270;  // concept labels baseline
+const INFO_Y     = 38;
+const INFO_H     = 78;
+const INFO_GAP   = 18;
+const INFO_W     = (W - 80 - INFO_GAP) / 2;
 
-// Tier thresholds (distance from target, inclusive).
-const TIER_BULLSEYE = 5;
-const TIER_CLOSE    = 10;
-const TIER_NEAR     = 20;
+// Visible scoring bands (the exact bullseye is represented by the target marker itself).
+const TIER_WITHIN_FIVE   = 5;
+const TIER_WITHIN_TEN    = 10;
+const TIER_WITHIN_TWENTY = 20;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -145,12 +148,83 @@ function drawBackground(ctx) {
   ctx.fillRect(0, 0, W, H);
 }
 
+function truncateToWidth(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let trimmed = text;
+  while (trimmed.length > 1 && ctx.measureText(`${trimmed}…`).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return `${trimmed}…`;
+}
+
+function wrapCardText(ctx, text, maxWidth, maxLines = 2) {
+  const words = String(text ?? '').split(/\s+/).filter(Boolean);
+  if (!words.length) return ['—'];
+
+  const lines = [];
+  let current = '';
+
+  for (let i = 0; i < words.length; i++) {
+    const rawWord = words[i];
+    const word = ctx.measureText(rawWord).width <= maxWidth ? rawWord : truncateToWidth(ctx, rawWord, maxWidth);
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    if (!current) current = word;
+    if (lines.length === maxLines - 1) {
+      lines.push(truncateToWidth(ctx, `${current} ${words.slice(i + 1).join(' ')}`.trim(), maxWidth));
+      return lines;
+    }
+    lines.push(current);
+    current = word;
+  }
+
+  if (current) lines.push(current);
+  return lines.slice(0, maxLines);
+}
+
+function drawInfoCard(ctx, x, y, title, value, accentColor) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(17, 24, 39, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, INFO_W, INFO_H, 14);
+  ctx.fill();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, INFO_W, INFO_H, 14);
+  ctx.stroke();
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = accentColor;
+  ctx.fillText(title.toUpperCase(), x + 16, y + 12);
+
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFFFFF';
+
+  const lines = wrapCardText(ctx, value, INFO_W - 32, 2);
+  const lineHeight = 22;
+  const startY = y + 46 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, x + INFO_W / 2, startY + idx * lineHeight);
+  });
+  ctx.restore();
+}
+
 // ── Scoring bands (drawn as semi-transparent overlays on reveal) ──────────────
 function drawScoringBands(ctx, targetX) {
   const bands = [
-    { dist: TIER_BULLSEYE, color: 'rgba(46, 204, 113, 0.30)' },  // green — bullseye ±5
-    { dist: TIER_CLOSE,    color: 'rgba(52, 152, 219, 0.20)' },  // blue  — close ±10
-    { dist: TIER_NEAR,     color: 'rgba(255, 193, 7,  0.15)' },  // amber — near ±20
+    { dist: TIER_WITHIN_TWENTY, color: 'rgba(255, 193, 7,  0.15)' },  // amber — within 20
+    { dist: TIER_WITHIN_TEN, color: 'rgba(52, 152, 219, 0.20)' },     // blue  — within 10
+    { dist: TIER_WITHIN_FIVE, color: 'rgba(46, 204, 113, 0.30)' },    // green — within 5
   ];
 
   const pxPer = (BAR_X2 - BAR_X1) / 100;
@@ -210,13 +284,16 @@ async function generateClueGiverImage(spectrum, targetPosition) {
  * @param {string} username
  * @param {{ left: string, right: string }} spectrum
  * @param {number} position  0–100
+ * @param {string} clue
  * @returns {Promise<Buffer>}
  */
-async function generateGuesserImage(avatarURL, username, spectrum, position) {
+async function generateGuesserImage(avatarURL, username, spectrum, position, clue) {
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext('2d');
 
   drawBackground(ctx);
+  drawInfoCard(ctx, 40, INFO_Y, 'Clue', clue ? `“${clue}”` : '—', '#58A6FF');
+  drawInfoCard(ctx, 40 + INFO_W + INFO_GAP, INFO_Y, 'Category', `${spectrum.left} ↔ ${spectrum.right}`, '#F1C40F');
   drawBar(ctx);
 
   const aX = posToX(position);
@@ -259,13 +336,16 @@ async function generateGuesserImage(avatarURL, username, spectrum, position) {
  * @param {{ left: string, right: string }} spectrum
  * @param {number} targetPosition
  * @param {Array<{ userId: string, username: string, avatarURL: string, position: number }>} playerGuesses
+ * @param {string} clue
  * @returns {Promise<Buffer>}
  */
-async function generateRevealImage(spectrum, targetPosition, playerGuesses) {
+async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue) {
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext('2d');
 
   drawBackground(ctx);
+  drawInfoCard(ctx, 40, INFO_Y, 'Clue', clue ? `“${clue}”` : '—', '#58A6FF');
+  drawInfoCard(ctx, 40 + INFO_W + INFO_GAP, INFO_Y, 'Category', `${spectrum.left} ↔ ${spectrum.right}`, '#F1C40F');
   drawBar(ctx);
 
   const tX = posToX(targetPosition);
