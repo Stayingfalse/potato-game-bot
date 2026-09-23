@@ -264,6 +264,29 @@ function drawPivotHubAndNeedle(ctx, point, color = '#FFFFFF') {
   ctx.restore();
 }
 
+function drawRadialTriangle(ctx, point, color = '#E91E63', size = 10) {
+  const dx = point.x - PIVOT_X;
+  const dy = point.y - PIVOT_Y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const tx = -uy;
+  const ty = ux;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(point.x + ux * size, point.y + uy * size);
+  ctx.lineTo(point.x - ux * size + tx * size * 0.85, point.y - uy * size + ty * size * 0.85);
+  ctx.lineTo(point.x - ux * size - tx * size * 0.85, point.y - uy * size - ty * size * 0.85);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function fillWedge(ctx, startPos, endPos, color) {
   const innerRadius = RADIUS - BAR_H / 2;
   const outerRadius = RADIUS + BAR_H / 2;
@@ -291,15 +314,6 @@ function drawScoringBands(ctx, targetPosition) {
   for (const { dist, color } of bands) {
     fillWedge(ctx, targetPosition - dist, targetPosition + dist, color);
   }
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS - BAR_H / 2, Math.PI, 0);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS + BAR_H / 2, Math.PI, 0);
-  ctx.stroke();
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -418,24 +432,14 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
     // Triangle marker for average
     const sz = 10;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(markerPoint.x,     markerPoint.y - sz);
-    ctx.lineTo(markerPoint.x - sz, markerPoint.y + sz);
-    ctx.lineTo(markerPoint.x + sz, markerPoint.y + sz);
-    ctx.closePath();
-    ctx.fillStyle = '#E91E63';
-    ctx.fill();
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
+    drawRadialTriangle(ctx, markerPoint, '#E91E63', sz);
 
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#E91E63';
-    ctx.fillText('AVG', markerPoint.x, markerPoint.y + sz + 2);
+    const avgLabelPoint = offsetFromPivot(markerPoint, sz + 10);
+    ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
   }
 
   // Target diamond
