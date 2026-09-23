@@ -30,6 +30,7 @@ const BAND_INNER_RADIUS = RADIUS + BAR_H / 2 + 6;
 const BAND_OUTER_RADIUS = RADIUS + BAR_H / 2 + 18;
 const BAND_MID_RADIUS = (BAND_INNER_RADIUS + BAND_OUTER_RADIUS) / 2;
 const MAX_VISIBLE_STACK = 4;
+const STACK_BUCKET_PX = 12;
 
 const TIER_WITHIN_FIVE = 5;
 const TIER_WITHIN_TEN = 10;
@@ -506,7 +507,8 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
   for (const guess of playerGuesses) {
     const point = posToPoint(guess.position);
-    const key = String(Math.round(guess.position));
+    const arcOffsetPx = (clampPosition(guess.position) / 100) * Math.PI * RADIUS;
+    const key = String(Math.round(arcOffsetPx / STACK_BUCKET_PX));
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push({ ...guess, point });
   }
