@@ -514,18 +514,20 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
   ctx.font = 'bold 12px sans-serif';
   for (const guesses of buckets.values()) {
-    for (let idx = 0; idx < guesses.length; idx++) {
-      const { avatarURL, username, point } = guesses[idx];
-      if (idx >= MAX_STACK) {
-        if (idx === MAX_STACK) {
-          const overflowPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
-          drawOverflowChip(ctx, overflowPoint, guesses.length - MAX_STACK);
-        }
-        continue;
-      }
+    const visibleAvatarCount = guesses.length > MAX_STACK ? MAX_STACK - 1 : guesses.length;
 
+    for (let idx = 0; idx < visibleAvatarCount; idx++) {
+      const { avatarURL, username, point } = guesses[idx];
       const avatarPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
       await drawAvatar(ctx, avatarURL, username, avatarPoint, AVATAR_R);
+    }
+
+    if (guesses.length > MAX_STACK) {
+      const overflowPoint = offsetFromPivot(
+        guesses[visibleAvatarCount].point,
+        26 + visibleAvatarCount * (AVATAR_R * 2 + 6),
+      );
+      drawOverflowChip(ctx, overflowPoint, guesses.length - visibleAvatarCount);
     }
   }
 
