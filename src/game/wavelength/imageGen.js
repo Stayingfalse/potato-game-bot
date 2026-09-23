@@ -29,7 +29,7 @@ const BOTTOM_CARD = {
 const BAND_INNER_RADIUS = RADIUS + BAR_H / 2 + 6;
 const BAND_OUTER_RADIUS = RADIUS + BAR_H / 2 + 18;
 const BAND_MID_RADIUS = (BAND_INNER_RADIUS + BAND_OUTER_RADIUS) / 2;
-const MAX_STACK = 4;
+const MAX_VISIBLE_STACK = 4;
 
 const TIER_WITHIN_FIVE = 5;
 const TIER_WITHIN_TEN = 10;
@@ -514,7 +514,9 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
   ctx.font = 'bold 12px sans-serif';
   for (const guesses of buckets.values()) {
-    const visibleAvatarCount = guesses.length > MAX_STACK ? MAX_STACK - 1 : guesses.length;
+    const visibleSlotCount = Math.min(guesses.length, MAX_VISIBLE_STACK);
+    const hasOverflow = guesses.length > MAX_VISIBLE_STACK;
+    const visibleAvatarCount = hasOverflow ? visibleSlotCount - 1 : visibleSlotCount;
 
     for (let idx = 0; idx < visibleAvatarCount; idx++) {
       const { avatarURL, username, point } = guesses[idx];
@@ -522,7 +524,7 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
       await drawAvatar(ctx, avatarURL, username, avatarPoint, AVATAR_R);
     }
 
-    if (guesses.length > MAX_STACK) {
+    if (hasOverflow) {
       const overflowPoint = offsetFromPivot(
         guesses[visibleAvatarCount].point,
         26 + visibleAvatarCount * (AVATAR_R * 2 + 6),
