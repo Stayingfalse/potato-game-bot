@@ -4,27 +4,33 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const https = require('https');
 
 const W = 800;
-const H = 360;
+const H = 420;
 const TITLE_Y = 8;
 const PIVOT_X = W / 2;
-const PIVOT_Y = 260;
+const PIVOT_Y = 278;
 const RADIUS = 150;
 const BAR_H = 40;
-const LABEL_Y = 286;
+const LABEL_Y = 332;
 const LABEL_MARGIN_X = 56;
 const LABEL_MAX_W = 190;
+const CATEGORY_Y = LABEL_Y + 24;
 const TOP_CARD = {
-  x: 44,
+  x: 40,
   y: 38,
-  width: W - 88,
+  width: W - 80,
   height: 66,
 };
 const BOTTOM_CARD = {
-  x: 140,
-  y: 300,
-  width: W - 280,
+  x: 40,
+  y: CATEGORY_Y,
+  width: W - 80,
   height: 50,
 };
+const BAND_INNER_RADIUS = RADIUS + BAR_H / 2 + 6;
+const BAND_OUTER_RADIUS = RADIUS + BAR_H / 2 + 18;
+const BAND_MID_RADIUS = (BAND_INNER_RADIUS + BAND_OUTER_RADIUS) / 2;
+const MAX_VISIBLE_STACK = 4;
+const STACK_BUCKET_PX = 12;
 
 const TIER_WITHIN_FIVE = 5;
 const TIER_WITHIN_TEN = 10;
@@ -216,7 +222,7 @@ function drawLabels(ctx, spectrum) {
   ctx.restore();
 }
 
-async function drawAvatar(ctx, avatarURL, username, point, radius) {
+async function drawAvatar(ctx, avatarURL, username, point, radius, badgeText = null) {
   const { x, y } = point;
   ctx.save();
   ctx.beginPath();
@@ -246,6 +252,23 @@ async function drawAvatar(ctx, avatarURL, username, point, radius) {
   ctx.strokeStyle = '#FFFFFF';
   ctx.lineWidth = 2;
   ctx.stroke();
+
+  if (badgeText != null) {
+    const badgeX = x + radius * 0.7;
+    const badgeY = y + radius * 0.7;
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#111827';
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(badgeText), badgeX, badgeY);
+  }
 }
 
 function drawDiamond(ctx, point, color = '#FFD700', size = 14) {
@@ -308,20 +331,39 @@ function drawRadialTriangle(ctx, point, color = '#E91E63', size = 10) {
   ctx.restore();
 }
 
+function drawOverflowChip(ctx, point, remainingCount) {
+  const label = `+${remainingCount}`;
+  const width = Math.max(28, 18 + ctx.measureText(label).width);
+  const height = 24;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(point.x - width / 2, point.y - height / 2, width, height, 12);
+  ctx.fillStyle = '#111827';
+  ctx.fill();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, point.x, point.y);
+  ctx.restore();
+}
+
 function fillWedge(ctx, startPos, endPos, color) {
   const clampedStart = clampPosition(startPos);
   const clampedEnd = clampPosition(endPos);
   if (clampedStart === clampedEnd) return;
 
-  const innerRadius = RADIUS - BAR_H / 2;
-  const outerRadius = RADIUS + BAR_H / 2;
   const startAngle = posToCanvasAngle(clampedStart);
   const endAngle = posToCanvasAngle(clampedEnd);
 
   ctx.save();
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, outerRadius, startAngle, endAngle);
-  ctx.arc(PIVOT_X, PIVOT_Y, innerRadius, endAngle, startAngle, true);
+  ctx.arc(PIVOT_X, PIVOT_Y, BAND_OUTER_RADIUS, startAngle, endAngle);
+  ctx.arc(PIVOT_X, PIVOT_Y, BAND_INNER_RADIUS, endAngle, startAngle, true);
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
@@ -329,9 +371,8 @@ function fillWedge(ctx, startPos, endPos, color) {
 }
 
 function drawBandBoundary(ctx, pos, lineWidth = 2) {
-  const point = posToPoint(pos);
-  const inner = offsetFromPivot(point, -BAR_H / 2 - 2);
-  const outer = offsetFromPivot(point, BAR_H / 2 + 8);
+  const inner = posToPoint(pos, BAND_INNER_RADIUS - 2);
+  const outer = posToPoint(pos, BAND_OUTER_RADIUS + 2);
 
   ctx.save();
   ctx.beginPath();
@@ -385,15 +426,15 @@ async function generateClueGiverImage(spectrum, targetPosition) {
   drawClueCard(ctx, null);
   drawArc(ctx);
 
-  const targetPoint = posToPoint(targetPosition);
-  drawPivotHubAndNeedle(ctx, targetPoint, '#FFD700');
-  drawDiamond(ctx, targetPoint, '#FFD700', 16);
+  const targetMarkerPoint = posToPoint(targetPosition, BAND_MID_RADIUS);
+  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
+  drawDiamond(ctx, targetMarkerPoint, '#FFD700', 16);
 
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetPoint, 28);
+  const targetLabelPoint = offsetFromPivot(targetMarkerPoint, -34);
   ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
 
   drawLabels(ctx, spectrum);
@@ -412,15 +453,9 @@ async function generateGuesserImage(avatarURL, username, spectrum, position, clu
   drawArc(ctx);
 
   const guessPoint = posToPoint(position);
-  drawPivotHubAndNeedle(ctx, guessPoint);
-  await drawAvatar(ctx, avatarURL, username, offsetFromPivot(guessPoint, 28), 20);
-
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = '#FFFFFF';
-  const labelPoint = offsetFromPivot(guessPoint, 54);
-  ctx.fillText(`${position}`, labelPoint.x, labelPoint.y + 4);
+  const avatarPoint = offsetFromPivot(guessPoint, 28);
+  drawPivotHubAndNeedle(ctx, avatarPoint);
+  await drawAvatar(ctx, avatarURL, username, avatarPoint, 20, position);
 
   drawLabels(ctx, spectrum);
   drawCategoryCard(ctx, spectrum);
@@ -437,9 +472,9 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
   drawClueCard(ctx, clue);
   drawArc(ctx);
 
-  const targetPoint = posToPoint(targetPosition);
+  const targetMarkerPoint = posToPoint(targetPosition, BAND_MID_RADIUS);
   drawScoringBands(ctx, targetPosition);
-  drawPivotHubAndNeedle(ctx, targetPoint, '#FFD700');
+  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
 
   if (playerGuesses.length > 0) {
     const avg = playerGuesses.reduce((sum, guess) => sum + guess.position, 0) / playerGuesses.length;
@@ -459,25 +494,44 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
     ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
   }
 
-  drawDiamond(ctx, targetPoint, '#FFD700', 16);
+  drawDiamond(ctx, targetMarkerPoint, '#FFD700', 16);
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetPoint, 28);
+  const targetLabelPoint = offsetFromPivot(targetMarkerPoint, -34);
   ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
 
-  const BUCKET = 6;
   const buckets = new Map();
   const AVATAR_R = 18;
 
   for (const guess of playerGuesses) {
     const point = posToPoint(guess.position);
-    const key = `${Math.round(point.x / BUCKET)}:${Math.round(point.y / BUCKET)}`;
-    const idx = buckets.has(key) ? buckets.get(key) : 0;
-    buckets.set(key, idx + 1);
-    const avatarPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
-    await drawAvatar(ctx, guess.avatarURL, guess.username, avatarPoint, AVATAR_R);
+    const arcOffsetPx = (clampPosition(guess.position) / 100) * Math.PI * RADIUS;
+    const key = String(Math.round(arcOffsetPx / STACK_BUCKET_PX));
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({ ...guess, point });
+  }
+
+  ctx.font = 'bold 12px sans-serif';
+  for (const guesses of buckets.values()) {
+    const visibleSlotCount = Math.min(guesses.length, MAX_VISIBLE_STACK);
+    const hasOverflow = guesses.length > MAX_VISIBLE_STACK;
+    const visibleAvatarCount = hasOverflow ? visibleSlotCount - 1 : visibleSlotCount;
+
+    for (let idx = 0; idx < visibleAvatarCount; idx++) {
+      const { avatarURL, username, point } = guesses[idx];
+      const avatarPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
+      await drawAvatar(ctx, avatarURL, username, avatarPoint, AVATAR_R);
+    }
+
+    if (hasOverflow) {
+      const overflowPoint = offsetFromPivot(
+        guesses[visibleAvatarCount].point,
+        26 + visibleAvatarCount * (AVATAR_R * 2 + 6),
+      );
+      drawOverflowChip(ctx, overflowPoint, guesses.length - visibleAvatarCount);
+    }
   }
 
   drawLabels(ctx, spectrum);

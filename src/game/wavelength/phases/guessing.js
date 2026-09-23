@@ -14,9 +14,9 @@ function buildNudgeButton(userId, delta, label, submitted, position) {
 /**
  * The 7-button nudge layout shown in each guesser's ephemeral panel.
  *
- * Row 1: +25 / +5 / +1
+ * Row 1: -25 / -5 / -1
  * Row 2: SUBMIT
- * Row 3: -1 / -5 / -25
+ * Row 3: +1 / +5 / +25
  *
  * @param {string} userId
  * @param {boolean} submitted  When true, all nudge buttons are disabled.
@@ -24,9 +24,9 @@ function buildNudgeButton(userId, delta, label, submitted, position) {
  */
 function buildNudgeComponents(userId, submitted, position) {
   const row1 = new ActionRowBuilder().addComponents(
-    buildNudgeButton(userId, 25, '+25', submitted, position),
-    buildNudgeButton(userId, 5, '+5', submitted, position),
-    buildNudgeButton(userId, 1, '+1', submitted, position),
+    buildNudgeButton(userId, -25, '-25', submitted, position),
+    buildNudgeButton(userId, -5, '-5', submitted, position),
+    buildNudgeButton(userId, -1, '-1', submitted, position),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
@@ -38,9 +38,9 @@ function buildNudgeComponents(userId, submitted, position) {
   );
 
   const row3 = new ActionRowBuilder().addComponents(
-    buildNudgeButton(userId, -1, '-1', submitted, position),
-    buildNudgeButton(userId, -5, '-5', submitted, position),
-    buildNudgeButton(userId, -25, '-25', submitted, position),
+    buildNudgeButton(userId, 1, '+1', submitted, position),
+    buildNudgeButton(userId, 5, '+5', submitted, position),
+    buildNudgeButton(userId, 25, '+25', submitted, position),
   );
 
   return [row1, row2, row3];
