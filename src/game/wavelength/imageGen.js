@@ -501,13 +501,12 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
   const targetLabelPoint = offsetFromPivot(targetMarkerPoint, -34);
   ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
 
-  const BUCKET = 6;
   const buckets = new Map();
   const AVATAR_R = 18;
 
   for (const guess of playerGuesses) {
     const point = posToPoint(guess.position);
-    const key = `${Math.round(point.x / BUCKET)}:${Math.round(point.y / BUCKET)}`;
+    const key = String(Math.round(guess.position));
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push({ ...guess, point });
   }
