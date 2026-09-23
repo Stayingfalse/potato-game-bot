@@ -6,12 +6,11 @@ const https = require('https');
 // ── Canvas layout constants ────────────────────────────────────────────────────
 const W          = 800;
 const H          = 320;
-const PIVOT_X    = W / 2;
-const PIVOT_Y    = 270;
-const RADIUS     = 150;
-const BAR_H      = 40;   // arc thickness
-const LABEL_X_INSET = Math.round(RADIUS * 0.36);
-const LABEL_Y    = 298;  // concept labels baseline
+const BAR_X1     = 70;   // left edge of spectrum bar
+const BAR_X2     = 730;  // right edge of spectrum bar
+const BAR_Y      = 185;  // centre-line of bar
+const BAR_H      = 40;   // bar height
+const LABEL_Y    = 270;  // concept labels baseline
 const INFO_Y     = 38;
 const INFO_H     = 78;
 const INFO_GAP   = 18;
@@ -24,32 +23,9 @@ const TIER_WITHIN_TWENTY = 20;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function clampPosition(pos) {
-  return Math.max(0, Math.min(100, pos));
-}
-
-/** Convert a 0–100 position value to a point on the semi-circular dial. */
-function posToPoint(pos, radius = RADIUS) {
-  const clamped = clampPosition(pos);
-  const angle = Math.PI - (clamped / 100) * Math.PI; // 180°→0°
-  return {
-    x: PIVOT_X + radius * Math.cos(angle),
-    y: PIVOT_Y - radius * Math.sin(angle),
-  };
-}
-
-function posToCanvasAngle(pos) {
-  return Math.PI + (clampPosition(pos) / 100) * Math.PI;
-}
-
-function offsetFromPivot(point, distance) {
-  const dx = point.x - PIVOT_X;
-  const dy = point.y - PIVOT_Y;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    x: point.x + (dx / length) * distance,
-    y: point.y + (dy / length) * distance,
-  };
+/** Convert a 0–100 position value to a canvas x coordinate. */
+function posToX(pos) {
+  return BAR_X1 + (pos / 100) * (BAR_X2 - BAR_X1);
 }
 
 /**
@@ -72,40 +48,26 @@ function fetchBuffer(url) {
 }
 
 /**
- * Draw the gradient spectrum arc onto a canvas context.
+ * Draw the gradient spectrum bar onto a canvas context.
  * Left side is warm orange, right side is cool blue — generic enough for any pair.
  */
-function drawArc(ctx) {
-  const grad = ctx.createLinearGradient(PIVOT_X - RADIUS, 0, PIVOT_X + RADIUS, 0);
+function drawBar(ctx) {
+  const grad = ctx.createLinearGradient(BAR_X1, 0, BAR_X2, 0);
   grad.addColorStop(0,    '#E74C3C'); // red-orange (left)
   grad.addColorStop(0.5,  '#F1C40F'); // yellow (centre)
   grad.addColorStop(1,    '#3498DB'); // blue (right)
 
+  ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
-  ctx.lineWidth = BAR_H;
-  ctx.strokeStyle = grad;
-  ctx.stroke();
+  ctx.roundRect(BAR_X1, BAR_Y - BAR_H / 2, BAR_X2 - BAR_X1, BAR_H, 8);
+  ctx.fill();
 
   // Border
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
+  ctx.roundRect(BAR_X1, BAR_Y - BAR_H / 2, BAR_X2 - BAR_X1, BAR_H, 8);
   ctx.stroke();
-
-  const tickPositions = [0, 25, 50, 75, 100];
-  for (const pos of tickPositions) {
-    const point = posToPoint(pos);
-    const inner = offsetFromPivot(point, pos === 50 ? -14 : -10);
-    const outer = offsetFromPivot(point, pos === 50 ? 16 : 10);
-    ctx.beginPath();
-    ctx.moveTo(inner.x, inner.y);
-    ctx.lineTo(outer.x, outer.y);
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = pos === 50 ? 3 : 2;
-    ctx.stroke();
-  }
 }
 
 /**
@@ -118,17 +80,16 @@ function drawLabels(ctx, spectrum) {
   ctx.fillStyle = '#FFFFFF';
 
   // Left label
-  ctx.fillText(spectrum.left,  PIVOT_X - RADIUS + LABEL_X_INSET, LABEL_Y);
+  ctx.fillText(spectrum.left,  BAR_X1 + (BAR_X2 - BAR_X1) * 0.12, LABEL_Y);
   // Right label
-  ctx.fillText(spectrum.right, PIVOT_X + RADIUS - LABEL_X_INSET, LABEL_Y);
+  ctx.fillText(spectrum.right, BAR_X1 + (BAR_X2 - BAR_X1) * 0.88, LABEL_Y);
 }
 
 /**
- * Draw a circular-clipped avatar at a given point.
+ * Draw a circular-clipped avatar at a given x position above the bar.
  * Falls back to a solid circle with the user's initial if the avatar fails.
  */
-async function drawAvatar(ctx, avatarURL, username, point, radius) {
-  const { x, y } = point;
+async function drawAvatar(ctx, avatarURL, username, x, y, radius) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -162,10 +123,10 @@ async function drawAvatar(ctx, avatarURL, username, point, radius) {
 }
 
 /**
- * Draw a diamond shape at a point on the dial (used for the target marker).
+ * Draw a diamond shape at xPos on the bar (used for the target marker).
  */
-function drawDiamond(ctx, point, color = '#FFD700', size = 14) {
-  const { x: xPos, y: yPos } = point;
+function drawDiamond(ctx, xPos, color = '#FFD700', size = 14) {
+  const yPos = BAR_Y;
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(xPos,        yPos - size);
@@ -258,98 +219,21 @@ function drawInfoCard(ctx, x, y, title, value, accentColor) {
   ctx.restore();
 }
 
-function drawPivotHubAndNeedle(ctx, point, color = '#FFFFFF') {
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(PIVOT_X, PIVOT_Y);
-  ctx.lineTo(point.x, point.y);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, 9, 0, Math.PI * 2);
-  ctx.fillStyle = '#111827';
-  ctx.fill();
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawRadialTriangle(ctx, point, color = '#E91E63', size = 10) {
-  const dx = point.x - PIVOT_X;
-  const dy = point.y - PIVOT_Y;
-  const length = Math.hypot(dx, dy) || 1;
-  const ux = dx / length;
-  const uy = dy / length;
-  const tx = -uy;
-  const ty = ux;
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(point.x + ux * size, point.y + uy * size);
-  ctx.lineTo(point.x - ux * size + tx * size * 0.85, point.y - uy * size + ty * size * 0.85);
-  ctx.lineTo(point.x - ux * size - tx * size * 0.85, point.y - uy * size - ty * size * 0.85);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function fillWedge(ctx, startPos, endPos, color) {
-  const clampedStart = clampPosition(startPos);
-  const clampedEnd = clampPosition(endPos);
-  if (clampedStart === clampedEnd) return;
-
-  const innerRadius = RADIUS - BAR_H / 2;
-  const outerRadius = RADIUS + BAR_H / 2;
-  const startAngle = posToCanvasAngle(clampedStart);
-  const endAngle = posToCanvasAngle(clampedEnd);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, outerRadius, startAngle, endAngle);
-  ctx.arc(PIVOT_X, PIVOT_Y, innerRadius, endAngle, startAngle, true);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBandBoundary(ctx, pos, lineWidth = 2) {
-  const point = posToPoint(pos);
-  const inner = offsetFromPivot(point, -BAR_H / 2 - 2);
-  const outer = offsetFromPivot(point, BAR_H / 2 + 8);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(inner.x, inner.y);
-  ctx.lineTo(outer.x, outer.y);
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = lineWidth;
-  ctx.stroke();
-  ctx.restore();
-}
-
-// ── Scoring bands (drawn as scoring wedges on reveal) ─────────────────────────
-function drawScoringBands(ctx, targetPosition) {
+// ── Scoring bands (drawn as semi-transparent overlays on reveal) ──────────────
+function drawScoringBands(ctx, targetX) {
   const bands = [
-    { dist: TIER_WITHIN_TWENTY, color: 'rgba(243, 156, 18, 0.90)' }, // orange outer
-    { dist: TIER_WITHIN_TEN, color: 'rgba(142, 68, 173, 0.92)' },    // purple mid
-    { dist: TIER_WITHIN_FIVE, color: 'rgba(46, 204, 113, 0.95)' },   // green bullseye
-  ].sort((a, b) => b.dist - a.dist);
+    { dist: TIER_WITHIN_TWENTY, color: 'rgba(255, 193, 7,  0.15)' },  // amber — within 20
+    { dist: TIER_WITHIN_TEN, color: 'rgba(52, 152, 219, 0.20)' },     // blue  — within 10
+    { dist: TIER_WITHIN_FIVE, color: 'rgba(46, 204, 113, 0.30)' },    // green — within 5
+  ];
+
+  const pxPer = (BAR_X2 - BAR_X1) / 100;
 
   for (const { dist, color } of bands) {
-    const startPos = targetPosition - dist;
-    const endPos = targetPosition + dist;
-    fillWedge(ctx, startPos, endPos, color);
-    if (startPos >= 0) drawBandBoundary(ctx, startPos, dist === TIER_WITHIN_FIVE ? 3 : 2);
-    if (endPos <= 100) drawBandBoundary(ctx, endPos, dist === TIER_WITHIN_FIVE ? 3 : 2);
+    const x1 = Math.max(BAR_X1, targetX - dist * pxPer);
+    const x2 = Math.min(BAR_X2, targetX + dist * pxPer);
+    ctx.fillStyle = color;
+    ctx.fillRect(x1, BAR_Y - BAR_H / 2, x2 - x1, BAR_H);
   }
 }
 
@@ -368,19 +252,17 @@ async function generateClueGiverImage(spectrum, targetPosition) {
   const ctx    = canvas.getContext('2d');
 
   drawBackground(ctx);
-  drawArc(ctx);
+  drawBar(ctx);
 
-  const targetPoint = posToPoint(targetPosition);
-  drawPivotHubAndNeedle(ctx, targetPoint, '#FFD700');
-  drawDiamond(ctx, targetPoint, '#FFD700', 16);
+  const tX = posToX(targetPosition);
+  drawDiamond(ctx, tX, '#FFD700', 16);
 
   // Label above the diamond
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetPoint, 28);
-  ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
+  ctx.fillText('TARGET', tX, BAR_Y - BAR_H / 2 - 4);
 
   drawLabels(ctx, spectrum);
 
@@ -412,19 +294,28 @@ async function generateGuesserImage(avatarURL, username, spectrum, position, clu
   drawBackground(ctx);
   drawInfoCard(ctx, 40, INFO_Y, 'Clue', clue ? `“${clue}”` : '—', '#58A6FF');
   drawInfoCard(ctx, 40 + INFO_W + INFO_GAP, INFO_Y, 'Category', `${spectrum.left} ↔ ${spectrum.right}`, '#F1C40F');
-  drawArc(ctx);
+  drawBar(ctx);
 
-  const guessPoint = posToPoint(position);
-  drawPivotHubAndNeedle(ctx, guessPoint);
-  await drawAvatar(ctx, avatarURL, username, offsetFromPivot(guessPoint, 28), 20);
+  const aX = posToX(position);
+  // Avatar sits just above the bar
+  await drawAvatar(ctx, avatarURL, username, aX, BAR_Y - BAR_H / 2 - 26, 20);
+
+  // Vertical marker line
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(aX, BAR_Y - BAR_H / 2);
+  ctx.lineTo(aX, BAR_Y + BAR_H / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
   // Position label
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#FFFFFF';
-  const labelPoint = offsetFromPivot(guessPoint, 54);
-  ctx.fillText(`${position}`, labelPoint.x, labelPoint.y + 4);
+  ctx.fillText(`${position}`, aX, BAR_Y + BAR_H / 2 + 4);
 
   drawLabels(ctx, spectrum);
 
@@ -455,54 +346,60 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
   drawBackground(ctx);
   drawInfoCard(ctx, 40, INFO_Y, 'Clue', clue ? `“${clue}”` : '—', '#58A6FF');
   drawInfoCard(ctx, 40 + INFO_W + INFO_GAP, INFO_Y, 'Category', `${spectrum.left} ↔ ${spectrum.right}`, '#F1C40F');
-  drawArc(ctx);
+  drawBar(ctx);
 
-  const targetPoint = posToPoint(targetPosition);
-  drawScoringBands(ctx, targetPosition);
-  drawPivotHubAndNeedle(ctx, targetPoint, '#FFD700');
+  const tX = posToX(targetPosition);
+  drawScoringBands(ctx, tX);
 
   // Group average
   if (playerGuesses.length > 0) {
     const avg = playerGuesses.reduce((s, g) => s + g.position, 0) / playerGuesses.length;
-    const avgPoint = posToPoint(avg);
-    const markerPoint = offsetFromPivot(avgPoint, 20);
+    const aX  = posToX(avg);
 
     // Triangle marker for average
     const sz = 10;
-    drawRadialTriangle(ctx, markerPoint, '#E91E63', sz);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(aX,      BAR_Y + BAR_H / 2 + sz * 2);
+    ctx.lineTo(aX - sz, BAR_Y + BAR_H / 2);
+    ctx.lineTo(aX + sz, BAR_Y + BAR_H / 2);
+    ctx.closePath();
+    ctx.fillStyle = '#E91E63';
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
 
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const avgLabelPoint = offsetFromPivot(markerPoint, sz + 10);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#111827';
-    ctx.strokeText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
     ctx.fillStyle = '#E91E63';
-    ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
+    ctx.fillText('AVG', aX, BAR_Y + BAR_H / 2 + sz * 2 + 2);
   }
 
   // Target diamond
-  drawDiamond(ctx, targetPoint, '#FFD700', 16);
+  drawDiamond(ctx, tX, '#FFD700', 16);
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetPoint, 28);
-  ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
+  ctx.fillText('TARGET', tX, BAR_Y - BAR_H / 2 - 4);
 
-  // Player avatars — stack them radially outward if they cluster at the same point.
+  // Player avatars — stack them vertically if they cluster at the same x.
+  // Group by rounded x position (±6 px bucket).
   const BUCKET = 6;
-  const buckets = new Map(); // point bucket → radial stack index
+  const buckets = new Map(); // xBucket → array index for vertical stacking
   const AVATAR_R = 18;
+  const AVATAR_BASE_Y = BAR_Y - BAR_H / 2 - AVATAR_R - 6;
 
   for (const g of playerGuesses) {
-    const point = posToPoint(g.position);
-    const key = `${Math.round(point.x / BUCKET)}:${Math.round(point.y / BUCKET)}`;
+    const x   = posToX(g.position);
+    const key = Math.round(x / BUCKET);
     const idx = buckets.has(key) ? buckets.get(key) : 0;
     buckets.set(key, idx + 1);
-    const avatarPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
-    await drawAvatar(ctx, g.avatarURL, g.username, avatarPoint, AVATAR_R);
+    const y = AVATAR_BASE_Y - idx * (AVATAR_R * 2 + 4);
+    await drawAvatar(ctx, g.avatarURL, g.username, x, y, AVATAR_R);
   }
 
   drawLabels(ctx, spectrum);
