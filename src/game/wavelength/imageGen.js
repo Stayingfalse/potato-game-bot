@@ -4,13 +4,13 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const https = require('https');
 
 const W = 800;
-const H = 420;
+const H = 460;
 const TITLE_Y = 8;
 const PIVOT_X = W / 2;
-const PIVOT_Y = 278;
+const PIVOT_Y = 310;
 const RADIUS = 150;
 const BAR_H = 40;
-const LABEL_Y = 332;
+const LABEL_Y = 364;
 const LABEL_MARGIN_X = 56;
 const LABEL_MAX_W = 190;
 const CATEGORY_Y = LABEL_Y + 24;
@@ -26,9 +26,7 @@ const BOTTOM_CARD = {
   width: W - 80,
   height: 50,
 };
-const BAND_INNER_RADIUS = RADIUS + BAR_H / 2 + 6;
-const BAND_OUTER_RADIUS = RADIUS + BAR_H / 2 + 18;
-const BAND_MID_RADIUS = (BAND_INNER_RADIUS + BAND_OUTER_RADIUS) / 2;
+const WEDGE_RADIUS = RADIUS - BAR_H / 2; // scoring wedges run pivot → band's inner edge
 const MAX_VISIBLE_STACK = 4;
 const STACK_BUCKET_PX = 12;
 
@@ -170,15 +168,10 @@ function drawTitle(ctx, text) {
 }
 
 function drawArc(ctx) {
-  const grad = ctx.createLinearGradient(PIVOT_X - RADIUS, 0, PIVOT_X + RADIUS, 0);
-  grad.addColorStop(0, '#E74C3C');
-  grad.addColorStop(0.5, '#F1C40F');
-  grad.addColorStop(1, '#3498DB');
-
   ctx.beginPath();
   ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
   ctx.lineWidth = BAR_H;
-  ctx.strokeStyle = grad;
+  ctx.strokeStyle = '#D9C9A3';
   ctx.stroke();
 
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -271,23 +264,6 @@ async function drawAvatar(ctx, avatarURL, username, point, radius, badgeText = n
   }
 }
 
-function drawDiamond(ctx, point, color = '#FFD700', size = 14) {
-  const { x, y } = point;
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(x, y - size);
-  ctx.lineTo(x + size, y);
-  ctx.lineTo(x, y + size);
-  ctx.lineTo(x - size, y);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
 function drawPivotHubAndNeedle(ctx, point, color = '#FFFFFF') {
   ctx.save();
   ctx.strokeStyle = color;
@@ -299,7 +275,7 @@ function drawPivotHubAndNeedle(ctx, point, color = '#FFFFFF') {
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, 9, 0, Math.PI * 2);
+  ctx.arc(PIVOT_X, PIVOT_Y, 16, 0, Math.PI * 2);
   ctx.fillStyle = '#111827';
   ctx.fill();
   ctx.strokeStyle = '#FFFFFF';
@@ -362,8 +338,8 @@ function fillWedge(ctx, startPos, endPos, color) {
 
   ctx.save();
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, BAND_OUTER_RADIUS, startAngle, endAngle);
-  ctx.arc(PIVOT_X, PIVOT_Y, BAND_INNER_RADIUS, endAngle, startAngle, true);
+  ctx.moveTo(PIVOT_X, PIVOT_Y);
+  ctx.arc(PIVOT_X, PIVOT_Y, WEDGE_RADIUS, startAngle, endAngle);
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
@@ -371,12 +347,11 @@ function fillWedge(ctx, startPos, endPos, color) {
 }
 
 function drawBandBoundary(ctx, pos, lineWidth = 2) {
-  const inner = posToPoint(pos, BAND_INNER_RADIUS - 2);
-  const outer = posToPoint(pos, BAND_OUTER_RADIUS + 2);
+  const outer = posToPoint(pos, WEDGE_RADIUS + 2);
 
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(inner.x, inner.y);
+  ctx.moveTo(PIVOT_X, PIVOT_Y);
   ctx.lineTo(outer.x, outer.y);
   ctx.strokeStyle = 'rgba(255,255,255,0.9)';
   ctx.lineWidth = lineWidth;
@@ -425,17 +400,10 @@ async function generateClueGiverImage(spectrum, targetPosition) {
   drawBackground(ctx);
   drawClueCard(ctx, null);
   drawArc(ctx);
+  drawScoringBands(ctx, targetPosition);
 
-  const targetMarkerPoint = posToPoint(targetPosition, BAND_MID_RADIUS);
+  const targetMarkerPoint = posToPoint(targetPosition);
   drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
-  drawDiamond(ctx, targetMarkerPoint, '#FFD700', 16);
-
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetMarkerPoint, -34);
-  ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
 
   drawLabels(ctx, spectrum);
   drawCategoryCard(ctx, spectrum);
@@ -453,9 +421,8 @@ async function generateGuesserImage(avatarURL, username, spectrum, position, clu
   drawArc(ctx);
 
   const guessPoint = posToPoint(position);
-  const avatarPoint = offsetFromPivot(guessPoint, 28);
-  drawPivotHubAndNeedle(ctx, avatarPoint);
-  await drawAvatar(ctx, avatarURL, username, avatarPoint, 20, position);
+  drawPivotHubAndNeedle(ctx, guessPoint);
+  await drawAvatar(ctx, avatarURL, username, guessPoint, 20, position);
 
   drawLabels(ctx, spectrum);
   drawCategoryCard(ctx, spectrum);
@@ -472,35 +439,9 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
   drawClueCard(ctx, clue);
   drawArc(ctx);
 
-  const targetMarkerPoint = posToPoint(targetPosition, BAND_MID_RADIUS);
+  const targetMarkerPoint = posToPoint(targetPosition);
   drawScoringBands(ctx, targetPosition);
   drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
-
-  if (playerGuesses.length > 0) {
-    const avg = playerGuesses.reduce((sum, guess) => sum + guess.position, 0) / playerGuesses.length;
-    const avgPoint = posToPoint(avg);
-    const markerPoint = offsetFromPivot(avgPoint, 20);
-
-    drawRadialTriangle(ctx, markerPoint, '#E91E63', 10);
-
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const avgLabelPoint = offsetFromPivot(markerPoint, 20);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#111827';
-    ctx.strokeText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
-    ctx.fillStyle = '#E91E63';
-    ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
-  }
-
-  drawDiamond(ctx, targetMarkerPoint, '#FFD700', 16);
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillStyle = '#FFD700';
-  const targetLabelPoint = offsetFromPivot(targetMarkerPoint, -34);
-  ctx.fillText('TARGET', targetLabelPoint.x, targetLabelPoint.y - 6);
 
   const buckets = new Map();
   const AVATAR_R = 18;
@@ -521,17 +462,35 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
     for (let idx = 0; idx < visibleAvatarCount; idx++) {
       const { avatarURL, username, point } = guesses[idx];
-      const avatarPoint = offsetFromPivot(point, 26 + idx * (AVATAR_R * 2 + 6));
+      const avatarPoint = offsetFromPivot(point, idx * (AVATAR_R * 2 + 6));
       await drawAvatar(ctx, avatarURL, username, avatarPoint, AVATAR_R);
     }
 
     if (hasOverflow) {
       const overflowPoint = offsetFromPivot(
         guesses[visibleAvatarCount].point,
-        26 + visibleAvatarCount * (AVATAR_R * 2 + 6),
+        visibleAvatarCount * (AVATAR_R * 2 + 6),
       );
       drawOverflowChip(ctx, overflowPoint, guesses.length - visibleAvatarCount);
     }
+  }
+
+  if (playerGuesses.length > 0) {
+    const avg = playerGuesses.reduce((sum, guess) => sum + guess.position, 0) / playerGuesses.length;
+    const avgPoint = posToPoint(avg);
+    const markerPoint = offsetFromPivot(avgPoint, 30);
+
+    drawRadialTriangle(ctx, markerPoint, '#E91E63', 10);
+
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const avgLabelPoint = offsetFromPivot(markerPoint, 20);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#111827';
+    ctx.strokeText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
+    ctx.fillStyle = '#E91E63';
+    ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
   }
 
   drawLabels(ctx, spectrum);
