@@ -321,6 +321,21 @@ function fillWedge(ctx, startPos, endPos, color) {
   ctx.restore();
 }
 
+function drawBandBoundary(ctx, pos, lineWidth = 2) {
+  const point = posToPoint(pos);
+  const inner = offsetFromPivot(point, -BAR_H / 2 - 2);
+  const outer = offsetFromPivot(point, BAR_H / 2 + 8);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(inner.x, inner.y);
+  ctx.lineTo(outer.x, outer.y);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ── Scoring bands (drawn as scoring wedges on reveal) ─────────────────────────
 function drawScoringBands(ctx, targetPosition) {
   const bands = [
@@ -331,6 +346,8 @@ function drawScoringBands(ctx, targetPosition) {
 
   for (const { dist, color } of bands) {
     fillWedge(ctx, targetPosition - dist, targetPosition + dist, color);
+    drawBandBoundary(ctx, targetPosition - dist, dist === TIER_WITHIN_FIVE ? 3 : 2);
+    drawBandBoundary(ctx, targetPosition + dist, dist === TIER_WITHIN_FIVE ? 3 : 2);
   }
 }
 
@@ -455,8 +472,11 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#E91E63';
     const avgLabelPoint = offsetFromPivot(markerPoint, sz + 10);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#111827';
+    ctx.strokeText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
+    ctx.fillStyle = '#E91E63';
     ctx.fillText('AVG', avgLabelPoint.x, avgLabelPoint.y + 2);
   }
 
