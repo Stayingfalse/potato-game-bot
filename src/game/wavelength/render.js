@@ -118,7 +118,12 @@ async function buildEndedMessage(game, options = {}) {
     });
 
     try {
-      const imageBuffer = await generateRevealImage(latestRound.spectrum, latestRound.target, playerGuesses);
+      const imageBuffer = await generateRevealImage(
+        latestRound.spectrum,
+        latestRound.target,
+        playerGuesses,
+        latestRound.clue,
+      );
       files.push(new AttachmentBuilder(imageBuffer, { name: 'wavelength_reveal.png' }));
       components.push(
         new ContainerBuilder()

@@ -3,16 +3,18 @@
 const WavelengthRepository = require('../../../db/WavelengthRepository');
 const WavelengthStatsRepository = require('../../../db/WavelengthStatsRepository');
 
-const TIER_BULLSEYE = 5;
-const TIER_CLOSE = 10;
-const TIER_NEAR = 20;
+const TIER_BULLSEYE = 0;
+const TIER_CLOSE = 5;
+const TIER_NEAR = 10;
+const TIER_FAR = 20;
 
-function tierScore(guess, target) {
+function classifyTier(guess, target) {
   const dist = Math.abs(guess - target);
-  if (dist <= TIER_BULLSEYE) return 4;
-  if (dist <= TIER_CLOSE) return 3;
-  if (dist <= TIER_NEAR) return 2;
-  return 0;
+  if (dist === TIER_BULLSEYE) return { key: 'bullseye', label: '🎯 Exact Bullseye', points: 4, distance: dist };
+  if (dist <= TIER_CLOSE) return { key: 'close', label: '🟢 Within 5', points: 3, distance: dist };
+  if (dist <= TIER_NEAR) return { key: 'near', label: '🔵 Within 10', points: 2, distance: dist };
+  if (dist <= TIER_FAR) return { key: 'far', label: '🟡 Within 20', points: 1, distance: dist };
+  return { key: 'miss', label: '⚫ Miss', points: 0, distance: dist };
 }
 
 function groupAverage(guesses) {
@@ -32,7 +34,8 @@ function stdDev(guesses) {
 function computeScores(game) {
   const target = game.targetPosition;
   const avg = groupAverage(game.guesses);
-  const avgScr = avg !== null ? tierScore(avg, target) : 0;
+  const avgTier = avg !== null ? classifyTier(avg, target) : { points: 0 };
+  const avgScr = avgTier.points;
   const dev = stdDev(game.guesses);
   const synergy = dev <= 10 ? 5 : dev <= 15 ? 3 : 0;
 
@@ -40,16 +43,19 @@ function computeScores(game) {
   let clueGiverFromGuessers = 0;
 
   for (const [userId, { position }] of game.guesses) {
-    const individual = tierScore(position, target);
+    const tier = classifyTier(position, target);
+    const individual = tier.points;
     const bonus = avgScr;
     const total = individual + bonus;
 
-    const tierLabel = individual === 4 ? '🎯 Bullseye'
-      : individual === 3 ? '🔵 Close'
-        : individual === 2 ? '🟡 Near'
-          : '⚫ Miss';
-
-    guesserScores.set(userId, { individual, bonus, total, tier: tierLabel });
+    guesserScores.set(userId, {
+      individual,
+      bonus,
+      total,
+      tier: tier.label,
+      tierKey: tier.key,
+      distance: tier.distance,
+    });
     clueGiverFromGuessers += individual;
   }
 

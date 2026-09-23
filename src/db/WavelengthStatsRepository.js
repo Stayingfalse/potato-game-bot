@@ -69,7 +69,7 @@ const recordRound = db.transaction((guildId, game, scores) => {
       guild_id:  guildId,
       user_id:   userId,
       score:     s.total,
-      bullseye:  s.individual === 4 ? 1 : 0,
+      bullseye:  s.tierKey === 'bullseye' ? 1 : 0,
     });
   }
 });

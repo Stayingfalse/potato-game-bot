@@ -74,6 +74,23 @@ async function replaceCurrentInteractionMessage(interaction, game, options = {})
   await interaction.update(payload);
 }
 
+async function buildClueEntryPanel(game) {
+  let cgImageBuffer = null;
+  try {
+    cgImageBuffer = await generateClueGiverImage(game.chosenSpectrum, game.targetPosition);
+  } catch (err) {
+    console.error('[Wavelength] generateClueGiverImage failed:', err);
+  }
+
+  return {
+    content:
+      `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
+      '🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!',
+    components: buildClueSubmitComponents(),
+    ...(cgImageBuffer ? { files: [new AttachmentBuilder(cgImageBuffer, { name: 'target.png' })] } : {}),
+  };
+}
+
 function clearGuessTimeout(game) {
   if (game.guessTimeout) {
     clearTimeout(game.guessTimeout);
@@ -397,6 +414,15 @@ async function handleWavelengthInteraction(interaction, client) {
     if (user.id !== game.clueGiverId) {
       return interaction.reply({ content: 'Only the Clue Giver can open this panel.', flags: MessageFlags.Ephemeral });
     }
+    if (game.clue) {
+      return interaction.reply({ content: `✅ Clue already set: **"${game.clue}"**`, flags: MessageFlags.Ephemeral });
+    }
+    if (game.chosenSpectrum) {
+      return interaction.reply({
+        ...(await buildClueEntryPanel(game)),
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     return interaction.reply({
       content: '🎯 **Pick your spectrum!** Only you can see this.',
       components: buildSpectrumPickComponents(game.spectrumOptions),
@@ -412,29 +438,13 @@ async function handleWavelengthInteraction(interaction, client) {
       return interaction.reply({ content: 'Only the Clue Giver can pick the spectrum.', flags: MessageFlags.Ephemeral });
     }
     if (game.chosenSpectrum) {
-      return interaction.update({ content: `✅ Spectrum already chosen: \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\``, components: [] });
+      return interaction.update(await buildClueEntryPanel(game));
     }
 
     const idx = customId === 'wl_spectrum_0' ? 0 : 1;
     game.chosenSpectrum = game.spectrumOptions[idx];
     WavelengthRepository.upsert(game);
-
-    let cgImageBuffer = null;
-    try {
-      cgImageBuffer = await generateClueGiverImage(game.chosenSpectrum, game.targetPosition);
-    } catch (err) {
-      console.error('[Wavelength] generateClueGiverImage failed:', err);
-    }
-
-    const files = cgImageBuffer ? [new AttachmentBuilder(cgImageBuffer, { name: 'target.png' })] : [];
-
-    return interaction.update({
-      content:
-        `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
-        '🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!',
-      components: buildClueSubmitComponents(),
-      files,
-    });
+    return interaction.update(await buildClueEntryPanel(game));
   }
 
   if (customId === 'wl_enter_clue') {
@@ -481,7 +491,13 @@ async function handleWavelengthInteraction(interaction, client) {
 
     let imageBuffer = null;
     try {
-      imageBuffer = await generateGuesserImage(player.avatarURL, player.username, game.chosenSpectrum, guess.position);
+      imageBuffer = await generateGuesserImage(
+        player.avatarURL,
+        player.username,
+        game.chosenSpectrum,
+        guess.position,
+        game.clue,
+      );
     } catch (err) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
@@ -525,7 +541,13 @@ async function handleWavelengthInteraction(interaction, client) {
     const player = game.players.get(user.id);
     let imageBuffer = null;
     try {
-      imageBuffer = await generateGuesserImage(player.avatarURL, player.username, game.chosenSpectrum, guess.position);
+      imageBuffer = await generateGuesserImage(
+        player.avatarURL,
+        player.username,
+        game.chosenSpectrum,
+        guess.position,
+        game.clue,
+      );
     } catch (err) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
@@ -564,7 +586,13 @@ async function handleWavelengthInteraction(interaction, client) {
     const player = game.players.get(user.id);
     let imageBuffer = null;
     try {
-      imageBuffer = await generateGuesserImage(player.avatarURL, player.username, game.chosenSpectrum, guess.position);
+      imageBuffer = await generateGuesserImage(
+        player.avatarURL,
+        player.username,
+        game.chosenSpectrum,
+        guess.position,
+        game.clue,
+      );
     } catch (err) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
