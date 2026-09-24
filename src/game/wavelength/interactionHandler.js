@@ -519,9 +519,9 @@ async function handleWavelengthInteraction(interaction, client) {
     const input = new TextInputBuilder()
       .setCustomId('wl_clue_input')
       .setLabel('Your clue')
-      .setStyle(TextInputStyle.Short)
+      .setStyle(TextInputStyle.Paragraph)
       .setMinLength(1)
-      .setMaxLength(50)
+      .setMaxLength(120)
       .setPlaceholder('e.g. Volcano')
       .setRequired(true);
 
