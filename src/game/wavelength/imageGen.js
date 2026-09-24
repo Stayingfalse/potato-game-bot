@@ -26,7 +26,7 @@ const BOTTOM_CARD = {
   width: W - 80,
   height: 50,
 };
-const WEDGE_RADIUS = RADIUS - BAR_H / 2; // scoring wedges run pivot → band's inner edge
+const WEDGE_RADIUS = RADIUS + BAR_H / 2; // scoring wedges now fill the whole disc, pivot → outer rim
 const MAX_VISIBLE_STACK = 4;
 const STACK_BUCKET_PX = 12;
 
@@ -77,7 +77,7 @@ function fetchBuffer(url) {
 }
 
 function drawBackground(ctx) {
-  ctx.fillStyle = '#2C2F33';
+  ctx.fillStyle = '#14151f';
   ctx.fillRect(0, 0, W, H);
 }
 
@@ -168,26 +168,29 @@ function drawTitle(ctx, text) {
 }
 
 function drawArc(ctx) {
-  ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
-  ctx.lineWidth = BAR_H;
-  ctx.strokeStyle = '#D9C9A3';
-  ctx.stroke();
+  const outer = RADIUS + BAR_H / 2;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(PIVOT_X, PIVOT_Y);
+  ctx.arc(PIVOT_X, PIVOT_Y, outer, Math.PI, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#F2E8D0';
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(PIVOT_X, PIVOT_Y, RADIUS, Math.PI, 0);
+  ctx.arc(PIVOT_X, PIVOT_Y, outer, Math.PI, 0);
   ctx.stroke();
 
   for (const pos of [0, 25, 50, 75, 100]) {
-    const point = posToPoint(pos);
+    const point = posToPoint(pos, outer);
     const inner = offsetFromPivot(point, pos === 50 ? -14 : -10);
-    const outer = offsetFromPivot(point, pos === 50 ? 16 : 10);
+    const outerTick = offsetFromPivot(point, pos === 50 ? 6 : 4);
     ctx.beginPath();
     ctx.moveTo(inner.x, inner.y);
-    ctx.lineTo(outer.x, outer.y);
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineTo(outerTick.x, outerTick.y);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = pos === 50 ? 3 : 2;
     ctx.stroke();
   }
@@ -276,7 +279,7 @@ function drawPivotHubAndNeedle(ctx, point, color = '#FFFFFF') {
 
   ctx.beginPath();
   ctx.arc(PIVOT_X, PIVOT_Y, 16, 0, Math.PI * 2);
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = '#E63946';
   ctx.fill();
   ctx.strokeStyle = '#FFFFFF';
   ctx.lineWidth = 3;
@@ -361,9 +364,9 @@ function drawBandBoundary(ctx, pos, lineWidth = 2) {
 
 function drawScoringBands(ctx, targetPosition) {
   const bands = [
-    { dist: TIER_WITHIN_TWENTY, color: 'rgba(243, 156, 18, 0.90)' },
-    { dist: TIER_WITHIN_TEN, color: 'rgba(142, 68, 173, 0.92)' },
-    { dist: TIER_WITHIN_FIVE, color: 'rgba(46, 204, 113, 0.95)' },
+    { dist: TIER_WITHIN_TWENTY, color: '#F5A623' },
+    { dist: TIER_WITHIN_TEN, color: '#9B59B6' },
+    { dist: TIER_WITHIN_FIVE, color: '#17A2B8' },
   ].sort((a, b) => b.dist - a.dist);
 
   for (const { dist, color } of bands) {
@@ -403,7 +406,7 @@ async function generateClueGiverImage(spectrum, targetPosition) {
   drawScoringBands(ctx, targetPosition);
 
   const targetMarkerPoint = posToPoint(targetPosition);
-  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
+  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#E63946');
 
   drawLabels(ctx, spectrum);
   drawCategoryCard(ctx, spectrum);
@@ -441,7 +444,7 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
 
   const targetMarkerPoint = posToPoint(targetPosition);
   drawScoringBands(ctx, targetPosition);
-  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#FFD700');
+  drawPivotHubAndNeedle(ctx, targetMarkerPoint, '#E63946');
 
   const buckets = new Map();
   const AVATAR_R = 18;
@@ -459,17 +462,20 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
     const visibleSlotCount = Math.min(guesses.length, MAX_VISIBLE_STACK);
     const hasOverflow = guesses.length > MAX_VISIBLE_STACK;
     const visibleAvatarCount = hasOverflow ? visibleSlotCount - 1 : visibleSlotCount;
+    const overlapStep = AVATAR_R * 0.85; // slight overlap, not full separation
 
     for (let idx = 0; idx < visibleAvatarCount; idx++) {
       const { avatarURL, username, point } = guesses[idx];
-      const avatarPoint = offsetFromPivot(point, idx * (AVATAR_R * 2 + 6));
+      // idx 0 sits at the true guessed position; each further duplicate nests inward
+      // toward the pivot (away from the cards), never off to the side.
+      const avatarPoint = offsetFromPivot(point, -idx * overlapStep);
       await drawAvatar(ctx, avatarURL, username, avatarPoint, AVATAR_R);
     }
 
     if (hasOverflow) {
       const overflowPoint = offsetFromPivot(
         guesses[visibleAvatarCount].point,
-        visibleAvatarCount * (AVATAR_R * 2 + 6),
+        -visibleAvatarCount * overlapStep,
       );
       drawOverflowChip(ctx, overflowPoint, guesses.length - visibleAvatarCount);
     }
