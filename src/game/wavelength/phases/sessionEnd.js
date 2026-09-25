@@ -48,15 +48,6 @@ function buildAutoAdvanceControls(game) {
   ];
 }
 
-function computeRoundTotal(roundHistory) {
-  let total = 0;
-  for (const [, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
-    total += value?.total ?? 0;
-  }
-  total += roundHistory?.scores?.clueGiverScore?.total ?? 0;
-  return total;
-}
-
 function computeSessionTotals(game) {
   const totals = new Map();
 
@@ -120,15 +111,6 @@ function evaluateSessionGoal(game) {
 function renderSessionSummaryText(game, options = {}) {
   const cumulative = computeSessionTotals(game);
   const goal = evaluateSessionGoal(game);
-  const rounds = (game.sessionHistory ?? []).map((h) => {
-    const roundNo = h.roundNumber ?? h.gameNumber ?? '?';
-    const avg = h.scores?.avgPosition ?? '?';
-    const roundTotal = computeRoundTotal(h);
-    return (
-      `**Round ${roundNo}** — \`${h.spectrum?.left}\` ↔ \`${h.spectrum?.right}\`\n` +
-      `Clue: "${h.clue}" · Target: \`${h.target}\` · Group avg: \`${avg}\` · Round pts: **${roundTotal}**`
-    );
-  });
 
   const totalsText = cumulative.length > 0
     ? cumulative.map((entry, idx) => `**${idx + 1}.** <@${entry.userId}> — **${entry.total} pts**`).join('\n')
@@ -138,9 +120,6 @@ function renderSessionSummaryText(game, options = {}) {
     options.heading ?? '## 〰️ Wavelength — Session Summary',
     options.prefixText ?? null,
     `**Session Mode:** ${describeSessionMode(game.sessionMode)}`,
-    '',
-    '**Rounds**',
-    rounds.join('\n\n') || '*No rounds yet.*',
     '',
     '**📈 Cumulative Session Scores**',
     totalsText,
