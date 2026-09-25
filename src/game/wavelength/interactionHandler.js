@@ -38,7 +38,7 @@ async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   // From the first round onwards each round gets its own message, which is
   // edited in place as the round advances and finished with the reveal image
   // and updated scoreboard before the next round posts a fresh message.
-  const useRoundMessage = game.roundMessageId || game.phase === 'cluing' || game.phase === 'guessing' || game.phase === 'reveal';
+  const useRoundMessage = game.roundMessageId || ['cluing', 'guessing', 'reveal', 'ended'].includes(game.phase);
   const targetMessageId = useRoundMessage ? game.roundMessageId : game.messageId;
 
   if (targetMessageId) {
