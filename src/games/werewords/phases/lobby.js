@@ -11,8 +11,8 @@ const PLAYING_COLOR = 0xED4245; // Red
 // ── Lobby embed ────────────────────────────────────────────────────────────────
 
 /**
- * Builds the public lobby embed shown in the game channel.
- * @param {import('../GameManager').GameState} game
+ * Builds the lobby embed: the first message in the game thread.
+ * @param {import('../state').GameState} game
  */
 function buildLobbyEmbed(game) {
   const playerLines =
@@ -26,10 +26,7 @@ function buildLobbyEmbed(game) {
       'A social deduction game of forbidden words and hidden roles.\n' +
       'Click **Join** to enter. The host can **Start** when at least 3 players are ready.',
     )
-    .addFields(
-      { name: `Players (${game.players.size} / 10)`, value: playerLines },
-      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
-    )
+    .addFields({ name: `Players (${game.players.size} / 10)`, value: playerLines })
     .setColor(LOBBY_COLOR)
     .setFooter({ text: `Host: @${game.hostUsername}  •  Minimum 3 players required` })
     .setTimestamp();
@@ -37,30 +34,27 @@ function buildLobbyEmbed(game) {
 
 // ── Lobby action row ───────────────────────────────────────────────────────────
 
-/**
- * Returns the Join / Leave / Start action row for the lobby.
- * @param {string} threadId  The private game thread ID, embedded in each button's customId.
- */
-function buildLobbyComponents(threadId) {
+/** Returns the Join / Leave / Start / Cancel action row for the lobby. */
+function buildLobbyComponents() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ww_join_${threadId}`)
+        .setCustomId('ww_join')
         .setLabel('Join')
         .setEmoji('✋')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId(`ww_leave_${threadId}`)
+        .setCustomId('ww_leave')
         .setLabel('Leave')
         .setEmoji('🚪')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`ww_start_${threadId}`)
+        .setCustomId('ww_start')
         .setLabel('Start Game')
         .setEmoji('▶️')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId(`ww_cancel_${threadId}`)
+        .setCustomId('ww_cancel')
         .setLabel('Cancel')
         .setEmoji('✖️')
         .setStyle(ButtonStyle.Danger),
@@ -68,12 +62,11 @@ function buildLobbyComponents(threadId) {
   ];
 }
 
-// ── Active game embed (shown in main channel after game starts) ───────────────
+// ── Active game embed (the lobby message once the game has started) ───────────
 
 /**
- * Replaces the lobby embed in the main channel once the game has started.
- * Shows the game is underway and links to the private game thread.
- * @param {import('../GameManager').GameState} game
+ * Replaces the lobby embed once the game has started.
+ * @param {import('../state').GameState} game
  */
 function buildActiveEmbed(game) {
   const playerMentions =
@@ -82,20 +75,17 @@ function buildActiveEmbed(game) {
   return new EmbedBuilder()
     .setTitle('🔮  Werewords — In Progress')
     .setDescription('A game is currently underway!')
-    .addFields(
-      { name: 'Players', value: playerMentions },
-      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
-    )
+    .addFields({ name: 'Players', value: playerMentions })
     .setColor(PLAYING_COLOR)
     .setFooter({ text: `Host: @${game.hostUsername}` })
     .setTimestamp();
 }
 
-// ── Game thread embed (first message posted inside the private thread) ─────────
+// ── Ready-up embed (posted in the game thread when the game starts) ────────────
 
 /**
- * Posted inside the private game thread when the game starts.
- * @param {import('../GameManager').GameState} game
+ * Posted in the game thread when the game starts.
+ * @param {import('../state').GameState} game
  */
 function buildGameThreadEmbed(game) {
   const readyCount = game.readyPlayers?.size ?? 0;
@@ -166,8 +156,8 @@ function buildMayorWordComponents(wordOptions) {
 // ── Mode-selection embeds and components ──────────────────────────────────────
 
 /**
- * Embed shown in the main channel while the host selects text vs. voice mode.
- * @param {import('../GameManager').GameState} game
+ * The lobby message while the host selects text vs. voice mode.
+ * @param {import('../state').GameState} game
  */
 function buildModeSelectingEmbed(game) {
   const playerMentions =
@@ -175,11 +165,8 @@ function buildModeSelectingEmbed(game) {
 
   return new EmbedBuilder()
     .setTitle('🔮  Werewords — Choosing Game Mode')
-    .setDescription('The host is selecting the play mode in the game thread…')
-    .addFields(
-      { name: 'Players', value: playerMentions },
-      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
-    )
+    .setDescription('The host is selecting the play mode below…')
+    .addFields({ name: 'Players', value: playerMentions })
     .setColor(PLAYING_COLOR)
     .setFooter({ text: `Host: @${game.hostUsername}` })
     .setTimestamp();
@@ -187,7 +174,7 @@ function buildModeSelectingEmbed(game) {
 
 /**
  * Embed posted in the game thread asking the host to choose text or voice mode.
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  */
 function buildModeSelectEmbed(game) {
   return new EmbedBuilder()

@@ -1,9 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { isDemon } = require('../../utils/roles');
+const { isDemon } = require('../roles');
 const { endGame } = require('./endGame');
 const { buildPlayerStatsEmbed } = require('./sessionEnd');
-const GameRepository = require('../../db/GameRepository');
-const { editMessage } = require('../../games/_core/messages');
+const WerewordsRepository = require('../repository');
+const { editMessage } = require('../../_core/messages');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
@@ -67,7 +67,7 @@ function buildVoteComponents(players) {
  * Counts current votes, determines the winner, and calls endGame.
  * Tie → werewolf_vote (Demons win). Majority on Demon → townsfolk_vote.
  *
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').Client} client
  */
 async function tallyVotes(game, client) {
@@ -105,7 +105,7 @@ async function tallyVotes(game, client) {
  * Transitions the game into the voting phase.
  * Posts a public vote message in the thread and starts the 60 s countdown.
  *
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').Client} client
  */
 async function startVotingPhase(game, client) {
@@ -116,7 +116,7 @@ async function startVotingPhase(game, client) {
   }
 
   game.phase = 'voting';
-  GameRepository.upsert(game);
+  WerewordsRepository.upsert(game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) {

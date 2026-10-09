@@ -1,8 +1,8 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { isLibrarian } = require('../../utils/roles');
+const { isLibrarian } = require('../roles');
 const { endGame } = require('./endGame');
-const GameRepository = require('../../db/GameRepository');
-const { editMessage } = require('../../games/_core/messages');
+const WerewordsRepository = require('../repository');
+const { editMessage } = require('../../_core/messages');
 
 const REVEAL_COLOR = 0xFEE75C; // yellow
 
@@ -70,7 +70,7 @@ function buildSeerPickComponents(players, werewolfId) {
  * - If no Librarian exists (3-player game) the Townsfolk win immediately.
  * - Otherwise posts the reveal message with a 90 s safety timeout.
  *
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').Client} client
  */
 async function startRevealPhase(game, client) {
@@ -88,7 +88,7 @@ async function startRevealPhase(game, client) {
   }
 
   game.phase = 'reveal';
-  GameRepository.upsert(game);
+  WerewordsRepository.upsert(game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) {

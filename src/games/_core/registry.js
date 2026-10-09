@@ -17,6 +17,7 @@ const GAMES_DIR = path.join(__dirname, '..');
  *   createManager(),    // returns the game's manager instance
  *   command,            // slash command module: { data, execute }
  *   handleInteraction(interaction, client),  // buttons/modals whose customId has `prefix`
+ *   handleMessage(message, client),          // optional; called for every guild message
  *   restore(client),    // optional; reloads the game's saved games on startup
  * }
  *

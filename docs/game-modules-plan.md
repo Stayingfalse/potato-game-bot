@@ -218,11 +218,17 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Sassy's "don't interject during a game" check no longer looks for Cheese Thief games.
 - README and `package.json` no longer mention Cheese Thief.
 
-**Step 6: WW.** Largest.
-- Rename `GameManager` / `GameRepository` / `StatsRepository` / `game/phases` to `werewords`-specific names and move them into `games/werewords/`, as for NMJ and WL.
-- Split `games/werewords/handlers.js` (moved out of the shared listener in Step 2, still ~1150 lines) into smaller handler and phase files.
-- Persist `sessionHistory`, `readyPlayers` and `readyMessageId`.
-- Convert the board, ready and vote messages to one rendered message.
+**Step 6a: WW structure, commands and saving.** ✅ Done.
+- `/werewords start|end` replaces `/werewords`. The game runs in a public thread (24 h archive) with its lobby as the first message in the thread; nothing is posted in the parent channel any more. Starting a second game refuses and links to the first, instead of deleting it.
+- `/werewords end` (host or Manage Threads) closes the session from any phase. Cancel, Close Session and `/werewords end` all go through one `closeSession`.
+- Everything moved into `games/werewords/`: state (`fromRow`/`toRow`), manager, repository (owning its table and column upgrades), stats, roles, words and phases. `client.gameManager` is now `client.werewordsManager`.
+- The 1,150-line handler is now `handlers/`: a route table in `index.js` plus `lobby`, `setup`, `responses` and `endgame` files.
+- Saved now: ready-up, the ready message, session history and whether response stats were shown. The Mayor's word and ready-ups are saved as they happen (they weren't saved until a later phase before). Restore uses `fromRow`, and keeps sessions that are between games.
+- Text-mode guesses moved out of `events/messageCreate.js` into an optional `handleMessage` manifest hook.
+
+**Step 6b: WW single game message.**
+- Convert the ready, board and vote messages into one message rendered from state and edited in place, as NMJ does. This changes how a Werewords game looks, so it is its own step.
+- Restore can then re-render that message instead of posting "Bot restarted" and re-sending buttons.
 
 **Step 7: Optional stats.**
 - Add a `stats` hook for NMJ (wins, games played), and for any rebuilt games.
@@ -233,8 +239,8 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 
 ### Decisions needed from you
 
-1. **Private vs public threads.** Should WW (hidden roles) move to a public thread like NMJ/WL, or stay private? Recommendation: make it a manifest option, default to public, and keep WW private unless you prefer otherwise.
-2. **Command shape.** Should `/werewords` become `/werewords start`? The change affects users' muscle memory. Recommendation: yes, for consistency, and deploy both shapes for one release.
+1. **Private vs public threads.** ✅ Decided: public. Secret roles are shown in ephemeral messages, so the thread doesn't need to be private.
+2. **Command shape.** ✅ Decided: `/werewords start|end`, with no old `/werewords` kept.
 3. **Breaking in-flight games.** ✅ Decided: migrate saved games rather than clearing them. Each game that changes its saved layout ships a one-time upgrade with its repository, as NMJ does in Step 3.
 
 ### Testing

@@ -1,7 +1,7 @@
 'use strict';
 
-const GameManager = require('../../game/GameManager');
-const { handleInteraction } = require('./handlers');
+const { WerewordsManager } = require('./manager');
+const { handleInteraction, handleMessage } = require('./handlers');
 
 /** Werewords game manifest — see src/games/_core/registry.js for the fields. */
 module.exports = {
@@ -9,9 +9,10 @@ module.exports = {
   name: 'Werewords',
   order: 1,
   prefix: 'ww_',
-  clientKey: 'gameManager',
-  createManager: () => new GameManager(),
+  clientKey: 'werewordsManager',
+  createManager: () => new WerewordsManager(),
   command: require('./command'),
   handleInteraction,
+  handleMessage,
   restore: require('./restore'),
 };

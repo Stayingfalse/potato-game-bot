@@ -6,8 +6,8 @@
  * call sites only need a require-path change.
  */
 
-const db = require('./database');
-const { ROLES, isDemon, getEffectiveRole } = require('../utils/roles');
+const db = require('../../db/database');
+const { ROLES, isDemon, getEffectiveRole } = require('./roles');
 
 // ── Win/loss mapping ───────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ A Discord bot that brings party games and social deduction fun to your server! H
 A social deduction word-guessing game where players work together to guess a secret word... but some players are secretly working against the team!
 
 **How to Play:**
-- Use `/werewords` to start a game
+- Use `/werewords start` in any channel to open a public game thread, and `/werewords end` inside that thread to end the session early
 - The **Mayor** chooses a secret word from three options
 - Players ask yes/no questions to guess the word
 - **Townsfolk** try to help the team succeed
@@ -83,12 +83,12 @@ An AI companion powered by Google Gemini that adds personality to your server co
 
 ## 🎮 Getting Started
 
-1. **Invite the bot** to your Discord server (requires Community server or Boost Level 1+ for private threads)
+1. **Invite the bot** to your Discord server
 2. **Grant permissions:**
-   - Create Private Threads
+   - Create Public Threads
    - Send Messages in Threads
    - Manage Threads
-3. **Start playing!** Use `/werewords`, `/wavelength start` or `/nmj start` in any channel to begin
+3. **Start playing!** Use `/werewords start`, `/wavelength start` or `/nmj start` in any channel to begin
 
 ## 🎯 Game Tips
 
@@ -111,7 +111,7 @@ An AI companion powered by Google Gemini that adds personality to your server co
 
 ## 🛠️ Features Overview
 
-- ✨ Private thread-based games for organized play
+- ✨ Thread-based games for organized play
 - 💾 Persistent game state (survives bot restarts)
 - 🔄 Session support for marathon game nights
 - 📊 Statistics tracking and game history
@@ -121,8 +121,8 @@ An AI companion powered by Google Gemini that adds personality to your server co
 
 ## 📝 Note
 
-All games run in private threads to keep your channels clean and conversations organized. Players are automatically added to the thread when they join a game!
+Each game runs in its own thread to keep your channels clean and conversations organized. Players are automatically added to the thread when they join a game!
 
 ---
 
-Ready to play? Start with `/werewords`, `/wavelength start` or `/nmj start` and let the games begin! 🎉
+Ready to play? Start with `/werewords start`, `/wavelength start` or `/nmj start` and let the games begin! 🎉

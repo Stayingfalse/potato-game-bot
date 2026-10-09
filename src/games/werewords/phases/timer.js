@@ -24,14 +24,14 @@ async function sendTtsWarning(thread, seconds) {
  * Shared helper: start (or restart) the werewords game-board timer.
  * Called both from interactionCreate.js (initial start) and restore.js (crash recovery).
  *
- * @param {import('../game/GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').ThreadChannel} thread
  * @param {import('discord.js').Client} client
  */
 function startGameTimer(game, thread, client) {
   const { buildBoardEmbed, buildMayorActionComponents } = require('./playing');
   const { startVotingPhase } = require('./voting');
-  const { updateTimeLeft } = require('../../db/GameRepository');
+  const { updateTimeLeft } = require('../repository');
 
   let boardRefreshing = false;
 

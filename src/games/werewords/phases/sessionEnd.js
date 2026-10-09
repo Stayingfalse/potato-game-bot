@@ -1,9 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { ROLES, isDemon, getRoleDisplayName } = require('../../utils/roles');
-const { recordGame } = require('../../db/StatsRepository');
+const { ROLES, isDemon, getRoleDisplayName } = require('../roles');
+const { recordGame } = require('../stats');
+const WerewordsRepository = require('../repository');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
-const { fetchChannel } = require('../../games/_core/threads');
-const { editMessage } = require('../../games/_core/messages');
+const { editMessage } = require('../../_core/messages');
 
 const ROLE_EMOJI = {
   [ROLES.MAYOR]:    '📝',
@@ -47,7 +47,7 @@ function buildSessionSummaryEmbed(game, guildStats) {
   const sessionLines = [...game.players.values()].map(p => {
     const record = game.sessionHistory.reduce(
       (acc, g) => {
-        const isWinner = g.winners.has(p.id);
+        const isWinner = g.winners.includes(p.id);
         return { w: acc.w + (isWinner ? 1 : 0), l: acc.l + (isWinner ? 0 : 1) };
       },
       { w: 0, l: 0 },
@@ -120,7 +120,7 @@ function delay(ms) {
 /**
  * Builds a per-player summary of how many Yes/No/Maybe/So-Close/Way-Off
  * response cards each player received during the game.
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @returns {EmbedBuilder}
  */
 function buildPlayerStatsEmbed(game) {
@@ -150,9 +150,9 @@ function buildPlayerStatsEmbed(game) {
  *   3. Sequential role reveals (1.5 s apart)
  *   4. Record stats + append to session history
  *   5. Post session summary + rematch/close buttons
- *   6. Update main channel embed
+ *   6. Update the lobby message
  *
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').Client} client
  * @param {string} outcome
  * @param {string|null} seerVictimUserId  The userId the Demon correctly named (if any).
@@ -197,7 +197,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     gameNumber: game.gameNumber,
     outcome,
     word: game.word,
-    winners: winnerIds,
+    winners: [...winnerIds],
     players: [...game.players.values()].map(p => ({
       id: p.id,
       username: p.username,
@@ -205,6 +205,8 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
       secretRole: p.secretRole ?? null,
     })),
   });
+
+  WerewordsRepository.upsert(game);
 
   recordGame(
     game.guildId,
@@ -215,7 +217,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   );
 
   // 5. Session summary + action buttons.
-  const { getGuildStats } = require('../../db/StatsRepository');
+  const { getGuildStats } = require('../stats');
   const guildStats = getGuildStats(game.guildId);
 
   if (thread) {
@@ -225,16 +227,15 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     }).catch(() => {});
   }
 
-  // 6. Update main channel embed.
-  if (game.channelId && game.messageId) {
+  // 6. Update the lobby message at the top of the thread.
+  if (thread && game.messageId) {
     const { title } = OUTCOME_BANNER[outcome];
     const waitEmbed = new EmbedBuilder()
       .setTitle(`🔮  Werewords — Game ${game.gameNumber} Complete`)
       .setDescription(`**${title}** — waiting for the host to start the next game or close the session.`)
-      .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
       .setColor(OUTCOME_COLOR[outcome])
       .setTimestamp();
-    await editMessage(await fetchChannel(client, game.channelId), game.messageId, { embeds: [waitEmbed], components: [] });
+    await editMessage(thread, game.messageId, { embeds: [waitEmbed], components: [] });
   }
 }
 

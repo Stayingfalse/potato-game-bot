@@ -17,26 +17,7 @@ db.pragma('journal_mode = WAL');
 // ── Schema ─────────────────────────────────────────────────────────────────────
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS werewords_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    board_message_id     TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    word                 TEXT,
-    word_options         TEXT NOT NULL DEFAULT '[]',
-    tokens               TEXT NOT NULL DEFAULT '{"yes_no":36,"maybe":12,"correct":1,"so_close_way_off":2}',
-    time_left            INTEGER NOT NULL DEFAULT 240,
-    votes                TEXT NOT NULL DEFAULT '{}',
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    winner_guesser_user_id TEXT,
-    created_at           INTEGER NOT NULL
-  );
-
+  -- werewords_games is created by src/games/werewords/repository.js.
   -- wavelength_games is created by src/games/wavelength/repository.js.
   -- nmj_games is created by src/games/nmj/repository.js.
   -- cheese_thief_games and herd_mentality_games may still exist in older databases;
@@ -148,16 +129,6 @@ db.exec(`
     PRIMARY KEY (guild_id, feature)
   );
 `);
-
-// ── Lightweight column migrations for existing installs ───────────────────────
-
-const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
-if (!wwColumns.has('session_mode')) {
-  db.exec('ALTER TABLE werewords_games ADD COLUMN session_mode TEXT');
-}
-if (!wwColumns.has('voice_player_message_ids')) {
-  db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
-}
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 

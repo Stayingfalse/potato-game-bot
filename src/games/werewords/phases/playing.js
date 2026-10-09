@@ -23,9 +23,9 @@ function formatTime(seconds) {
 // ── Board embed ────────────────────────────────────────────────────────────────
 
 /**
- * Builds the live game board embed shown inside the private thread.
+ * Builds the live game board embed shown in the game thread.
  * Updated on each timer tick and after each token use.
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  */
 function buildBoardEmbed(game) {
   const { tokens, timeLeft, players } = game;

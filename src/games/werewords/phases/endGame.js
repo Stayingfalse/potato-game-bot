@@ -1,7 +1,7 @@
 const { runEndSequence }  = require('./sessionEnd');
-const GameRepository      = require('../../db/GameRepository');
-const { fetchChannel } = require('../../games/_core/threads');
-const { editMessage } = require('../../games/_core/messages');
+const WerewordsRepository      = require('../repository');
+const { fetchChannel } = require('../../_core/threads');
+const { editMessage } = require('../../_core/messages');
 
 // ── Outcome definitions (kept for reference / future use) ─────────────────────
 
@@ -53,7 +53,7 @@ const OUTCOMES = {
  *  4. Does NOT delete the game from the registry — the session lives on until
  *     the host clicks "Close Session".
  *
- * @param {import('../GameManager').GameState} game
+ * @param {import('../state').GameState} game
  * @param {import('discord.js').Client} client
  * @param {string} outcome
  * @param {string|null} [seerVictimUserId]  userId the Demon correctly named as Librarian.
@@ -63,17 +63,10 @@ async function endGame(game, client, outcome, seerVictimUserId = null) {
   if (game.phase === 'ended') return;
 
   // Stop timers immediately.
-  if (game.timerInterval) {
-    clearInterval(game.timerInterval);
-    game.timerInterval = null;
-  }
-  if (game.revealTimeout) {
-    clearTimeout(game.revealTimeout);
-    game.revealTimeout = null;
-  }
+  client.werewordsManager.clearTimers(game);
 
   game.phase = 'ended';
-  GameRepository.upsert(game);
+  WerewordsRepository.upsert(game);
 
   // Remove Wordsmith action buttons from the board so they can't be clicked.
   if (game.boardMessageId) {
