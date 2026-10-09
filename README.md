@@ -1,5 +1,7 @@
 # Potato Game Bot 🎮
 
+[![Tests](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml/badge.svg)](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml)
+
 A Discord bot that brings party games and social deduction fun to your server! Host game nights with friends using interactive Discord threads and enjoy AI-powered entertainment.
 
 ## 🎲 Games
@@ -97,6 +99,8 @@ npm test
 ```
 
 The suite uses Node's built-in test runner, so there is nothing extra to install. It plays each game through its real command and button handlers with fake Discord objects, and checks crash recovery and database upgrades. It never connects to Discord, and each test file uses its own temporary database, so your `data/` folder is never touched.
+
+GitHub runs the same suite on Node 20 and 22 for every pull request and every push to `main` (see `.github/workflows/test.yml`).
 
 ## 🎯 Game Tips
 

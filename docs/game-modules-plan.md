@@ -256,6 +256,8 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 
 `test/helpers/env.js` gives each test file its own temporary `DATA_DIR`, so tests never touch `data/`. `test/helpers/discord.js` has the fake threads, channels, users and interactions. New games should add a `<id>.test.js` in the same style.
 
+GitHub Actions (`.github/workflows/test.yml`) runs `npm ci && npm test` on Node 20 and 22 for every pull request and every push to `main`.
+
 ---
 
 ## 5. Future: rebuilding Herd Mentality and Cheese Thief
