@@ -3,16 +3,13 @@
 /** Werewords: Ending a game, the Werewolf reveal, voting, rematches and closing the session. */
 
 const { EmbedBuilder, MessageFlags } = require('discord.js');
-const {
-  buildLobbyEmbed,
-  buildLobbyComponents,
-  buildActiveEmbed,
-  buildGameThreadEmbed,
-  buildPlayingComponents,
-} = require('../phases/lobby');
-const { buildBoardEmbed } = require('../phases/playing');
+const { buildLobbyEmbed, buildLobbyComponents, buildActiveEmbed } = require('../phases/lobby');
 const { endGame } = require('../phases/endGame');
-const { buildSeerPickComponents } = require('../phases/reveal');
+const {
+  SEER_PICK_WINDOW_MS,
+  scheduleRevealTimeout,
+  buildSeerPickComponents,
+} = require('../phases/reveal');
 const { tallyVotes } = require('../phases/voting');
 const { buildSessionSummaryEmbed } = require('../phases/sessionEnd');
 const { getGuildStats } = require('../stats');
@@ -20,6 +17,8 @@ const { isDemon, isLibrarian } = require('../roles');
 const { sampleN } = require('../../_core/random');
 const { fetchChannel, lockAndArchive } = require('../../_core/threads');
 const WerewordsRepository = require('../repository');
+const { renderGameMessage } = require('../render');
+const { updateGameMessage } = require('../gameMessage');
 
 const { wordPool, updateLobbyMessage } = require('./shared');
 
@@ -39,10 +38,10 @@ async function handleEndGameButton(interaction, client, game) {
   return;
 }
 
-/** The Werewolf reveals themselves after the word is guessed. */
+/** The Werewolf reveals themselves after the word is guessed, and gets 20 s to name the Seer. */
 async function handleReveal(interaction, client, game) {
   const { user } = interaction;
-  if (!game || game.phase !== 'reveal') {
+  if (!game || game.phase !== 'reveal' || game.werewolfRevealed) {
     return interaction.reply({ content: 'The reveal phase is not active.', flags: MessageFlags.Ephemeral });
   }
 
@@ -51,47 +50,20 @@ async function handleReveal(interaction, client, game) {
     return interaction.reply({ content: 'Only the Werewolf can reveal themselves.', flags: MessageFlags.Ephemeral });
   }
 
-  // Cancel the 90 s outer safety timeout — the Werewolf is acting.
-  if (game.revealTimeout) {
-    clearTimeout(game.revealTimeout);
-    game.revealTimeout = null;
-  }
+  game.werewolfRevealed = true;
+  game.phaseEndsAt = Date.now() + SEER_PICK_WINDOW_MS;
+  WerewordsRepository.upsert(game);
+  scheduleRevealTimeout(game, client);
 
-  // Acknowledge the reveal publicly.
-  await interaction.update({
-    content: '😈 **The Werewolf has revealed themselves!** They now have 20 seconds to identify the Seer…',
-    components: [],
-  });
-
-  // Send the Werewolf an ephemeral Seer-pick panel.
-  await interaction.followUp({
-    content: '🔮 **Pick who you think is the Seer.** You have 20 seconds!',
-    components: buildSeerPickComponents(game.players, user.id),
-    flags: MessageFlags.Ephemeral,
-  });
-
-  // Start the 20 s Seer-guess countdown.
-  game.revealTimeout = setTimeout(async () => {
-    try {
-      if (game.phase !== 'reveal') return;
-      // Time ran out without a pick → Townsfolk win.
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (thread) {
-        await thread.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Townsfolk win!**' }).catch(() => {});
-      }
-      await endGame(game, client, 'villagers_word');
-    } catch (err) {
-      console.error('[Werewords] Seer-reveal timeout error:', err);
-    }
-  }, 20_000);
-
-  return;
+  // The Reveal button is on the game message: show the reveal and swap in "Pick the Seer".
+  await interaction.update(renderGameMessage(game));
+  await interaction.followUp(buildSeerPickerPayload(game, user.id));
 }
 
 /** The revealed Werewolf names who they think the Seer is. */
 async function handleSeerPick(interaction, client, game) {
   const { customId, user } = interaction;
-  if (!game || game.phase !== 'reveal') {
+  if (!game || game.phase !== 'reveal' || !game.werewolfRevealed) {
     return interaction.reply({ content: 'The reveal phase is not active.', flags: MessageFlags.Ephemeral });
   }
 
@@ -100,11 +72,7 @@ async function handleSeerPick(interaction, client, game) {
     return interaction.reply({ content: 'Only the Werewolf can pick the Seer.', flags: MessageFlags.Ephemeral });
   }
 
-  // Cancel the 20 s seer-guess countdown.
-  if (game.revealTimeout) {
-    clearTimeout(game.revealTimeout);
-    game.revealTimeout = null;
-  }
+  client.werewordsManager.clearTimers(game);
 
   const targetId = customId.split('ww_seer_pick_')[1];
   const target = game.players.get(targetId);
@@ -117,7 +85,7 @@ async function handleSeerPick(interaction, client, game) {
 
   // Announce result publicly in the thread.
   const correct = isLibrarian(target);
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  const thread = await fetchChannel(client, game.threadId);
   if (thread) {
     await thread.send({
       content: correct
@@ -127,7 +95,30 @@ async function handleSeerPick(interaction, client, game) {
   }
 
   await endGame(game, client, correct ? 'werewolf_seer' : 'villagers_word', correct ? targetId : null);
-  return;
+}
+
+/** Reopens the revealed Werewolf's Seer picker (e.g. after a restart or if they closed it). */
+async function handleSeerPanel(interaction, client, game) {
+  const { user } = interaction;
+  if (!game || game.phase !== 'reveal' || !game.werewolfRevealed) {
+    return interaction.reply({ content: 'The reveal phase is not active.', flags: MessageFlags.Ephemeral });
+  }
+
+  const player = game.players.get(user.id);
+  if (!player || !isDemon(player)) {
+    return interaction.reply({ content: 'Only the Werewolf can pick the Seer.', flags: MessageFlags.Ephemeral });
+  }
+
+  return interaction.reply(buildSeerPickerPayload(game, user.id));
+}
+
+/** The Werewolf's ephemeral Seer picker. */
+function buildSeerPickerPayload(game, werewolfId) {
+  return {
+    content: `🔮 **Pick who you think is the Seer.** You have until <t:${Math.floor(game.phaseEndsAt / 1000)}:R>!`,
+    components: buildSeerPickComponents(game.players, werewolfId),
+    flags: MessageFlags.Ephemeral,
+  };
 }
 
 /** A player votes for who they think the Werewolf is. */
@@ -150,6 +141,7 @@ async function handleVote(interaction, client, game) {
 
   const changed = game.votes.has(user.id);
   game.votes.set(user.id, targetId);
+  WerewordsRepository.upsert(game);
 
   await interaction.reply({
     content: changed
@@ -158,16 +150,13 @@ async function handleVote(interaction, client, game) {
     flags: MessageFlags.Ephemeral,
   });
 
-  // Tally early if every player has voted.
+  // Tally early if every player has voted; otherwise show who has voted so far.
   if (game.votes.size >= game.players.size) {
-    if (game.revealTimeout) {
-      clearTimeout(game.revealTimeout);
-      game.revealTimeout = null;
-    }
+    client.werewordsManager.clearTimers(game);
     await tallyVotes(game, client);
+  } else {
+    await updateGameMessage(game, client);
   }
-
-  return;
 }
 
 /** The host starts the next game with the same players. */
@@ -180,40 +169,20 @@ async function handleRematchSame(interaction, client, game) {
     return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
   }
 
-  await interaction.deferUpdate();
+  await interaction.update({ components: [] });
 
   const resetGame = client.werewordsManager.resetForRematch(game.threadId, false);
   if (!resetGame) return;
 
   client.werewordsManager.assignRoles(game.threadId);
   resetGame.wordOptions = sampleN(wordPool, 3);
+  WerewordsRepository.upsert(resetGame);
 
   await updateLobbyMessage(resetGame, client, { embeds: [buildActiveEmbed(resetGame)], components: [] });
 
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-
-  const startMsg = await thread.send({
-    content: `🔄 **Game ${resetGame.gameNumber} starting — same group!**`,
-    embeds: [buildGameThreadEmbed(resetGame)],
-    components: buildPlayingComponents(),
-  }).catch(() => null);
-
-  if (startMsg) resetGame.readyMessageId = startMsg.id;
-
-  const boardMsg = await thread.send({
-    embeds: [buildBoardEmbed(resetGame)],
-    components: [],
-  }).catch(() => null);
-
-  if (boardMsg) resetGame.boardMessageId = boardMsg.id;
-
-  // Also persist the boardMessageId now that we have it.
-  WerewordsRepository.upsert(resetGame);
-
-  // Timer starts once all players have confirmed their roles (ww_ready).
-
-  return;
+  // A fresh game message (ready-up, then the board). The timer starts once
+  // all players have confirmed their roles (ww_ready).
+  await updateGameMessage(resetGame, client);
 }
 
 /** The host reopens sign-ups for the next game. */
@@ -296,6 +265,7 @@ const buttons = [
   { match: id => id === 'ww_end_game', handle: handleEndGameButton },
   { match: id => id === 'ww_reveal', handle: handleReveal },
   { match: id => id.startsWith('ww_seer_pick_'), handle: handleSeerPick },
+  { match: id => id === 'ww_seer_panel', handle: handleSeerPanel },
   { match: id => id.startsWith('ww_vote_'), handle: handleVote },
   { match: id => id === 'ww_rematch_same', handle: handleRematchSame },
   { match: id => id === 'ww_rematch_open', handle: handleRematchOpen },

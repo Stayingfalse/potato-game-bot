@@ -75,16 +75,19 @@ function buildActiveEmbed(game) {
   return new EmbedBuilder()
     .setTitle('🔮  Werewords — In Progress')
     .setDescription('A game is currently underway!')
-    .addFields({ name: 'Players', value: playerMentions })
+    .addFields(
+      { name: 'Players', value: playerMentions },
+      { name: 'Mode', value: game.sessionMode === 'voice' ? '🎙️ Voice' : '📝 Text' },
+    )
     .setColor(PLAYING_COLOR)
     .setFooter({ text: `Host: @${game.hostUsername}` })
     .setTimestamp();
 }
 
-// ── Ready-up embed (posted in the game thread when the game starts) ────────────
+// ── Ready-up embed (the game message until everyone is ready) ─────────────────
 
 /**
- * Posted in the game thread when the game starts.
+ * The game message until every player has confirmed their role.
  * @param {import('../state').GameState} game
  */
 function buildGameThreadEmbed(game) {
@@ -98,7 +101,7 @@ function buildGameThreadEmbed(game) {
   }).join('\n') || '*No players*';
 
   return new EmbedBuilder()
-    .setTitle('🔮  Werewords — Game Started!')
+    .setTitle(`🔮  Werewords — Game ${game.gameNumber} Started!`)
     .setDescription(
       allReady
         ? '✅ All players are ready — the game is live!'
@@ -106,7 +109,7 @@ function buildGameThreadEmbed(game) {
     )
     .addFields({ name: 'Player Status', value: playerLines })
     .setColor(PLAYING_COLOR)
-    .setFooter({ text: 'Game board loading…' })
+    .setFooter({ text: 'The board appears here once everyone is ready.' })
     .setTimestamp();
 }
 
@@ -156,23 +159,6 @@ function buildMayorWordComponents(wordOptions) {
 // ── Mode-selection embeds and components ──────────────────────────────────────
 
 /**
- * The lobby message while the host selects text vs. voice mode.
- * @param {import('../state').GameState} game
- */
-function buildModeSelectingEmbed(game) {
-  const playerMentions =
-    [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
-
-  return new EmbedBuilder()
-    .setTitle('🔮  Werewords — Choosing Game Mode')
-    .setDescription('The host is selecting the play mode below…')
-    .addFields({ name: 'Players', value: playerMentions })
-    .setColor(PLAYING_COLOR)
-    .setFooter({ text: `Host: @${game.hostUsername}` })
-    .setTimestamp();
-}
-
-/**
  * Embed posted in the game thread asking the host to choose text or voice mode.
  * @param {import('../state').GameState} game
  */
@@ -220,5 +206,4 @@ module.exports = {
   buildMayorWordComponents,
   buildModeSelectEmbed,
   buildModeSelectComponents,
-  buildModeSelectingEmbed,
 };

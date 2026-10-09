@@ -1,10 +1,9 @@
 'use strict';
 
-/** Werewords: The Mayor's answers to guesses: board buttons, text-guess buttons and voice panels. */
+/** Werewords: The Mayor's answers to guesses: text-guess buttons and voice panels. */
 
 const { MessageFlags } = require('discord.js');
 const {
-  buildBoardEmbed,
   buildGuessComponents,
   buildVoicePlayerContent,
   buildVoicePlayerComponents,
@@ -14,7 +13,7 @@ const { startVotingPhase } = require('../phases/voting');
 const { ROLES } = require('../roles');
 const { editMessage } = require('../../_core/messages');
 
-const { refreshBoardMessage } = require('./shared');
+const { updateGameMessage } = require('../gameMessage');
 
 const VOICE_PREFIXES = [
   'ww_voice_yes_',
@@ -24,106 +23,6 @@ const VOICE_PREFIXES = [
   'ww_voice_wayoff_',
   'ww_voice_correct_',
 ];
-
-/** Yes / No / Maybe from the board (Mayor only). */
-async function handleBoardAnswer(interaction, client, game) {
-  const { customId, channelId, user } = interaction;
-  if (!game || game.phase !== 'playing') {
-    return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
-  }
-
-  const player = game.players.get(user.id);
-  if (!player || player.role !== ROLES.MAYOR) {
-    return interaction.reply({ content: 'Only the Mayor can use Yes / No / Maybe.', flags: MessageFlags.Ephemeral });
-  }
-
-  const label = customId.replace('ww_', ''); // 'yes' | 'no' | 'maybe' (for display)
-  const isYesNo = customId === 'ww_yes' || customId === 'ww_no';
-  const tokenKey = isYesNo ? 'yes_no' : 'maybe';
-
-  if (game.tokens[tokenKey] <= 0) {
-    return interaction.reply({
-      content: isYesNo ? 'No **Yes / No** tokens remaining!' : 'No **Maybe** tokens remaining!',
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  game.tokens[tokenKey]--;
-
-  // deferUpdate acknowledges the interaction; editReply updates the source message.
-  await interaction.deferUpdate();
-
-  // Post the Mayor's public response in the thread.
-  const tokenEmoji = { yes: '✅', no: '❌', maybe: '❔' }[label];
-  const thread = await client.channels.fetch(channelId).catch(() => null);
-  if (thread) {
-    await thread.send({ content: `${tokenEmoji} The Mayor answers: **${label.toUpperCase()}**` }).catch(() => {});
-  }
-
-  // Refresh the source message (board or ephemeral) without action buttons.
-  await interaction.editReply({
-    embeds: [buildBoardEmbed(game)],
-    components: [],
-  }).catch(() => {});
-
-  // Also refresh the board if the click came from somewhere else.
-  await refreshBoardMessage(game, client);
-
-  // Only trigger voting when the shared Yes/No pool is exhausted.
-  if (isYesNo && game.tokens.yes_no <= 0) {
-    await startVotingPhase(game, client);
-  }
-
-  return;
-}
-
-/** Correct / So Close / Way Off from the board (Mayor only). */
-async function handleBoardSignal(interaction, client, game) {
-  const { customId, channelId, user } = interaction;
-  if (!game || game.phase !== 'playing') {
-    return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
-  }
-
-  const player = game.players.get(user.id);
-  if (!player || player.role !== ROLES.MAYOR) {
-    return interaction.reply({ content: 'Only the Mayor can use these buttons.', flags: MessageFlags.Ephemeral });
-  }
-
-  if (customId === 'ww_correct') {
-    if (game.tokens.correct <= 0) {
-      return interaction.reply({ content: 'No **Correct** tokens remaining!', flags: MessageFlags.Ephemeral });
-    }
-    game.tokens.correct--;
-    game.winnerGuesserUserId = null; // no specific text guess to credit
-    await interaction.deferUpdate();
-    await startRevealPhase(game, client);
-    return;
-  }
-
-  // ww_soclose or ww_wayoff
-  if (game.tokens.so_close_way_off <= 0) {
-    return interaction.reply({ content: 'No **So Close / Way Off** tokens remaining!', flags: MessageFlags.Ephemeral });
-  }
-  game.tokens.so_close_way_off--;
-
-  await interaction.deferUpdate();
-
-  const thread = await client.channels.fetch(channelId).catch(() => null);
-  if (thread) {
-    const msg = customId === 'ww_soclose'
-      ? '🔥 The Mayor signals: **So Close!**'
-      : '❌ The Mayor signals: **Way Off!**';
-    await thread.send({ content: msg }).catch(() => {});
-  }
-
-  // Refresh the board without action buttons.
-  await interaction.editReply({
-    embeds: [buildBoardEmbed(game)],
-    components: [],
-  }).catch(() => {});
-
-  return;
-}
 
 /** The Mayor answers a text guess with Yes / No / Maybe. */
 async function handleGuessAnswer(interaction, client, game) {
@@ -168,7 +67,7 @@ async function handleGuessAnswer(interaction, client, game) {
     components: [],
   });
 
-  await refreshBoardMessage(game, client);
+  await updateGameMessage(game, client);
 
   if (!isMaybe && game.tokens.yes_no <= 0) {
     await startVotingPhase(game, client);
@@ -245,7 +144,7 @@ async function handleGuessSignal(interaction, client, game) {
     components: [],
   });
 
-  await refreshBoardMessage(game, client);
+  await updateGameMessage(game, client);
 
   return;
 }
@@ -343,7 +242,7 @@ async function handleVoicePanel(interaction, client, game) {
     }
   }
 
-  await refreshBoardMessage(game, client);
+  await updateGameMessage(game, client);
 
   if ((isYes || isNo) && game.tokens.yes_no <= 0) {
     await startVotingPhase(game, client);
@@ -378,8 +277,6 @@ async function handleGuessMessage(message, client) {
 
 /** Button routes: the first entry whose `match` accepts the customId handles it. */
 const buttons = [
-  { match: id => ['ww_yes', 'ww_no', 'ww_maybe'].includes(id), handle: handleBoardAnswer },
-  { match: id => ['ww_correct', 'ww_soclose', 'ww_wayoff'].includes(id), handle: handleBoardSignal },
   { match: id => ['ww_guess_yes_', 'ww_guess_no_', 'ww_guess_maybe_'].some(prefix => id.startsWith(prefix)), handle: handleGuessAnswer },
   { match: id => id.startsWith('ww_guess_correct_'), handle: handleGuessCorrect },
   { match: id => id.startsWith('ww_guess_soclose_') || id.startsWith('ww_guess_wayoff_'), handle: handleGuessSignal },

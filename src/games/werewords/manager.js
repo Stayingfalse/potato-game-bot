@@ -41,7 +41,8 @@ class WerewordsManager extends BaseGameManager {
     game.readyPlayers = new Set();
     game.votes = new Map();
     game.boardMessageId = null;
-    game.readyMessageId = null;
+    game.phaseEndsAt = null;
+    game.werewolfRevealed = false;
     game.winnerGuesserUserId = null;
     game.responseStatsShown = false;
     game.timeLeft = 240;

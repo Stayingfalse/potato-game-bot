@@ -9,31 +9,24 @@ const {
   ActionRowBuilder,
   MessageFlags,
 } = require('discord.js');
-const {
-  buildActiveEmbed,
-  buildGameThreadEmbed,
-  buildPlayingComponents,
-  buildMayorWordComponents,
-} = require('../phases/lobby');
-const { buildBoardEmbed } = require('../phases/playing');
+const { buildActiveEmbed, buildMayorWordComponents } = require('../phases/lobby');
 const { ROLES, ROLE_DESCRIPTIONS } = require('../roles');
 const { sampleN } = require('../../_core/random');
 const WerewordsRepository = require('../repository');
+const { updateGameMessage } = require('../gameMessage');
 
 const {
   wordPool,
   getWordsmithSecretRoleText,
   buildSecretContent,
   buildReadyComponents,
-  updateReadyEmbed,
-  updateLobbyMessage,
   maybeStartTimer,
   createVoicePlayerPanels,
 } = require('./shared');
 
 /** The host picks text or voice mode; roles are dealt and the game starts. */
 async function handleModeSelect(interaction, client, game) {
-  const { customId, channelId, user } = interaction;
+  const { customId, user } = interaction;
   if (!game || game.phase !== 'mode_select') {
     return interaction.reply({ content: 'No mode selection is in progress.', flags: MessageFlags.Ephemeral });
   }
@@ -41,50 +34,18 @@ async function handleModeSelect(interaction, client, game) {
     return interaction.reply({ content: 'Only the host can choose the game mode.', flags: MessageFlags.Ephemeral });
   }
 
-  const chosenMode = customId === 'ww_mode_text' ? 'text' : 'voice';
-  const modeEmoji  = chosenMode === 'voice' ? '🎙️' : '📝';
-  const modeLabel  = chosenMode === 'voice' ? 'Voice' : 'Text';
-
-  game.sessionMode = chosenMode;
-  game.phase = 'starting';
-
-  await interaction.deferUpdate();
-
-  // Remove the mode-select buttons and confirm the choice.
-  await interaction.editReply({
-    content: `${modeEmoji} **${modeLabel} Mode** selected!`,
-    embeds: [],
-    components: [],
-  });
-
-  client.werewordsManager.assignRoles(channelId);
+  game.sessionMode = customId === 'ww_mode_text' ? 'text' : 'voice';
+  client.werewordsManager.assignRoles(game.threadId);
   game.wordOptions = sampleN(wordPool, 3);
   game.phase = 'playing';
-
-  await updateLobbyMessage(game, client, { embeds: [buildActiveEmbed(game)], components: [] });
-
-  const thread = await client.channels.fetch(channelId).catch(() => null);
-  if (thread) {
-    const startMsg = await thread.send({
-      embeds: [buildGameThreadEmbed(game)],
-      components: buildPlayingComponents(),
-    }).catch(() => null);
-
-    if (startMsg) game.readyMessageId = startMsg.id;
-
-    // Post the live game board without action buttons.
-    const boardMsg = await thread.send({
-      embeds: [buildBoardEmbed(game)],
-      components: [],
-    }).catch(() => null);
-
-    if (boardMsg) game.boardMessageId = boardMsg.id;
-
-    // Timer starts once all players have confirmed their roles (ww_ready).
-  }
-
   WerewordsRepository.upsert(game);
-  return;
+
+  // The mode buttons sit on the lobby message: it now shows the game as in progress.
+  await interaction.update({ embeds: [buildActiveEmbed(game)], components: [] });
+
+  // Post the game message. It shows who's ready until everyone is, then the board;
+  // the timer starts once all players have confirmed their roles (ww_ready).
+  await updateGameMessage(game, client);
 }
 
 /** Shows a player their role, and the word if their role knows it. The Mayor picks the word from here. */
@@ -161,7 +122,7 @@ async function handleReady(interaction, client, game) {
     components: [],
   });
 
-  await updateReadyEmbed(game, client);
+  await updateGameMessage(game, client);
   await maybeStartTimer(game, client);
   return;
 }
@@ -213,7 +174,7 @@ async function handlePresetWord(interaction, client, game) {
     if (thread) await createVoicePlayerPanels(game, thread);
   }
 
-  await updateReadyEmbed(game, client);
+  await updateGameMessage(game, client);
   await maybeStartTimer(game, client);
   return;
 }
@@ -308,7 +269,7 @@ async function handleWordModal(interaction, client) {
     if (thread) await createVoicePlayerPanels(game, thread);
   }
 
-  await updateReadyEmbed(game, client);
+  await updateGameMessage(game, client);
   await maybeStartTimer(game, client);
 }
 

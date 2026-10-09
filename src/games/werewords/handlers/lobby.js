@@ -6,7 +6,6 @@ const { MessageFlags } = require('discord.js');
 const {
   buildLobbyEmbed,
   buildLobbyComponents,
-  buildModeSelectingEmbed,
   buildModeSelectEmbed,
   buildModeSelectComponents,
 } = require('../phases/lobby');
@@ -55,7 +54,7 @@ async function handleLeave(interaction, client, game) {
   return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents() });
 }
 
-/** The host starts the game: the lobby closes and the host picks text or voice mode. */
+/** The host starts the game: the lobby message turns into the text-or-voice mode choice. */
 async function handleStart(interaction, client, game) {
   const { user } = interaction;
   if (!game || game.phase !== 'lobby') {
@@ -73,15 +72,7 @@ async function handleStart(interaction, client, game) {
 
   game.phase = 'mode_select';
   WerewordsRepository.upsert(game);
-  await interaction.update({ embeds: [buildModeSelectingEmbed(game)], components: [] });
-
-  const thread = await fetchChannel(client, game.threadId);
-  if (thread) {
-    await thread.send({
-      embeds: [buildModeSelectEmbed(game)],
-      components: buildModeSelectComponents(),
-    }).catch(() => {});
-  }
+  await interaction.update({ embeds: [buildModeSelectEmbed(game)], components: buildModeSelectComponents() });
 }
 
 /** The host cancels the session before it starts. */

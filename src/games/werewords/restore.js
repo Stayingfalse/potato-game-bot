@@ -2,21 +2,20 @@
 
 const WerewordsRepository = require('./repository');
 const WerewordsGameState = require('./state');
-const { editMessage } = require('../_core/messages');
 
-/** Crash recovery: reloads saved Werewords games and re-hooks their timers and buttons. */
+/**
+ * Crash recovery: reloads saved Werewords games. Each in-progress game's message
+ * is re-rendered in place, so its buttons work again straight away, and its
+ * countdown is re-armed with the time it had left. Nothing new is posted.
+ */
 async function restore(client) {
   const rows = WerewordsRepository.getAll();
   if (rows.length === 0) return;
 
-  const {
-    buildBoardEmbed,
-    buildMayorActionComponents,
-  } = require('./phases/playing');
-  const { buildVoteComponents } = require('./phases/voting');
-  const { buildRevealComponents } = require('./phases/reveal');
-  const { startGameTimer }        = require('./phases/timer');
-  const { endGame }               = require('./phases/endGame');
+  const { updateGameMessage } = require('./gameMessage');
+  const { startGameTimer } = require('./phases/timer');
+  const { scheduleRevealTimeout } = require('./phases/reveal');
+  const { scheduleVoteTimeout } = require('./phases/voting');
 
   for (const row of rows) {
     const game = WerewordsGameState.fromRow(row);
@@ -30,46 +29,19 @@ async function restore(client) {
       continue;
     }
 
-    // Lobby, mode_select and ended (between games, waiting for Rematch or Close Session)
-    // just need their thread to still exist: their buttons find the game by thread, so
-    // they keep working. Skip the "bot restarted" notice for these phases.
-    if (row.phase === 'lobby' || row.phase === 'mode_select' || row.phase === 'ended') {
-      continue;
-    }
-
-    await thread.send({ content: '⚠️ Bot restarted. Attempting to resume game…' }).catch(() => {});
-
-    // ── Phase-specific recovery ────────────────────────────────────────────
-    if (row.phase === 'playing') {
-      // Restart the countdown from saved time_left.
-      startGameTimer(game, thread, client);
-      await editMessage(thread, game.boardMessageId, {
-        embeds: [buildBoardEmbed(game)],
-        components: buildMayorActionComponents(game.tokens),
-      });
-    } else if (row.phase === 'voting') {
-      // Re-post vote buttons. Auto-tally after 60 s.
-      const { tallyVotes } = require('./phases/voting');
-      await thread.send({
-        content: '🗳️ Voting has resumed — please re-cast your vote:',
-        components: buildVoteComponents(game.players),
-      }).catch(() => {});
-
-      game.revealTimeout = setTimeout(async () => {
-        if (game.phase !== 'voting') return;
-        await tallyVotes(game, client);
-      }, 60_000);
-    } else if (row.phase === 'reveal') {
-      // Re-post Demon reveal button. 90 s timeout.
-      await thread.send({
-        content: '😈 Resume: Werewolf, you may still reveal yourself:',
-        components: buildRevealComponents(),
-      }).catch(() => {});
-
-      game.revealTimeout = setTimeout(async () => {
-        if (game.phase !== 'reveal') return;
-        await endGame(game, client, 'villagers_word');
-      }, 90_000);
+    // Lobby, mode_select and ended (between games, waiting for Rematch or Close
+    // Session) need nothing more: their buttons find the game by thread.
+    if (game.phase === 'playing' || game.phase === 'starting') {
+      game.phase = 'playing';
+      await updateGameMessage(game, client);
+      // The countdown only runs once everyone has confirmed their role.
+      if (game.readyPlayers.size >= game.players.size) startGameTimer(game, thread, client);
+    } else if (game.phase === 'reveal') {
+      await updateGameMessage(game, client);
+      scheduleRevealTimeout(game, client);
+    } else if (game.phase === 'voting') {
+      await updateGameMessage(game, client);
+      scheduleVoteTimeout(game, client);
     }
   }
 }

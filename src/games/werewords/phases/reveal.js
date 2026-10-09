@@ -2,38 +2,45 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { isLibrarian } = require('../roles');
 const { endGame } = require('./endGame');
 const WerewordsRepository = require('../repository');
-const { editMessage } = require('../../_core/messages');
+const { fetchChannel } = require('../../_core/threads');
 
 const REVEAL_COLOR = 0xFEE75C; // yellow
+
+/** How long the Werewolf has to decide whether to reveal. */
+const REVEAL_WINDOW_MS = 90_000;
+/** How long a revealed Werewolf has to name the Seer. */
+const SEER_PICK_WINDOW_MS = 20_000;
 
 // ── Embed ──────────────────────────────────────────────────────────────────────
 
 function buildRevealEmbed(game) {
-  return new EmbedBuilder()
-    .setTitle('🔮  Werewords — The Word Was Guessed!')
-    .setDescription(
-      `The secret word **"${game.word}"** was correctly guessed!\n\n` +
+  const deadline = game.phaseEndsAt ? `<t:${Math.floor(game.phaseEndsAt / 1000)}:R>` : 'soon';
+  const description = game.werewolfRevealed
+    ? `The secret word **"${game.word}"** was correctly guessed!\n\n` +
+      `😈 **The Werewolf has revealed themselves!** They have until ${deadline} to identify the Seer.`
+    : `The secret word **"${game.word}"** was correctly guessed!\n\n` +
       '**Werewolf:** you may now reveal yourself to attempt to identify the Seer.\n' +
       'If you correctly name the Seer, your team steals the win!\n\n' +
-      '_If you choose not to reveal, the Townsfolk win._',
-    )
+      `_If you don't reveal by ${deadline}, the Townsfolk win._`;
+
+  return new EmbedBuilder()
+    .setTitle('🔮  Werewords — The Word Was Guessed!')
+    .setDescription(description)
     .setColor(REVEAL_COLOR)
     .setTimestamp();
 }
 
 // ── Components ─────────────────────────────────────────────────────────────────
 
-/** Single button for the Demon to kick off the reveal. */
-function buildRevealComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ww_reveal')
-        .setLabel('Reveal Yourself')
-        .setEmoji('😈')
-        .setStyle(ButtonStyle.Danger),
-    ),
-  ];
+/**
+ * Before the reveal: the Werewolf's "Reveal Yourself" button. After it: a button
+ * that reopens the Werewolf's Seer picker (e.g. after a restart or if they closed it).
+ */
+function buildRevealComponents(game) {
+  const button = game.werewolfRevealed
+    ? new ButtonBuilder().setCustomId('ww_seer_panel').setLabel('Pick the Seer').setEmoji('🔮').setStyle(ButtonStyle.Primary)
+    : new ButtonBuilder().setCustomId('ww_reveal').setLabel('Reveal Yourself').setEmoji('😈').setStyle(ButtonStyle.Danger);
+  return [new ActionRowBuilder().addComponents(button)];
 }
 
 /**
@@ -63,24 +70,44 @@ function buildSeerPickComponents(players, werewolfId) {
   return rows;
 }
 
+// ── Deadline ───────────────────────────────────────────────────────────────────
+
+/**
+ * Arms the timeout for the current reveal window from `game.phaseEndsAt`, so a
+ * restored game gets only the time it had left. If the window closes, the
+ * Townsfolk win.
+ */
+function scheduleRevealTimeout(game, client) {
+  if (game.revealTimeout) clearTimeout(game.revealTimeout);
+  const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
+  game.revealTimeout = setTimeout(async () => {
+    try {
+      if (game.phase !== 'reveal') return;
+      if (game.werewolfRevealed) {
+        const thread = await fetchChannel(client, game.threadId);
+        await thread?.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Townsfolk win!**' }).catch(() => {});
+      }
+      await endGame(game, client, 'villagers_word');
+    } catch (err) {
+      console.error('[Werewords] Reveal timeout error:', err);
+    }
+  }, remaining);
+}
+
 // ── Phase entry point ──────────────────────────────────────────────────────────
 
 /**
  * Transitions the game into the reveal phase.
- * - If no Librarian exists (3-player game) the Townsfolk win immediately.
- * - Otherwise posts the reveal message with a 90 s safety timeout.
+ * - If there's no Seer in the game the Townsfolk win immediately.
+ * - Otherwise the game message moves to the bottom of the thread showing the
+ *   Werewolf's reveal prompt, with a 90 s window.
  *
- * @param {import('../state').GameState} game
+ * @param {import('../state')} game
  * @param {import('discord.js').Client} client
  */
 async function startRevealPhase(game, client) {
-  // Stop the main countdown timer.
-  if (game.timerInterval) {
-    clearInterval(game.timerInterval);
-    game.timerInterval = null;
-  }
+  client.werewordsManager.clearTimers(game);
 
-  // No Librarian in this game → Townsfolk win straight away.
   const hasSeer = [...game.players.values()].some(isLibrarian);
   if (!hasSeer) {
     await endGame(game, client, 'villagers_word');
@@ -88,27 +115,20 @@ async function startRevealPhase(game, client) {
   }
 
   game.phase = 'reveal';
+  game.werewolfRevealed = false;
+  game.phaseEndsAt = Date.now() + REVEAL_WINDOW_MS;
   WerewordsRepository.upsert(game);
 
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) {
-    await endGame(game, client, 'villagers_word');
-    return;
-  }
-
-  // Remove Wordsmith action buttons from the board now that the word phase is over.
-  await editMessage(thread, game.boardMessageId, { components: [] });
-
-  await thread.send({
-    embeds: [buildRevealEmbed(game)],
-    components: buildRevealComponents(),
-  }).catch(() => {});
-
-  // 90 s safety net — if the Demon goes AFK the Townsfolk win.
-  game.revealTimeout = setTimeout(async () => {
-    if (game.phase !== 'reveal') return;
-    await endGame(game, client, 'villagers_word');
-  }, 90_000);
+  const { moveGameMessage } = require('../gameMessage');
+  await moveGameMessage(game, client);
+  scheduleRevealTimeout(game, client);
 }
 
-module.exports = { startRevealPhase, buildRevealComponents, buildSeerPickComponents };
+module.exports = {
+  SEER_PICK_WINDOW_MS,
+  startRevealPhase,
+  scheduleRevealTimeout,
+  buildRevealEmbed,
+  buildRevealComponents,
+  buildSeerPickComponents,
+};

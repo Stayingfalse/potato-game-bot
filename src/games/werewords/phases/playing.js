@@ -35,12 +35,15 @@ function buildBoardEmbed(game) {
   return new EmbedBuilder()
     .setTitle('🔮  Werewords — Game Board')
     .setDescription(
-      game.word
-        ? '🔤 The secret word has been chosen. Type any message in this thread to make a guess!'
-        : '⏳ Waiting for the Mayor to choose the secret word…',
+      !game.word
+        ? '⏳ Waiting for the Mayor to choose the secret word…'
+        : game.sessionMode === 'voice'
+          ? '🔤 The secret word has been chosen. Call out your guesses in voice chat!'
+          : '🔤 The secret word has been chosen. Type any message in this thread to make a guess!',
     )
     .addFields(
-      { name: '⏱ Time Remaining', value: formatTime(timeLeft) },
+      { name: '⏱ Time Remaining', value: formatTime(timeLeft), inline: true },
+      { name: 'Mode', value: game.sessionMode === 'voice' ? '🎙️ Voice' : '📝 Text', inline: true },
       { name: '✅ ❌  Yes / No', value: `${tokens.yes_no} / 36`, inline: true },
       { name: '❔ Maybe', value: `${tokens.maybe} / 12`, inline: true },
       { name: '✅ Correct', value: `${tokens.correct} / 1`, inline: true },
@@ -50,58 +53,6 @@ function buildBoardEmbed(game) {
     .setColor(BOARD_COLOR)
     .setFooter({ text: "The Mayor responds to guesses using the buttons on each guess (text mode) or on each player's panel (voice mode)." })
     .setTimestamp();
-}
-
-// ── Wordsmith action buttons ──────────────────────────────────────────────────
-
-/**
- * Returns the Wordsmith's Yes / No / Maybe action row.
- * Buttons are disabled when the corresponding token count reaches zero.
- * @param {{ yes: number, no: number, maybe: number }} tokens
- */
-function buildMayorActionComponents(tokens) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ww_yes')
-        .setLabel('Yes')
-        .setEmoji('✅')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(tokens.yes_no <= 0),
-      new ButtonBuilder()
-        .setCustomId('ww_no')
-        .setLabel('No')
-        .setEmoji('❌')
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(tokens.yes_no <= 0),
-      new ButtonBuilder()
-        .setCustomId('ww_maybe')
-        .setLabel('Maybe')
-        .setEmoji('❔')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(tokens.maybe <= 0),
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ww_correct')
-        .setLabel('Correct!')
-        .setEmoji('✅')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(tokens.correct <= 0),
-      new ButtonBuilder()
-        .setCustomId('ww_soclose')
-        .setLabel('So Close!')
-        .setEmoji('🔥')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(tokens.so_close_way_off <= 0),
-      new ButtonBuilder()
-        .setCustomId('ww_wayoff')
-        .setLabel('Way Off!')
-        .setEmoji('❌')
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(tokens.so_close_way_off <= 0),
-    ),
-  ];
 }
 
 // ── Guess announcement components ─────────────────────────────────────────────
@@ -221,7 +172,6 @@ function buildVoicePlayerComponents(playerId, tokens) {
 module.exports = {
   formatTime,
   buildBoardEmbed,
-  buildMayorActionComponents,
   buildGuessComponents,
   buildVoicePlayerContent,
   buildVoicePlayerComponents,

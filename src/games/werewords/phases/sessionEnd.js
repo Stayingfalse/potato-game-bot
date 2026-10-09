@@ -2,7 +2,6 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { ROLES, isDemon, getRoleDisplayName } = require('../roles');
 const { recordGame } = require('../stats');
 const WerewordsRepository = require('../repository');
-const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 const { editMessage } = require('../../_core/messages');
 
 const ROLE_EMOJI = {
@@ -19,6 +18,7 @@ const OUTCOME_COLOR = {
   werewolf_tokens: 0xED4245,
   werewolf_seer:   0xED4245,
   werewolf_vote:   0xED4245,
+  host_cancelled:  0x5865F2,
 };
 
 const OUTCOME_BANNER = {
@@ -28,6 +28,7 @@ const OUTCOME_BANNER = {
   werewolf_tokens: { title: '😈  Werewolves Win!',  description: 'All tokens were exhausted before the secret word was guessed.' },
   werewolf_seer:   { title: '😈  Werewolves Win!',  description: 'The Werewolf revealed and correctly identified the Seer — stealing the win!' },
   werewolf_vote:   { title: '😈  Werewolves Win!',  description: 'The Townsfolk failed to unmask the Werewolf.' },
+  host_cancelled:  { title: '🛑  Game Cancelled',   description: 'The host ended the game early. It doesn\'t count towards anyone\'s stats.' },
 };
 
 // ── Embeds ─────────────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ function buildSessionSummaryEmbed(game, guildStats) {
   });
 
   return new EmbedBuilder()
-    .setTitle(`📊  Session Summary — ${game.gameNumber} game${game.gameNumber !== 1 ? 's' : ''} played`)
+    .setTitle(`📊  Session Summary — ${game.sessionHistory.length} game${game.sessionHistory.length !== 1 ? 's' : ''} played`)
     .addFields(
       { name: 'This Session', value: sessionLines.join('\n') || '*No data*' },
       { name: 'Career Totals', value: careerLines.join('\n') || '*No data*' },
@@ -144,60 +145,27 @@ function buildPlayerStatsEmbed(game) {
 
 
 /**
- * Full end-game sequence:
- *   1. Post winner banner
- *   2. "🎭 Let's see who everyone was…" message
- *   3. Sequential role reveals (1.5 s apart)
- *   4. Record stats + append to session history
- *   5. Post session summary + rematch/close buttons
- *   6. Update the lobby message
+ * Records a finished game: appends it to the session history and updates player
+ * stats, then saves. A game the host cancelled is not recorded.
  *
- * @param {import('../state').GameState} game
- * @param {import('discord.js').Client} client
+ * @param {import('../state')} game
  * @param {string} outcome
- * @param {string|null} seerVictimUserId  The userId the Demon correctly named (if any).
+ * @param {string|null} seerVictimUserId  The userId the Werewolf correctly named as Seer (if any).
  */
-async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+function recordResult(game, outcome, seerVictimUserId = null) {
+  if (outcome === 'host_cancelled') return;
 
-  if (thread) {
-    // 1. Winner banner.
-    await thread.send({ embeds: [buildWinnerEmbed(game, outcome)] }).catch(() => {});
-
-    await delay(1500);
-
-    // 2. Transition line.
-    await thread.send({ content: '🎭 Let\'s see who everyone was…' }).catch(() => {});
-
-    await delay(1000);
-
-    // 3. Sequential role reveal.
-    await postSequentialReveal(thread, game.players);
-
-    await delay(1000);
-
-    // 3b. Response-card stats (only if not already shown before the voting phase).
-    if (!game.responseStatsShown) {
-      await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
-      await delay(500);
-    }
-  }
-
-  // 4. Record stats + session history.
-  // Build winner set for session history.
   const VILLAGER_WIN_OUTCOMES = new Set(['villagers_word', 'villagers_vote']);
   const werewolfWins = !VILLAGER_WIN_OUTCOMES.has(outcome);
-  const winnerIds = new Set(
-    [...game.players.values()]
-      .filter(p => werewolfWins ? isDemon(p) : !isDemon(p))
-      .map(p => p.id),
-  );
+  const winnerIds = [...game.players.values()]
+    .filter(p => werewolfWins ? isDemon(p) : !isDemon(p))
+    .map(p => p.id);
 
   game.sessionHistory.push({
     gameNumber: game.gameNumber,
     outcome,
     word: game.word,
-    winners: [...winnerIds],
+    winners: winnerIds,
     players: [...game.players.values()].map(p => ({
       id: p.id,
       username: p.username,
@@ -205,7 +173,6 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
       secretRole: p.secretRole ?? null,
     })),
   });
-
   WerewordsRepository.upsert(game);
 
   recordGame(
@@ -215,8 +182,44 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     game.winnerGuesserUserId,
     seerVictimUserId,
   );
+}
 
-  // 5. Session summary + action buttons.
+/**
+ * The end-of-game sequence that follows the result banner (the game message):
+ *   1. "🎭 Let's see who everyone was…"
+ *   2. Sequential role reveals (1.5 s apart)
+ *   3. Response-card stats, if they weren't shown during voting
+ *   4. Session summary + rematch/close buttons
+ *   5. Update the lobby message
+ *
+ * @param {import('../state')} game
+ * @param {import('discord.js').Client} client
+ * @param {string} outcome
+ */
+async function runEndSequence(game, client, outcome) {
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+
+  if (thread) {
+    await delay(1500);
+
+    // 1. Transition line.
+    await thread.send({ content: '🎭 Let\'s see who everyone was…' }).catch(() => {});
+
+    await delay(1000);
+
+    // 2. Sequential role reveal.
+    await postSequentialReveal(thread, game.players);
+
+    await delay(1000);
+
+    // 3. Response-card stats (only if not already shown during voting).
+    if (!game.responseStatsShown) {
+      await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
+      await delay(500);
+    }
+  }
+
+  // 4. Session summary + action buttons.
   const { getGuildStats } = require('../stats');
   const guildStats = getGuildStats(game.guildId);
 
@@ -227,7 +230,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
     }).catch(() => {});
   }
 
-  // 6. Update the lobby message at the top of the thread.
+  // 5. Update the lobby message at the top of the thread.
   if (thread && game.messageId) {
     const { title } = OUTCOME_BANNER[outcome];
     const waitEmbed = new EmbedBuilder()
@@ -239,4 +242,11 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   }
 }
 
-module.exports = { runEndSequence, buildRematchComponents, buildSessionSummaryEmbed, buildPlayerStatsEmbed };
+module.exports = {
+  recordResult,
+  runEndSequence,
+  buildRematchComponents,
+  buildSessionSummaryEmbed,
+  buildPlayerStatsEmbed,
+  buildWinnerEmbed,
+};

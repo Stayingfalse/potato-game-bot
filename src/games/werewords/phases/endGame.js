@@ -1,80 +1,36 @@
-const { runEndSequence }  = require('./sessionEnd');
-const WerewordsRepository      = require('../repository');
-const { fetchChannel } = require('../../_core/threads');
-const { editMessage } = require('../../_core/messages');
-
-// ── Outcome definitions (kept for reference / future use) ─────────────────────
-
-const OUTCOMES = {
-  villagers_word: {
-    title: '🎉 Townsfolk Win!',
-    description: 'The secret word was correctly guessed and the Werewolf stayed hidden!',
-    color: 0x57F287, // green
-  },
-  werewolf_time: {
-    title: '😈 Werewolves Win!',
-    description: 'Time ran out before the secret word was guessed.',
-    color: 0xED4245, // red
-  },
-  werewolf_tokens: {
-    title: '😈 Werewolves Win!',
-    description: 'All tokens were used up before the secret word was guessed.',
-    color: 0xED4245, // red
-  },
-  werewolf_seer: {
-    title: '😈 Werewolves Win!',
-    description: 'The word was guessed but the Werewolf revealed themselves and correctly identified the Seer!',
-    color: 0xED4245, // red
-  },
-  villagers_vote: {
-    title: '🎉 Townsfolk Win!',
-    description: 'The Townsfolk voted correctly and exposed the Werewolf!',
-    color: 0x57F287, // green
-  },
-  werewolf_vote: {
-    title: '😈 Werewolves Win!',
-    description: 'The Townsfolk failed to identify the Werewolf.',
-    color: 0xED4245, // red
-  },
-  host_cancelled: {
-    title: '🛑 Game Cancelled',
-    description: 'The host ended the game early.',
-    color: 0x5865F2, // blurple
-  },
-};
-
-// ── End-game logic ─────────────────────────────────────────────────────────────
+const WerewordsRepository = require('../repository');
+const { recordResult, runEndSequence } = require('./sessionEnd');
 
 /**
  * Finalises the game:
- *  1. Clears timers and sets phase to 'ended'.
- *  2. Removes Wordsmith action buttons from the board.
- *  3. Delegates presentation to runEndSequence (sequential reveal, stats, rematch buttons).
- *  4. Does NOT delete the game from the registry — the session lives on until
- *     the host clicks "Close Session".
+ *  1. Stops timers and sets the phase to 'ended'.
+ *  2. Records the result (session history and stats; not for a cancelled game).
+ *  3. Moves the game message to the bottom of the thread as the result banner.
+ *  4. Runs the rest of the end sequence (role reveals, session summary, rematch buttons).
  *
- * @param {import('../state').GameState} game
+ * The game stays registered: the session lives on until the host clicks
+ * "Close Session" or uses /werewords end.
+ *
+ * @param {import('../state')} game
  * @param {import('discord.js').Client} client
  * @param {string} outcome
- * @param {string|null} [seerVictimUserId]  userId the Demon correctly named as Librarian.
+ * @param {string|null} [seerVictimUserId]  userId the Werewolf correctly named as the Seer.
  */
 async function endGame(game, client, outcome, seerVictimUserId = null) {
   // Guard against being called twice.
   if (game.phase === 'ended') return;
 
-  // Stop timers immediately.
   client.werewordsManager.clearTimers(game);
-
   game.phase = 'ended';
+  game.phaseEndsAt = null;
   WerewordsRepository.upsert(game);
 
-  // Remove Wordsmith action buttons from the board so they can't be clicked.
-  if (game.boardMessageId) {
-    await editMessage(await fetchChannel(client, game.threadId), game.boardMessageId, { components: [] });
-  }
+  recordResult(game, outcome, seerVictimUserId);
 
-  // Hand off to the full end-game presentation sequence.
-  await runEndSequence(game, client, outcome, seerVictimUserId);
+  const { moveGameMessage } = require('../gameMessage');
+  await moveGameMessage(game, client, { outcome });
+
+  await runEndSequence(game, client, outcome);
 }
 
 module.exports = { endGame };

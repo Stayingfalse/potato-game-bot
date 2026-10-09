@@ -31,9 +31,10 @@ const ADDED_COLUMNS = {
   session_mode: 'session_mode TEXT',
   voice_player_message_ids: 'voice_player_message_ids TEXT',
   ready_players: "ready_players TEXT NOT NULL DEFAULT '[]'",
-  ready_message_id: 'ready_message_id TEXT',
   session_history: "session_history TEXT NOT NULL DEFAULT '[]'",
   response_stats_shown: 'response_stats_shown INTEGER NOT NULL DEFAULT 0',
+  phase_ends_at: 'phase_ends_at INTEGER',
+  werewolf_revealed: 'werewolf_revealed INTEGER NOT NULL DEFAULT 0',
 };
 
 /** Adds any columns that a table created by an older version is missing. */

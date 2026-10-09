@@ -1,9 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { isDemon } = require('../roles');
 const { endGame } = require('./endGame');
-const { buildPlayerStatsEmbed } = require('./sessionEnd');
 const WerewordsRepository = require('../repository');
-const { editMessage } = require('../../_core/messages');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
@@ -23,7 +21,8 @@ function buildWordRevealEmbed(game) {
 }
 
 function buildVoteEmbed(game) {
-  const timeStr = `<t:${Math.floor((Date.now() + VOTE_DURATION) / 1000)}:R>`;
+  const timeStr = `<t:${Math.floor((game.phaseEndsAt ?? Date.now() + VOTE_DURATION) / 1000)}:R>`;
+  const voted = [...game.votes.keys()].map(id => `<@${id}>`).join(' ') || '*Nobody yet*';
 
   return new EmbedBuilder()
     .setTitle('🗳️  Werewords — Vote!')
@@ -32,6 +31,7 @@ function buildVoteEmbed(game) {
       'If the majority picks correctly, the Townsfolk win!\n\n' +
       `Voting closes ${timeStr}. You can change your vote before it ends.`,
     )
+    .addFields({ name: `Voted (${game.votes.size} / ${game.players.size})`, value: voted })
     .setColor(VOTE_COLOR)
     .setTimestamp();
 }
@@ -102,44 +102,12 @@ async function tallyVotes(game, client) {
 // ── Phase entry point ──────────────────────────────────────────────────────────
 
 /**
- * Transitions the game into the voting phase.
- * Posts a public vote message in the thread and starts the 60 s countdown.
- *
- * @param {import('../state').GameState} game
- * @param {import('discord.js').Client} client
+ * Arms the vote's deadline from `game.phaseEndsAt`, so a restored game gets only
+ * the time it had left. When it passes, the votes cast so far are tallied.
  */
-async function startVotingPhase(game, client) {
-  // Stop the main countdown timer if still running.
-  if (game.timerInterval) {
-    clearInterval(game.timerInterval);
-    game.timerInterval = null;
-  }
-
-  game.phase = 'voting';
-  WerewordsRepository.upsert(game);
-
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) {
-    await endGame(game, client, 'werewolf_vote');
-    return;
-  }
-
-  // Remove Wordsmith action buttons from the board.
-  await editMessage(thread, game.boardMessageId, { components: [] });
-
-  // Announce the forbidden word.
-  await thread.send({ embeds: [buildWordRevealEmbed(game)] }).catch(() => {});
-
-  // Show per-player response card stats for this game.
-  await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
-  game.responseStatsShown = true;
-
-  await thread.send({
-    embeds: [buildVoteEmbed(game)],
-    components: buildVoteComponents(game.players),
-  }).catch(() => {});
-
-  // Auto-tally when the window expires.
+function scheduleVoteTimeout(game, client) {
+  if (game.revealTimeout) clearTimeout(game.revealTimeout);
+  const remaining = Math.max(0, (game.phaseEndsAt ?? Date.now()) - Date.now());
   game.revealTimeout = setTimeout(async () => {
     try {
       if (game.phase !== 'voting') return;
@@ -147,7 +115,35 @@ async function startVotingPhase(game, client) {
     } catch (err) {
       console.error('[Voting] Auto-tally timer error:', err);
     }
-  }, VOTE_DURATION);
+  }, remaining);
 }
 
-module.exports = { startVotingPhase, buildVoteComponents, tallyVotes };
+/**
+ * Transitions the game into the voting phase: the game message moves to the
+ * bottom of the thread showing the word, each player's response cards and the
+ * vote, and a 60 s countdown starts.
+ *
+ * @param {import('../state')} game
+ * @param {import('discord.js').Client} client
+ */
+async function startVotingPhase(game, client) {
+  client.werewordsManager.clearTimers(game);
+
+  game.phase = 'voting';
+  game.phaseEndsAt = Date.now() + VOTE_DURATION;
+  game.responseStatsShown = true;
+  WerewordsRepository.upsert(game);
+
+  const { moveGameMessage } = require('../gameMessage');
+  await moveGameMessage(game, client);
+  scheduleVoteTimeout(game, client);
+}
+
+module.exports = {
+  startVotingPhase,
+  scheduleVoteTimeout,
+  tallyVotes,
+  buildWordRevealEmbed,
+  buildVoteEmbed,
+  buildVoteComponents,
+};

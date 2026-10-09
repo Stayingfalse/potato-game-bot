@@ -226,9 +226,13 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Saved now: ready-up, the ready message, session history and whether response stats were shown. The Mayor's word and ready-ups are saved as they happen (they weren't saved until a later phase before). Restore uses `fromRow`, and keeps sessions that are between games.
 - Text-mode guesses moved out of `events/messageCreate.js` into an optional `handleMessage` manifest hook.
 
-**Step 6b: WW single game message.**
-- Convert the ready, board and vote messages into one message rendered from state and edited in place, as NMJ does. This changes how a Werewords game looks, so it is its own step.
-- Restore can then re-render that message instead of posting "Bot restarted" and re-sending buttons.
+**Step 6b: WW single game message.** ✅ Done.
+- One live game message per game, rendered from state by `games/werewords/render.js`: the ready-up list, then the board, then the reveal prompt, then the vote (word, response cards, who has voted), then the result banner. It replaces the separate ready, board, reveal, word-reveal, response-card and vote messages.
+- It is edited in place during play. When the phase changes to reveal, voting or ended it is reposted at the bottom of the thread (`gameMessage.js`); the old one keeps its final state, loses its buttons and links to the new one.
+- The text/voice mode choice is on the lobby message instead of a separate prompt.
+- Board-level Mayor buttons are gone; the Mayor answers on each guess (text) or each player's panel (voice), as the board already said.
+- Reveal and vote deadlines are saved (`phaseEndsAt`, `werewolfRevealed`). Restore re-renders the game message and re-arms only the remaining time; no "Bot restarted" message. A "Pick the Seer" button lets a revealed Werewolf reopen their picker.
+- Fixed: the host's End Game button crashed the end sequence (no banner for `host_cancelled`), leaving the session without Rematch or Close buttons. A cancelled game now shows "Game Cancelled" and isn't counted in stats or session history.
 
 **Step 7: Optional stats.**
 - Add a `stats` hook for NMJ (wins, games played), and for any rebuilt games.

@@ -17,7 +17,11 @@ class WerewordsGameState extends BaseGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
     super(guildId, channelId, threadId, hostId, hostUsername);
     // messageId: the lobby message at the top of the thread, edited as the session progresses.
-    /** Discord message ID of the game board embed posted in the thread. */
+    /**
+     * The live game message: ready-up, board, reveal, vote and result, rendered by
+     * render.js and edited in place. Reposted at the bottom of the thread when the
+     * phase changes after play (see gameMessage.js).
+     */
     this.boardMessageId = null;
 
     // phase: 'lobby'|'mode_select'|'starting'|'playing'|'voting'|'ended'
@@ -35,8 +39,6 @@ class WerewordsGameState extends BaseGameState {
     this.pendingSecretInteractions = [];
     this.tokens = { yes_no: 36, maybe: 12, correct: 1, so_close_way_off: 2 };
     this.readyPlayers = new Set();
-    /** Discord message ID of the "Game Started" embed (used to update ready-up status). */
-    this.readyMessageId = null;
 
     // Populated during the playing phase
     this.timerInterval = null;
@@ -45,8 +47,12 @@ class WerewordsGameState extends BaseGameState {
     // Populated during reveal / voting phases
     /** @type {Map<string, string>} userId → targeted userId */
     this.votes = new Map();
-    /** setTimeout handle for the 90s outer reveal safety net / voting window. */
+    /** setTimeout handle for the reveal and voting deadlines. */
     this.revealTimeout = null;
+    /** When the current reveal or voting window closes (ms since epoch); null otherwise. */
+    this.phaseEndsAt = null;
+    /** True once the Werewolf has revealed and is picking the Seer. */
+    this.werewolfRevealed = false;
 
     /** @type {'text'|'voice'|null} Chosen play mode; null until host selects. */
     this.sessionMode = null;
@@ -75,9 +81,10 @@ class WerewordsGameState extends BaseGameState {
     game.wordOptions = JSON.parse(row.word_options || '[]');
     game.tokens = JSON.parse(row.tokens);
     game.readyPlayers = new Set(JSON.parse(row.ready_players || '[]'));
-    game.readyMessageId = row.ready_message_id ?? null;
     game.timeLeft = row.time_left;
     game.votes = new Map(Object.entries(JSON.parse(row.votes || '{}')));
+    game.phaseEndsAt = row.phase_ends_at ?? null;
+    game.werewolfRevealed = !!row.werewolf_revealed;
     game.sessionMode = row.session_mode ?? null;
     game.voicePlayerMessageIds = new Map(Object.entries(JSON.parse(row.voice_player_message_ids || '{}')));
     game.gameNumber = row.game_number;
@@ -104,9 +111,10 @@ class WerewordsGameState extends BaseGameState {
       word_options:             JSON.stringify(game.wordOptions ?? []),
       tokens:                   JSON.stringify(game.tokens),
       ready_players:            JSON.stringify([...(game.readyPlayers ?? [])]),
-      ready_message_id:         game.readyMessageId ?? null,
       time_left:                game.timeLeft,
       votes:                    JSON.stringify(Object.fromEntries(game.votes ?? new Map())),
+      phase_ends_at:            game.phaseEndsAt ?? null,
+      werewolf_revealed:        game.werewolfRevealed ? 1 : 0,
       game_number:              game.gameNumber,
       winner_guesser_user_id:   game.winnerGuesserUserId ?? null,
       session_mode:             game.sessionMode ?? null,

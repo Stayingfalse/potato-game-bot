@@ -29,8 +29,8 @@ async function sendTtsWarning(thread, seconds) {
  * @param {import('discord.js').Client} client
  */
 function startGameTimer(game, thread, client) {
-  const { buildBoardEmbed, buildMayorActionComponents } = require('./playing');
   const { startVotingPhase } = require('./voting');
+  const { updateGameMessage } = require('../gameMessage');
   const { updateTimeLeft } = require('../repository');
 
   let boardRefreshing = false;
@@ -63,17 +63,7 @@ function startGameTimer(game, thread, client) {
       updateTimeLeft(game.threadId, game.timeLeft);
       boardRefreshing = true;
       try {
-        const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-        if (bMsg) {
-          await bMsg.edit({
-            embeds: [buildBoardEmbed(game)],
-            components: buildMayorActionComponents(game.tokens),
-          }).catch(err => {
-            if (err?.status === 429) {
-              console.warn(`[Board] Rate limited (thread ${game.threadId}, ${game.timeLeft}s left) — skipping tick`);
-            }
-          });
-        }
+        await updateGameMessage(game, client);
       } finally {
         boardRefreshing = false;
       }

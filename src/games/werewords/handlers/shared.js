@@ -1,12 +1,7 @@
 'use strict';
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { buildGameThreadEmbed, buildPlayingComponents } = require('../phases/lobby');
-const {
-  buildBoardEmbed,
-  buildVoicePlayerContent,
-  buildVoicePlayerComponents,
-} = require('../phases/playing');
+const { buildVoicePlayerContent, buildVoicePlayerComponents } = require('../phases/playing');
 const { startGameTimer } = require('../phases/timer');
 const { ROLES, ROLE_DESCRIPTIONS, getEffectiveRole, getRoleDisplayName } = require('../roles');
 const words = require('../words.json');
@@ -20,15 +15,6 @@ const wordPool = words.categories.flatMap(c => c.words);
 function getWordsmithSecretRoleText(player) {
   if (player?.role !== ROLES.MAYOR || !player.secretRole) return '';
   return `\n\n🎭 Secret role: **${getRoleDisplayName(player.secretRole)}**`;
-}
-
-async function refreshBoardMessage(game, client) {
-  if (!game?.boardMessageId) return;
-  const thread = await fetchChannel(client, game.threadId);
-  await editMessage(thread, game.boardMessageId, {
-    embeds: [buildBoardEmbed(game)],
-    components: [],
-  });
 }
 
 /**
@@ -72,16 +58,6 @@ function buildReadyComponents() {
   ];
 }
 
-/** Edits the "Game Started" embed to reflect the current ready-up state. */
-async function updateReadyEmbed(game, client) {
-  if (!game.readyMessageId) return;
-  const thread = await fetchChannel(client, game.threadId);
-  await editMessage(thread, game.readyMessageId, {
-    embeds: [buildGameThreadEmbed(game)],
-    components: buildPlayingComponents(),
-  });
-}
-
 /** Edits the lobby message at the top of the game thread (it doubles as the session's status message). */
 async function updateLobbyMessage(game, client, payload) {
   await editMessage(await fetchChannel(client, game.threadId), game.messageId, payload);
@@ -122,10 +98,8 @@ async function createVoicePlayerPanels(game, thread) {
 module.exports = {
   wordPool,
   getWordsmithSecretRoleText,
-  refreshBoardMessage,
   buildSecretContent,
   buildReadyComponents,
-  updateReadyEmbed,
   updateLobbyMessage,
   maybeStartTimer,
   createVoicePlayerPanels,
