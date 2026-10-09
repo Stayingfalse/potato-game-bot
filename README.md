@@ -90,6 +90,14 @@ An AI companion powered by Google Gemini that adds personality to your server co
    - Manage Threads
 3. **Start playing!** Use `/werewords start`, `/wavelength start` or `/nmj start` in any channel to begin
 
+## 🧪 Running the Tests
+
+```bash
+npm test
+```
+
+The suite uses Node's built-in test runner, so there is nothing extra to install. It plays each game through its real command and button handlers with fake Discord objects, and checks crash recovery and database upgrades. It never connects to Discord, and each test file uses its own temporary database, so your `data/` folder is never touched.
+
 ## 🎯 Game Tips
 
 **For Werewords:**

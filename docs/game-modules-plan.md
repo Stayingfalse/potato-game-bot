@@ -247,13 +247,14 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 2. **Command shape.** ✅ Decided: `/werewords start|end`, with no old `/werewords` kept.
 3. **Breaking in-flight games.** ✅ Decided: migrate saved games rather than clearing them. Each game that changes its saved layout ships a one-time upgrade with its repository, as NMJ does in Step 3.
 
-### Testing
+### Testing ✅
 
-There is still no committed test suite. Each step so far was checked with throwaway scripts: an in-memory SQLite database, fake Discord objects and, for NMJ and WL, a full game played through the real handlers. Turning those into a committed `node:test` suite would protect the remaining steps. It should cover:
-- the manager APIs
-- `fromRow(toRow(state))` round-trips, and each game's table upgrade
-- the router's prefix dispatch
-- a scripted game per module
+`npm test` runs the committed suite in `test/` (Node's built-in `node:test`, no extra dependencies, ~2 s):
+- `core.test.js`: shared helpers, `createRepository`, `BaseGameManager`, the registry and router
+- `bot.test.js`: startup without logging in, commands, the single interaction listener, restore, deploy-commands
+- `nmj.test.js`, `wavelength.test.js`, `werewords.test.js`: each game's table upgrade, a full scripted game through its real command and handlers, and restarts mid-game
+
+`test/helpers/env.js` gives each test file its own temporary `DATA_DIR`, so tests never touch `data/`. `test/helpers/discord.js` has the fake threads, channels, users and interactions. New games should add a `<id>.test.js` in the same style.
 
 ---
 

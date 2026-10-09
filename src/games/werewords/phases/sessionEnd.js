@@ -112,8 +112,11 @@ async function postSequentialReveal(thread, players) {
   }
 }
 
+/** Pacing of the end-of-game reveals. The test suite sets `scale` to 0 to skip the pauses. */
+const revealPacing = { scale: 1 };
+
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms * revealPacing.scale));
 }
 
 // ── Player response-card stats ─────────────────────────────────────────────────
@@ -243,6 +246,7 @@ async function runEndSequence(game, client, outcome) {
 }
 
 module.exports = {
+  revealPacing,
   recordResult,
   runEndSequence,
   buildRematchComponents,

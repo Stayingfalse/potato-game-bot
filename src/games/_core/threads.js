@@ -56,7 +56,8 @@ function lockAndArchive(thread, { delayMs = 0 } = {}) {
     await thread.setArchived(true).catch(() => {});
   };
   if (delayMs > 0) {
-    setTimeout(run, delayMs);
+    // Don't hold the process open just to archive a thread.
+    setTimeout(run, delayMs).unref();
     return Promise.resolve();
   }
   return run();

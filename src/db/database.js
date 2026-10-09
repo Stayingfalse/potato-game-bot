@@ -4,7 +4,10 @@ const path = require('path');
 const fs   = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '../../data/bot.db');
+// Where the database and one-off import files live. Defaults to the repo's data/
+// folder; the test suite points it at a temporary folder.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
+const DB_PATH = path.join(DATA_DIR, 'bot.db');
 
 // Ensure the data directory exists (needed for local dev without Docker volume).
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -132,7 +135,7 @@ db.exec(`
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 
-const STATS_JSON = path.join(__dirname, '../../data/stats.json');
+const STATS_JSON = path.join(DATA_DIR, 'stats.json');
 const STATS_JSON_MIGRATED = STATS_JSON + '.migrated';
 
 if (fs.existsSync(STATS_JSON) && !fs.existsSync(STATS_JSON_MIGRATED)) {
@@ -201,7 +204,7 @@ if (fs.existsSync(STATS_JSON) && !fs.existsSync(STATS_JSON_MIGRATED)) {
 // Once the migration runs successfully the source file is renamed to
 // yagpdb-birthdays.json.migrated so it is never re-applied.
 
-const YAGPDB_JSON         = path.join(__dirname, '../../data/yagpdb-birthdays.json');
+const YAGPDB_JSON         = path.join(DATA_DIR, 'yagpdb-birthdays.json');
 const YAGPDB_JSON_MIGRATED = YAGPDB_JSON + '.migrated';
 
 if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
