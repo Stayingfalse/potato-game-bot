@@ -36,7 +36,6 @@ const { getGames } = require('../games/_core/registry');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DISCORD_API      = 'https://discord.com/api/v10';
 const SESSION_TTL_MS   = 24 * 60 * 60 * 1000; // 24 hours
 const MANAGE_GUILD_BIT = 0x20n; // BigInt for safe 53-bit overflow handling
 const HTML_DIR         = path.join(__dirname, 'html');

@@ -172,7 +172,6 @@ async function handleVoicePanel(interaction, client, game) {
   const isNo       = customId.startsWith('ww_voice_no_');
   const isMaybe    = customId.startsWith('ww_voice_maybe_');
   const isSoClose  = customId.startsWith('ww_voice_soclose_');
-  const isWayOff   = customId.startsWith('ww_voice_wayoff_');
 
   if (isCorrect) {
     if (game.tokens.correct <= 0) {
