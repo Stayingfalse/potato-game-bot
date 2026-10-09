@@ -47,6 +47,24 @@ A party game of clever clues and spectrum guessing! One player gives a clue to h
 - 🔄 Rematch support to keep the party going
 - 👥 Supports 2-20 players
 
+### No More Jockeys 🎬
+
+A party game of celebrities and ever-growing rules: each turn bans a new category, and naming anyone who breaks an earlier ban gets you knocked out.
+
+**How to Play:**
+- Use `/nmj start` in any channel to open a public game thread, and `/nmj end` inside that thread to end it early
+- Players join, then the host spins the wheel to set the turn order
+- On your turn, name a celebrity and a "No More…" category they fit (e.g. *Tom Cruise — No More people who have won an Oscar*). That category is now banned for everyone
+- The other players accept the move, ask you to **name another** celebrity who fits, or **challenge** it if your celebrity breaks a category that was already banned
+- A challenge goes to a vote: if it succeeds you're knocked out and the challenger gets their token back
+- The last player standing wins
+
+**Features:**
+- 🪙 3 challenge tokens per player
+- 👁️ Spectators and knocked-out players can peek at everything named so far
+- 📊 Stats: wins, knock-outs and challenges
+- 👥 3 or more players
+
 ## 🎉 Additional Features
 
 ### Birthday Announcements 🎂
@@ -101,6 +119,10 @@ npm test
 The suite uses Node's built-in test runner, so there is nothing extra to install. It plays each game through its real command and button handlers with fake Discord objects, and checks crash recovery and database upgrades. It never connects to Discord, and each test file uses its own temporary database, so your `data/` folder is never touched.
 
 GitHub runs the same suite on Node 20 and 22 for every pull request and every push to `main` (see `.github/workflows/test.yml`).
+
+## 🧩 Adding a Game
+
+Each game is a folder under `src/games/`, and the bot picks up new folders automatically. Copy `src/games/_template/` (a small working game) and follow [docs/adding-a-game.md](docs/adding-a-game.md).
 
 ## 🎯 Game Tips
 

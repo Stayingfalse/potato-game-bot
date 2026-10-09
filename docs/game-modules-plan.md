@@ -90,6 +90,8 @@ Use NMJ/WL as the reference and normalise the details:
 
 ## 3. Plug-and-play architecture
 
+> **Built.** This section is the original proposal. The layout and manifest as built are documented in [adding-a-game.md](adding-a-game.md), with a working example in `src/games/_template/`.
+
 ### 3.1 Folder per game
 
 ```
@@ -241,8 +243,10 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Wavelength's stats module and table moved into `games/wavelength/stats.js`. Werewords' table stays in `db/database.js` because the one-off `stats.json` import there writes into it.
 - The dashboard has no scoreboards, so nothing changed there.
 
-**Step 8: Template and docs.**
-- Add `src/games/_template/` and a "Adding a game" README section.
+**Step 8: Template and docs.** ✅ Done.
+- `src/games/_template/` is a complete small game, **High Roll**, showing every convention: manifest, `/highroll start|end`, state with `fromRow`/`toRow`, a repository owning its table, one rendered message, a route table for buttons, a saved deadline re-armed on restore, and stats. The registry skips `_` folders, so it isn't loaded into the bot.
+- `test/template.test.js` plays it through; copying the folder to `src/games/highroll/` with no other change makes it a live game (checked).
+- `docs/adding-a-game.md` is the guide: quick start, what each file does, the conventions, and testing. The README links to it and now has a No More Jockeys section.
 
 ### Decisions needed from you
 
