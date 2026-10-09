@@ -10,17 +10,17 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require('discord.js');
-const { CHALLENGE_TOKENS_PER_PLAYER } = require('../NoMoreJockeysManager');
+const { CHALLENGE_TOKENS_PER_PLAYER } = require('./manager');
 
 // ── Shared content helpers ───────────────────────────────────────────────────
 
 /** Renders the player order list, marking eliminated players and the current turn. */
 function renderPlayerOrder(game) {
-  if (game.players.length === 0) return '*No players yet.*';
-  return game.players
+  if (game.players.size === 0) return '*No players yet.*';
+  return game.turnOrder()
     .map((id, i) => {
       const eliminated = game.eliminatedPlayers.includes(id);
-      const isCurrent = game.status === 'playing' && !eliminated && game.currentPlayerIndex === i;
+      const isCurrent = game.phase === 'playing' && !eliminated && game.currentPlayerIndex === i;
       const marker = eliminated ? '❌' : isCurrent ? '▶️' : '•';
       return `${marker} \`${String(i + 1).padStart(2, '0')}.\` <@${id}>${eliminated ? ' *(eliminated)*' : ''}`;
     })
@@ -54,12 +54,12 @@ function renderSpectatorHistory(game) {
 
 function baseHeader(game) {
   const stageNames = {
-    recruiting: '🧑\u200d🤝\u200d🧑 Recruiting Players',
+    lobby: '🧑\u200d🤝\u200d🧑 Recruiting Players',
     ordering: '🎡 Determining Turn Order',
     playing: '🎬 Game In Progress',
     ended: '🏁 Game Ended',
   };
-  return `## No More Jockeys — ${stageNames[game.status] ?? game.status}`;
+  return `## No More Jockeys — ${stageNames[game.phase] ?? game.phase}`;
 }
 
 // ── Containers ───────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ function fixedContainer(game) {
     `**Turn Order**`,
     renderPlayerOrder(game),
   ];
-  if (game.status === 'playing' || game.status === 'ended') {
+  if (game.phase === 'playing' || game.phase === 'ended') {
     lines.push('', `**Challenge Tokens**`, renderChallengeCounts(game));
   }
   return new ContainerBuilder()
@@ -110,8 +110,8 @@ function buildRecruitingMessage(game) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `Join the game below! A minimum of **3 players** is required.\n\n**Players (${game.players.length})**\n${
-        game.players.length ? game.players.map(id => `<@${id}>`).join('\n') : '*No players yet — be the first to join!*'
+      `Join the game below! A minimum of **3 players** is required.\n\n**Players (${game.players.size})**\n${
+        game.players.size ? game.turnOrder().map(id => `<@${id}>`).join('\n') : '*No players yet — be the first to join!*'
       }`,
     ))
     .addActionRowComponents(
@@ -277,9 +277,9 @@ function buildEndedMessage(game, resultText) {
  * @returns {{ components: any[], flags: number }}
  */
 function renderGameMessage(game, resultText, options = {}) {
-  if (game.status === 'recruiting') return buildRecruitingMessage(game);
-  if (game.status === 'ordering') return buildOrderingMessage(game);
-  if (game.status === 'ended') return buildEndedMessage(game, resultText ?? 'Game has ended.');
+  if (game.phase === 'lobby') return buildRecruitingMessage(game);
+  if (game.phase === 'ordering') return buildOrderingMessage(game);
+  if (game.phase === 'ended') return buildEndedMessage(game, resultText ?? 'Game has ended.');
 
   // status === 'playing'
   if (game.challengeState) return buildChallengeMessage(game);

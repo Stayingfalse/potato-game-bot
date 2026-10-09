@@ -1,6 +1,7 @@
 'use strict';
 
-const NoMoreJockeysRepository = require('../../db/NoMoreJockeysRepository');
+const NoMoreJockeysRepository = require('./repository');
+const NoMoreJockeysGameState = require('./state');
 
 /** Crash recovery: reloads saved No More Jockeys games and re-hooks their timers and buttons. */
 async function restore(client) {
@@ -8,10 +9,9 @@ async function restore(client) {
   if (rows.length === 0) return;
 
   const { updateGameMessage } = require('./handlers');
-  const { NoMoreJockeysGameState } = require('../../game/NoMoreJockeysManager');
 
   for (const row of rows) {
-    if (row.status === 'ended') {
+    if (row.phase === 'ended') {
       NoMoreJockeysRepository.remove(row.thread_id);
       continue;
     }

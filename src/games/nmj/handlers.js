@@ -7,9 +7,9 @@ const {
   ActionRowBuilder,
   MessageFlags,
 } = require('discord.js');
-const { renderGameMessage, renderSpectatorHistory } = require('../../game/nmj/render');
+const { renderGameMessage, renderSpectatorHistory } = require('./render');
 const { findBestCategoryMatch } = require('../../utils/fuzzyMatch');
-const { MIN_PLAYERS } = require('../../game/NoMoreJockeysManager');
+const { MIN_PLAYERS } = require('./manager');
 const { lockAndArchive } = require('../_core/threads');
 const { editOrSend } = require('../_core/messages');
 
@@ -26,7 +26,7 @@ function persistGame(client, game) {
  */
 async function fetchDisplayNames(thread, game) {
   const names = new Map();
-  await Promise.all(game.players.map(async (id) => {
+  await Promise.all(game.turnOrder().map(async (id) => {
     const member = await thread.members.fetch(id).catch(() => null);
     if (member) names.set(id, member.displayName);
   }));
@@ -51,7 +51,7 @@ function formatMentions(userIds) {
 }
 
 function buildActionPrompt(game, displayNames) {
-  if (game.status !== 'playing') return null;
+  if (game.phase !== 'playing') return null;
 
   if (game.challengeState) {
     const pending = game.pendingMove;
@@ -115,11 +115,12 @@ async function purgeThreadMessages(thread, keepMessageId, authorId) {
 }
 
 function nextAliveIndex(game, fromIndex) {
-  const n = game.players.length;
+  const order = game.turnOrder();
+  const n = order.length;
   if (n === 0) return -1;
   for (let step = 1; step <= n; step++) {
     const idx = (fromIndex + step) % n;
-    if (!game.eliminatedPlayers.includes(game.players[idx])) return idx;
+    if (!game.eliminatedPlayers.includes(order[idx])) return idx;
   }
   return -1;
 }
@@ -139,7 +140,7 @@ function advanceTurn(game) {
 
 /** Ends the game: posts final state to the starting channel, locks/archives the thread, cleans up state. */
 async function endGame(game, client, resultText) {
-  game.status = 'ended';
+  game.phase = 'ended';
   persistGame(client, game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -233,7 +234,7 @@ async function handleButton(interaction, client, game) {
 
   // ── Recruiting ───────────────────────────────────────────────────────────
   if (customId === 'nmj_join') {
-    if (game.status !== 'recruiting') {
+    if (game.phase !== 'lobby') {
       return interaction.reply({ content: 'This game is no longer recruiting.', flags: MessageFlags.Ephemeral });
     }
     const added = client.nmjManager.addPlayer(game.threadId, user);
@@ -247,7 +248,7 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_leave') {
-    if (game.status !== 'recruiting') {
+    if (game.phase !== 'lobby') {
       return interaction.reply({ content: 'The game has already started.', flags: MessageFlags.Ephemeral });
     }
     const removed = client.nmjManager.removePlayer(game.threadId, user.id);
@@ -259,16 +260,16 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_start') {
-    if (game.status !== 'recruiting') {
+    if (game.phase !== 'lobby') {
       return interaction.reply({ content: 'This game has already started.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.creatorId) {
+    if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the game creator can start the game.', flags: MessageFlags.Ephemeral });
     }
-    if (game.players.length < MIN_PLAYERS) {
-      return interaction.reply({ content: `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.length}**.`, flags: MessageFlags.Ephemeral });
+    if (game.players.size < MIN_PLAYERS) {
+      return interaction.reply({ content: `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`, flags: MessageFlags.Ephemeral });
     }
-    game.status = 'ordering';
+    game.phase = 'ordering';
     persistGame(client, game);
     const { components, flags } = renderGameMessage(game);
     return interaction.update({ components, flags });
@@ -276,10 +277,10 @@ async function handleButton(interaction, client, game) {
 
   // ── Ordering ─────────────────────────────────────────────────────────────
   if (customId === 'nmj_spin') {
-    if (game.status !== 'ordering') {
+    if (game.phase !== 'ordering') {
       return interaction.reply({ content: 'Turn order has already been set.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.creatorId) {
+    if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the game creator can spin the wheel.', flags: MessageFlags.Ephemeral });
     }
     client.nmjManager.spinWheel(game.threadId);
@@ -288,10 +289,10 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_begin') {
-    if (game.status !== 'ordering') {
+    if (game.phase !== 'ordering') {
       return interaction.reply({ content: 'The game has already begun.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.creatorId) {
+    if (user.id !== game.hostId) {
       return interaction.reply({ content: 'Only the game creator can begin the game.', flags: MessageFlags.Ephemeral });
     }
     client.nmjManager.beginGame(game.threadId);
@@ -316,7 +317,7 @@ async function handleButton(interaction, client, game) {
 
   // ── Turn: declare ────────────────────────────────────────────────────────
   if (customId === 'nmj_take_turn') {
-    if (game.status !== 'playing' || game.pendingMove) {
+    if (game.phase !== 'playing' || game.pendingMove) {
       return interaction.reply({ content: 'It is not time to take a turn right now.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.currentPlayerId()) {
@@ -327,7 +328,7 @@ async function handleButton(interaction, client, game) {
 
   // ── Turn: respond ────────────────────────────────────────────────────────
   if (customId === 'nmj_accept') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to accept right now.', flags: MessageFlags.Ephemeral });
     }
     if (!game.alivePlayers().includes(user.id)) {
@@ -361,7 +362,7 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_challenge') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to challenge right now.', flags: MessageFlags.Ephemeral });
     }
     if (!game.alivePlayers().includes(user.id)) {
@@ -378,7 +379,7 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_name_another') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to respond to right now.', flags: MessageFlags.Ephemeral });
     }
     if (!game.alivePlayers().includes(user.id)) {
@@ -398,7 +399,7 @@ async function handleButton(interaction, client, game) {
 
   // ── Turn: name another ───────────────────────────────────────────────────
   if (customId === 'nmj_na_provide') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'name_another') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'name_another') {
       return interaction.reply({ content: 'This is not currently required.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.pendingMove.playerId) {
@@ -408,7 +409,7 @@ async function handleButton(interaction, client, game) {
   }
 
   if (customId === 'nmj_na_cant') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'name_another') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'name_another') {
       return interaction.reply({ content: 'This is not currently required.', flags: MessageFlags.Ephemeral });
     }
     if (user.id !== game.pendingMove.playerId) {
@@ -419,7 +420,7 @@ async function handleButton(interaction, client, game) {
 
   // ── Challenge vote ───────────────────────────────────────────────────────
   if (customId === 'nmj_vote_success' || customId === 'nmj_vote_fail') {
-    if (game.status !== 'playing' || !game.challengeState) {
+    if (game.phase !== 'playing' || !game.challengeState) {
       return interaction.reply({ content: 'There is no active challenge vote.', flags: MessageFlags.Ephemeral });
     }
     if (!game.alivePlayers().includes(user.id)) {
@@ -460,7 +461,7 @@ async function handleButton(interaction, client, game) {
 
       game.eliminatedPlayers.push(pending.playerId);
       game.challengeCounts.set(ch.challengerId, (game.challengeCounts.get(ch.challengerId) ?? 0) + 1);
-      const eliminatedIdx = game.players.indexOf(pending.playerId);
+      const eliminatedIdx = game.turnOrder().indexOf(pending.playerId);
       clearPendingMove(game);
       persistGame(client, game);
 
@@ -498,7 +499,7 @@ async function handleModal(interaction, client, game) {
   const { customId, user } = interaction;
 
   if (customId === 'nmj_move_modal') {
-    if (game.status !== 'playing' || game.pendingMove || user.id !== game.currentPlayerId()) {
+    if (game.phase !== 'playing' || game.pendingMove || user.id !== game.currentPlayerId()) {
       return interaction.reply({ content: 'It is no longer your turn to declare a move.', flags: MessageFlags.Ephemeral });
     }
     const celeb = interaction.fields.getTextInputValue('nmj_celeb').trim();
@@ -516,7 +517,7 @@ async function handleModal(interaction, client, game) {
   }
 
   if (customId === 'nmj_challenge_modal') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'respond') {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'respond') {
       return interaction.reply({ content: 'There is nothing to challenge right now.', flags: MessageFlags.Ephemeral });
     }
     if (!game.alivePlayers().includes(user.id)) {
@@ -548,7 +549,7 @@ async function handleModal(interaction, client, game) {
   }
 
   if (customId === 'nmj_na_provide_modal') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'name_another' || user.id !== game.pendingMove.playerId) {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'name_another' || user.id !== game.pendingMove.playerId) {
       return interaction.reply({ content: 'This is not currently required.', flags: MessageFlags.Ephemeral });
     }
     const celeb = interaction.fields.getTextInputValue('nmj_na_celeb').trim();
@@ -565,7 +566,7 @@ async function handleModal(interaction, client, game) {
   }
 
   if (customId === 'nmj_na_cant_modal') {
-    if (game.status !== 'playing' || game.pendingMove?.stage !== 'name_another' || user.id !== game.pendingMove.playerId) {
+    if (game.phase !== 'playing' || game.pendingMove?.stage !== 'name_another' || user.id !== game.pendingMove.playerId) {
       return interaction.reply({ content: 'This is not currently required.', flags: MessageFlags.Ephemeral });
     }
     const newCategory = interaction.fields.getTextInputValue('nmj_na_new_category').trim();

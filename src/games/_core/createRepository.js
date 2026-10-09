@@ -8,12 +8,22 @@ const db = require('../../db/database');
  * `toRow(game)` maps a game state to the table's columns; its keys are the
  * columns written on every save. `created_at` is only written on insert.
  *
+ * A game that owns its table passes `schema` (a CREATE TABLE IF NOT EXISTS
+ * statement) and optionally `migrate(db)`, which upgrades tables created by
+ * older versions. Both run once, before any statement is prepared; `migrate`
+ * runs inside a transaction.
+ *
  * @param {object} options
  * @param {string} options.table
  * @param {(game: object) => Record<string, unknown>} options.toRow
+ * @param {string} [options.schema]
+ * @param {(db: import('better-sqlite3').Database) => void} [options.migrate]
  * @returns {{upsert: (game: object) => void, getAll: () => object[], remove: (threadId: string) => void}}
  */
-function createRepository({ table, toRow }) {
+function createRepository({ table, toRow, schema, migrate }) {
+  if (schema) db.exec(schema);
+  if (migrate) db.transaction(() => migrate(db))();
+
   const stmtGetAll = db.prepare(`SELECT * FROM ${table}`);
   const stmtDelete = db.prepare(`DELETE FROM ${table} WHERE thread_id = ?`);
 

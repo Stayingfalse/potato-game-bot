@@ -1,6 +1,6 @@
 'use strict';
 
-const { NoMoreJockeysManager } = require('../../game/NoMoreJockeysManager');
+const { NoMoreJockeysManager } = require('./manager');
 const { handleInteraction } = require('./handlers');
 
 /** No More Jockeys game manifest — see src/games/_core/registry.js for the fields. */

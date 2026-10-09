@@ -195,11 +195,11 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - The `client.xManager` aliases are kept; managers are also at `client.games.get(id).manager`.
 - The 4 `interactionCreate` listeners are now one listener plus the router.
 
-**Step 3: NMJ to the reference shape.** It's already closest.
-- Rename `creatorId/status/players[]` → `hostId/phase/Map` with a DB migration.
-- Make its state extend `BaseGameState` with `fromRow`/`toRow`.
-- Move `game/nmj/render.js` and the manager into `games/nmj/`.
-- This proves the template.
+**Step 3: NMJ to the reference shape.** ✅ Done.
+- Renamed `creatorId/status` → `hostId/phase` and added `hostUsername`. The lobby phase is now `'lobby'` (was `'recruiting'`), matching the other games.
+- `players` is a `Map` like the other games. Its order is the turn order (`game.turnOrder()`), so no separate list is needed.
+- State (`state.js`, with `fromRow`/`toRow`), manager, repository and render now all live in `games/nmj/`.
+- NMJ owns its table: `games/nmj/repository.js` holds the schema and a one-time upgrade. On startup it converts saved games from the old layout inside a transaction, so games in progress carry on.
 
 **Step 4: WL.**
 - Move to `games/wavelength/`.
@@ -235,7 +235,7 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 
 1. **Private vs public threads.** Should CT and WW (hidden roles) move to public threads like NMJ/WL, or stay private? Recommendation: make it a manifest option and default to public. Keep CT and WW private unless you prefer otherwise.
 2. **Command shape.** Should `/werewords` become `/werewords start`? The change affects users' muscle memory. Recommendation: yes, for consistency, and deploy both shapes for one release.
-3. **Breaking in-flight games.** The NMJ field renames and the lobby moving into the thread will break games that are live at deploy time. Choose between a DB migration that rewrites rows, or simply clearing `*_games` tables on that deploy.
+3. **Breaking in-flight games.** ✅ Decided: migrate saved games rather than clearing them. Each game that changes its saved layout ships a one-time upgrade with its repository, as NMJ does in Step 3.
 
 ### Testing
 

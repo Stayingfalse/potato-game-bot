@@ -1,8 +1,7 @@
 'use strict';
 
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { renderGameMessage } = require('../../game/nmj/render');
-const { MIN_PLAYERS } = require('../../game/NoMoreJockeysManager');
+const { renderGameMessage } = require('./render');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
@@ -25,7 +24,7 @@ module.exports = {
 
       // Fast path: if this user already has an active game (e.g. the interaction was
       // delivered twice), point them at it instead of creating another thread.
-      const alreadyActive = nmjManager.getGameByCreator(guildId, user.id);
+      const alreadyActive = nmjManager.getGameByHost(guildId, user.id);
       if (alreadyActive) {
         return interaction.reply({
           content: `You already have an active **No More Jockeys** game — join it in <#${alreadyActive.threadId}>.`,
@@ -50,7 +49,7 @@ module.exports = {
       // The thread create above awaited a network round-trip, during which a duplicate
       // interaction may have registered a game already. If so, delete the extra thread
       // we just created and point the user at the original game.
-      const raceWinner = nmjManager.getGameByCreator(guildId, user.id);
+      const raceWinner = nmjManager.getGameByHost(guildId, user.id);
       if (raceWinner) {
         await deleteThread(thread, 'Duplicate No More Jockeys game thread');
         return interaction.reply({
@@ -59,7 +58,7 @@ module.exports = {
         });
       }
 
-      const game = nmjManager.createGame(guildId, channel.id, thread.id, user.id);
+      const game = nmjManager.createGame(guildId, channel.id, thread.id, user.id, user.username);
       nmjManager.addPlayer(thread.id, user);
 
       const { components, flags } = renderGameMessage(game);
@@ -83,7 +82,7 @@ module.exports = {
         });
       }
 
-      const canEnd = interaction.user.id === game.creatorId
+      const canEnd = interaction.user.id === game.hostId
         || interaction.memberPermissions?.has(PermissionFlagsBits.ManageThreads);
       if (!canEnd) {
         return interaction.reply({
