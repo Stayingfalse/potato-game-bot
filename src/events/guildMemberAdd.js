@@ -5,9 +5,9 @@ const { handleWelcomeAutomationMemberJoin } = require('../features/welcomeAutoma
 module.exports = {
   name: 'guildMemberAdd',
 
-  async execute(member, client) {
+  async execute(member) {
     try {
-      await handleWelcomeAutomationMemberJoin(member, client);
+      await handleWelcomeAutomationMemberJoin(member);
     } catch (err) {
       console.error('[guildMemberAdd error]', err);
     }

@@ -1,6 +1,8 @@
 # Potato Game Bot 🎮
 
-A Discord bot that brings party games and social deduction fun to your server! Host game nights with friends using interactive Discord threads and enjoy AI-powered entertainment.
+[![Tests](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml/badge.svg)](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml)
+
+A Discord bot that brings party games and social deduction fun to your server! Host game nights with friends using interactive Discord threads.
 
 ## 🎲 Games
 
@@ -9,7 +11,7 @@ A Discord bot that brings party games and social deduction fun to your server! H
 A social deduction word-guessing game where players work together to guess a secret word... but some players are secretly working against the team!
 
 **How to Play:**
-- Use `/werewords` to start a game
+- Use `/werewords start` in any channel to open a public game thread, and `/werewords end` inside that thread to end the session early
 - The **Mayor** chooses a secret word from three options
 - Players ask yes/no questions to guess the word
 - **Townsfolk** try to help the team succeed
@@ -24,26 +26,6 @@ A social deduction word-guessing game where players work together to guess a sec
 - 📊 Response statistics tracking
 - 🔄 Session support - play multiple rounds with the same group
 - 🎯 Text or voice mode options
-- 👥 Supports 3-10 players
-
-### Cheese Thief 🧀
-
-A hidden-role bluffing game built around wake phases, private information, and one final accusation.
-
-**How to Play:**
-- Use `/cheesethief` to start a game
-- One player is the **Cheese Thief**, one is the **Fall Mouse**, and everyone else is **Sleepy Mice**
-- Each player gets a secret die value that determines when they wake up
-- Awake players may inspect others, and the Cheese Thief can steal the cheese during their wake
-- After all wake phases, the group gets time to discuss what happened
-- Everyone makes a final accusation to catch the Cheese Thief
-
-**Features:**
-- 🌙 Automated wake phases based on secret die numbers
-- 🔍 Private role and inspection information
-- 🤝 Accomplice mechanic when the Cheese Thief steals the cheese
-- 🗣️ Timed discussion phase before the final accusation
-- 🗳️ Fast final voting round
 - 👥 Supports 3-10 players
 
 ### Wavelength 〰️
@@ -65,11 +47,29 @@ A party game of clever clues and spectrum guessing! One player gives a clue to h
 - 🔄 Rematch support to keep the party going
 - 👥 Supports 2-20 players
 
+### No More Jockeys 🎬
+
+A party game of celebrities and ever-growing rules: each turn bans a new category, and naming anyone who breaks an earlier ban gets you knocked out.
+
+**How to Play:**
+- Use `/nmj start` in any channel to open a public game thread, and `/nmj end` inside that thread to end it early
+- Players join, then the host spins the wheel to set the turn order
+- On your turn, name a celebrity and a "No More…" category they fit (e.g. *Tom Cruise — No More people who have won an Oscar*). That category is now banned for everyone
+- The other players accept the move, ask you to **name another** celebrity who fits, or **challenge** it if your celebrity breaks a category that was already banned
+- A challenge goes to a vote: if it succeeds you're knocked out and the challenger gets their token back
+- The last player standing wins
+
+**Features:**
+- 🪙 3 challenge tokens per player
+- 👁️ Spectators and knocked-out players can peek at everything named so far
+- 📊 Stats: wins, knock-outs and challenges
+- 👥 3 or more players
+
 ## 🎉 Additional Features
 
 ### Birthday Announcements 🎂
 
-Never forget a friend's birthday again! The bot can automatically announce birthdays in your server with fun, sassy messages.
+Never forget a friend's birthday again! The bot can automatically announce birthdays in your server with fun messages.
 
 **Commands:**
 - `/birthday set <date>` - Set your birthday (format: dd/mm or dd/mm/yyyy)
@@ -83,32 +83,28 @@ Never forget a friend's birthday again! The bot can automatically announce birth
 - `/birthday setchannel <channel>` - Choose where announcements appear
 - `/birthday resend` - Re-send today's birthday messages
 
-### SassyBot AI 🤖
-
-An AI companion powered by Google Gemini that adds personality to your server conversations!
-
-**What it does:**
-- Responds when mentioned with witty, sassy replies
-- Occasionally interjects in conversations with clever commentary
-- Understands channel context (board games, social deduction games, etc.)
-- Adjusts response frequency based on channel activity
-- Keeps conversation history for natural, contextual responses
-
-**Features:**
-- 💬 Direct replies when mentioned
-- 🎭 Spontaneous interjections during lively conversations
-- 🧠 Context-aware responses based on your channel's focus
-- 😎 Passive-aggressive personality (helpful but with flair!)
-- ⏱️ Smart cooldowns to avoid spam
-
 ## 🎮 Getting Started
 
-1. **Invite the bot** to your Discord server (requires Community server or Boost Level 1+ for private threads)
+1. **Invite the bot** to your Discord server
 2. **Grant permissions:**
-   - Create Private Threads
+   - Create Public Threads
    - Send Messages in Threads
    - Manage Threads
-3. **Start playing!** Use `/werewords`, `/cheesethief`, or `/wavelength` in any channel to begin
+3. **Start playing!** Use `/werewords start`, `/wavelength start` or `/nmj start` in any channel to begin
+
+## 🧪 Running the Tests
+
+```bash
+npm test
+```
+
+The suite uses Node's built-in test runner, so there is nothing extra to install. It plays each game through its real command and button handlers with fake Discord objects, and checks crash recovery and database upgrades. It never connects to Discord, and each test file uses its own temporary database, so your `data/` folder is never touched.
+
+GitHub runs the same suite on Node 20 and 22 for every pull request and every push to `main` (see `.github/workflows/test.yml`).
+
+## 🧩 Adding a Game
+
+Each game is a folder under `src/games/`, and the bot picks up new folders automatically. Copy `src/games/_template/` (a small working game) and follow [docs/adding-a-game.md](docs/adding-a-game.md).
 
 ## 🎯 Game Tips
 
@@ -117,12 +113,6 @@ An AI companion powered by Google Gemini that adds personality to your server co
 - The Seer should be subtle - revealing yourself too early might help the Werewolves!
 - Werewolves should participate naturally to avoid suspicion
 - Use "So Close" and "Way Off" tokens wisely - they're limited!
-
-**For Cheese Thief:**
-- Pay attention to who is awake during each die roll
-- The Cheese Thief should avoid obvious steals unless the timing helps sell the bluff
-- Sleepy Mice should compare inspection info carefully before accusing
-- Watch out for the Fall Mouse - voting for them can hand them the solo win
 
 **For Wavelength:**
 - Clue Givers: Be creative but not too obscure!
@@ -137,18 +127,17 @@ An AI companion powered by Google Gemini that adds personality to your server co
 
 ## 🛠️ Features Overview
 
-- ✨ Private thread-based games for organized play
+- ✨ Thread-based games for organized play
 - 💾 Persistent game state (survives bot restarts)
 - 🔄 Session support for marathon game nights
 - 📊 Statistics tracking and game history
 - 🎨 Rich embeds and interactive buttons
-- 🤖 Optional AI-powered entertainment
 - 🎂 Automated birthday celebration system
 
 ## 📝 Note
 
-All games run in private threads to keep your channels clean and conversations organized. Players are automatically added to the thread when they join a game!
+Each game runs in its own thread to keep your channels clean and conversations organized. Players are automatically added to the thread when they join a game!
 
 ---
 
-Ready to play? Start with `/werewords`, `/cheesethief`, or `/wavelength` and let the games begin! 🎉
+Ready to play? Start with `/werewords start`, `/wavelength start` or `/nmj start` and let the games begin! 🎉

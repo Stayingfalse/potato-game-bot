@@ -1,14 +1,14 @@
 {
   "name": "werewords-bot",
   "version": "1.0.0",
-  "description": "Discord bot for party games including Werewords, Wavelength, and Cheese Thief",
+  "description": "Discord bot for party games including Werewords, Wavelength, and No More Jockeys",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "deploy": "node src/deploy-commands.js"
+    "deploy": "node src/deploy-commands.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@google/genai": "^1.51.0",
     "@napi-rs/canvas": "^0.1.68",
     "better-sqlite3": "^9.6.0",
     "discord.js": "^14.15.3",

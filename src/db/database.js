@@ -4,7 +4,10 @@ const path = require('path');
 const fs   = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '../../data/bot.db');
+// Where the database and one-off import files live. Defaults to the repo's data/
+// folder; the test suite points it at a temporary folder.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
+const DB_PATH = path.join(DATA_DIR, 'bot.db');
 
 // Ensure the data directory exists (needed for local dev without Docker volume).
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -17,113 +20,12 @@ db.pragma('journal_mode = WAL');
 // ── Schema ─────────────────────────────────────────────────────────────────────
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS werewords_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    board_message_id     TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    word                 TEXT,
-    word_options         TEXT NOT NULL DEFAULT '[]',
-    tokens               TEXT NOT NULL DEFAULT '{"yes":14,"no":5,"maybe":1}',
-    time_left            INTEGER NOT NULL DEFAULT 240,
-    votes                TEXT NOT NULL DEFAULT '{}',
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    winner_guesser_user_id TEXT,
-    created_at           INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS wavelength_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    round_message_id     TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    clue_giver_id        TEXT,
-    spectrum_options     TEXT NOT NULL DEFAULT '[]',
-    chosen_spectrum      TEXT,
-    target_position      INTEGER,
-    clue                 TEXT,
-    guesses              TEXT NOT NULL DEFAULT '{}',
-    session_mode         TEXT,
-    clue_order_state     TEXT,
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    game_pace            TEXT NOT NULL DEFAULT 'realtime',
-    auto_advance_rounds  INTEGER NOT NULL DEFAULT 0,
-    session_history      TEXT NOT NULL DEFAULT '[]',
-    created_at           INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS cheese_thief_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    ready_message_id     TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    ready_players        TEXT NOT NULL DEFAULT '[]',
-    votes                TEXT NOT NULL DEFAULT '{}',
-    current_wake_number  INTEGER NOT NULL DEFAULT 0,
-    phase_ends_at        INTEGER,
-    cheese_stolen        INTEGER NOT NULL DEFAULT 0,
-    thief_id             TEXT,
-    accomplice_id        TEXT,
-    stolen_at_wake       INTEGER,
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    created_at           INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS nmj_games (
-    thread_id             TEXT PRIMARY KEY,
-    guild_id              TEXT NOT NULL,
-    channel_id            TEXT NOT NULL,
-    creator_id            TEXT NOT NULL,
-    message_id            TEXT,
-    status                TEXT NOT NULL DEFAULT 'recruiting',
-    players               TEXT NOT NULL DEFAULT '[]',
-    eliminated_players    TEXT NOT NULL DEFAULT '[]',
-    current_player_index  INTEGER NOT NULL DEFAULT 0,
-    banned_categories     TEXT NOT NULL DEFAULT '[]',
-    moves                 TEXT NOT NULL DEFAULT '[]',
-    pending_move          TEXT,
-    name_another_required INTEGER NOT NULL DEFAULT 0,
-    challenge_state       TEXT,
-    challenge_counts      TEXT NOT NULL DEFAULT '{}',
-    accepted_players      TEXT NOT NULL DEFAULT '[]',
-    created_at            INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS herd_mentality_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    question_message_id  TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    answers              TEXT NOT NULL DEFAULT '{}',
-    current_question     TEXT,
-    round_number         INTEGER NOT NULL DEFAULT 0,
-    pink_cow_holder_id   TEXT,
-    target_score         INTEGER NOT NULL DEFAULT 8,
-    used_questions       TEXT NOT NULL DEFAULT '[]',
-    phase_ends_at        INTEGER,
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    created_at           INTEGER NOT NULL
-  );
+  -- werewords_games is created by src/games/werewords/repository.js.
+  -- wavelength_games is created by src/games/wavelength/repository.js.
+  -- nmj_games is created by src/games/nmj/repository.js.
+  -- wavelength_player_stats and nmj_player_stats are created by each game's stats.js.
+  -- cheese_thief_games and herd_mentality_games may still exist in older databases;
+  -- those games were removed and nothing reads the tables any more.
 
   CREATE TABLE IF NOT EXISTS werewords_player_stats (
     guild_id                  TEXT NOT NULL,
@@ -141,17 +43,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
-  CREATE TABLE IF NOT EXISTS wavelength_player_stats (
-    guild_id           TEXT NOT NULL,
-    user_id            TEXT NOT NULL,
-    username           TEXT NOT NULL,
-    rounds_played      INTEGER NOT NULL DEFAULT 0,
-    rounds_as_clue_giver INTEGER NOT NULL DEFAULT 0,
-    total_score        INTEGER NOT NULL DEFAULT 0,
-    bullseyes          INTEGER NOT NULL DEFAULT 0,
-    synergy_bonuses    INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (guild_id, user_id)
-  );
 
   CREATE TABLE IF NOT EXISTS birthdays (
     guild_id     TEXT NOT NULL,
@@ -175,47 +66,6 @@ db.exec(`
     enabled     INTEGER NOT NULL DEFAULT 0
   );
 
-  -- ── SassyBot / MCP context tables ───────────────────────────────────────────
-
-  -- Per-user profile: message count, last seen, AI-generated topic notes.
-  CREATE TABLE IF NOT EXISTS sassy_user_profiles (
-    guild_id       TEXT NOT NULL,
-    user_id        TEXT NOT NULL,
-    username       TEXT NOT NULL,
-    last_seen      INTEGER NOT NULL DEFAULT 0,
-    message_count  INTEGER NOT NULL DEFAULT 0,
-    topic_notes    TEXT,
-    PRIMARY KEY (guild_id, user_id)
-  );
-
-  -- Rolling conversation log per channel (pruned periodically).
-  CREATE TABLE IF NOT EXISTS sassy_conversation_log (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel_id   TEXT NOT NULL,
-    guild_id     TEXT,
-    user_id      TEXT NOT NULL,
-    username     TEXT NOT NULL,
-    content      TEXT NOT NULL,
-    timestamp    INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_sassy_conv_ch_ts
-    ON sassy_conversation_log(channel_id, timestamp DESC);
-
-  -- Persisted Gemini/OpenAI chat history per channel so context survives restarts.
-  CREATE TABLE IF NOT EXISTS sassy_chat_history (
-    channel_id  TEXT PRIMARY KEY,
-    history     TEXT NOT NULL DEFAULT '[]',
-    updated_at  INTEGER NOT NULL DEFAULT 0
-  );
-
-  -- Per-channel profile: AI-generated topic notes summarising what the channel discusses.
-  CREATE TABLE IF NOT EXISTS sassy_channel_profiles (
-    channel_id   TEXT PRIMARY KEY,
-    guild_id     TEXT,
-    topic_notes  TEXT,
-    updated_at   INTEGER NOT NULL DEFAULT 0
-  );
-
   -- ── Admin dashboard: per-guild feature settings ──────────────────────────────
 
   -- One row per guild+feature combination.  channel_ids is a JSON array of
@@ -232,43 +82,36 @@ db.exec(`
   );
 `);
 
-// ── Lightweight column migrations for existing installs ───────────────────────
-const wlColumns = new Set(db.prepare('PRAGMA table_info(wavelength_games)').all().map(col => col.name));
-if (!wlColumns.has('session_mode')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT');
-}
-if (!wlColumns.has('clue_order_state')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
-}
-if (!wlColumns.has('game_pace')) {
-  db.exec("ALTER TABLE wavelength_games ADD COLUMN game_pace TEXT NOT NULL DEFAULT 'realtime'");
-}
-if (!wlColumns.has('auto_advance_rounds')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN auto_advance_rounds INTEGER NOT NULL DEFAULT 0');
-}
-if (!wlColumns.has('session_history')) {
-  db.exec("ALTER TABLE wavelength_games ADD COLUMN session_history TEXT NOT NULL DEFAULT '[]'");
-}
-if (!wlColumns.has('round_message_id')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN round_message_id TEXT');
-}
+// ── One-time cleanup: remove SassyBot AI data ─────────────────────────────────
+//
+// The SassyBot AI features (and the MCP server that exposed their data) were
+// removed. Delete everything they stored: chat logs, chat history, user and
+// channel profiles, and the per-guild SassyBot settings. Runs on every start
+// but only does work (and compacts the file) the first time.
 
-const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
-if (!wwColumns.has('session_mode')) {
-  db.exec('ALTER TABLE werewords_games ADD COLUMN session_mode TEXT');
-}
-if (!wwColumns.has('voice_player_message_ids')) {
-  db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
-}
+const SASSY_TABLES = [
+  'sassy_user_profiles',
+  'sassy_conversation_log',
+  'sassy_chat_history',
+  'sassy_channel_profiles',
+];
 
-const hmColumns = new Set(db.prepare('PRAGMA table_info(herd_mentality_games)').all().map(col => col.name));
-if (!hmColumns.has('review_groups')) {
-  db.exec('ALTER TABLE herd_mentality_games ADD COLUMN review_groups TEXT');
+const removeSassyData = db.transaction(() => {
+  const existing = SASSY_TABLES.filter(table =>
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+  for (const table of existing) db.exec(`DROP TABLE ${table}`);
+  const settings = db.prepare("DELETE FROM guild_settings WHERE feature = 'sassy'").run().changes;
+  return existing.length + settings;
+});
+
+if (removeSassyData() > 0) {
+  db.exec('VACUUM');
+  console.log('[DB] Removed SassyBot AI data');
 }
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 
-const STATS_JSON = path.join(__dirname, '../../data/stats.json');
+const STATS_JSON = path.join(DATA_DIR, 'stats.json');
 const STATS_JSON_MIGRATED = STATS_JSON + '.migrated';
 
 if (fs.existsSync(STATS_JSON) && !fs.existsSync(STATS_JSON_MIGRATED)) {
@@ -337,7 +180,7 @@ if (fs.existsSync(STATS_JSON) && !fs.existsSync(STATS_JSON_MIGRATED)) {
 // Once the migration runs successfully the source file is renamed to
 // yagpdb-birthdays.json.migrated so it is never re-applied.
 
-const YAGPDB_JSON         = path.join(__dirname, '../../data/yagpdb-birthdays.json');
+const YAGPDB_JSON         = path.join(DATA_DIR, 'yagpdb-birthdays.json');
 const YAGPDB_JSON_MIGRATED = YAGPDB_JSON + '.migrated';
 
 if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
@@ -369,7 +212,7 @@ if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
             console.warn(`[DB] YAGPDB migration: skipping user ${userId} — invalid date "${isoDate}"`);
             continue;
           }
-          const [_fullMatch, yearStr, monthStr, dayStr] = match;
+          const [, yearStr, monthStr, dayStr] = match;
           upsertBirthday.run({
             guild_id:    guildId,
             user_id:     userId,

@@ -1,0 +1,100 @@
+'use strict';
+
+const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { renderGameMessage } = require('./render');
+const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('nmj')
+    .setDescription('No More Jockeys — celebrity elimination party game')
+    .addSubcommand(sub =>
+      sub.setName('start').setDescription('Start a new No More Jockeys game (creates a game thread)'),
+    )
+    .addSubcommand(sub =>
+      sub.setName('end').setDescription('End the No More Jockeys game running in this thread (must be used inside the game thread)'),
+    ),
+
+  async execute(interaction, client) {
+    const sub = interaction.options.getSubcommand();
+    const { nmjManager } = client;
+
+    if (sub === 'start') {
+      const { guildId, user, channel } = interaction;
+
+      // Fast path: if this user already has an active game (e.g. the interaction was
+      // delivered twice), point them at it instead of creating another thread.
+      const alreadyActive = nmjManager.getGameByHost(guildId, user.id);
+      if (alreadyActive) {
+        return interaction.reply({
+          content: `You already have an active **No More Jockeys** game — join it in <#${alreadyActive.threadId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const thread = await createGameThread(channel, {
+        name: `No More Jockeys — ${user.username}`,
+        isPrivate: false,
+        autoArchiveDuration: 1440,
+        reason: `No More Jockeys game started by ${user.username}`,
+        hostId: user.id,
+      });
+      if (!thread) {
+        return interaction.reply({
+          content: missingThreadPermissionsMessage({ isPrivate: false }),
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // The thread create above awaited a network round-trip, during which a duplicate
+      // interaction may have registered a game already. If so, delete the extra thread
+      // we just created and point the user at the original game.
+      const raceWinner = nmjManager.getGameByHost(guildId, user.id);
+      if (raceWinner) {
+        await deleteThread(thread, 'Duplicate No More Jockeys game thread');
+        return interaction.reply({
+          content: `You already have an active **No More Jockeys** game — join it in <#${raceWinner.threadId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const game = nmjManager.createGame(guildId, channel.id, thread.id, user.id, user.username);
+      nmjManager.addPlayer(thread.id, user);
+
+      const { components, flags } = renderGameMessage(game);
+      const msg = await thread.send({ components, flags }).catch(() => null);
+      if (msg) {
+        game.messageId = msg.id;
+        nmjManager.saveGame(thread.id);
+      }
+
+      return interaction.reply({
+        content: `🎬 **No More Jockeys** game created by <@${user.id}>! Join in <#${thread.id}>.`,
+      });
+    }
+
+    if (sub === 'end') {
+      const game = nmjManager.getGame(interaction.channelId);
+      if (!game) {
+        return interaction.reply({
+          content: 'This command must be used inside an active No More Jockeys game thread.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const canEnd = interaction.user.id === game.hostId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.ManageThreads);
+      if (!canEnd) {
+        return interaction.reply({
+          content: 'Only the game creator or a moderator with **Manage Threads** can end this game.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      await interaction.reply({ content: '🛑 Ending the game…', flags: MessageFlags.Ephemeral });
+      const { endGame } = require('./handlers');
+      await endGame(game, client, `🛑 Game ended by <@${interaction.user.id}>.`);
+      return;
+    }
+  },
+};
