@@ -19,6 +19,8 @@ const GAMES_DIR = path.join(__dirname, '..');
  *   handleInteraction(interaction, client),  // buttons/modals whose customId has `prefix`
  *   handleMessage(message, client),          // optional; called for every guild message
  *   restore(client),    // optional; reloads the game's saved games on startup
+ *   stats,              // optional; { getPlayer(guildId, userId), scoreboard(guildId), describe(row) }
+ *                       //   powers the MCP scoreboards and the AI's user context
  * }
  *
  * Folders starting with "_" (such as _core) are not games.

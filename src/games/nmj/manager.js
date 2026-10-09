@@ -54,6 +54,7 @@ class NoMoreJockeysManager extends BaseGameManager {
     game.challengeCounts = new Map(game.turnOrder().map(id => [id, CHALLENGE_TOKENS_PER_PLAYER]));
     game.pendingMove = null;
     game.acceptedPlayers = new Set();
+    game.challengeResults = [];
     NoMoreJockeysRepository.upsert(game);
     return game;
   }

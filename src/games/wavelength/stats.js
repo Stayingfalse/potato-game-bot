@@ -1,6 +1,22 @@
 'use strict';
 
-const db = require('./database');
+/** Wavelength player stats, per guild, recorded after every round. */
+
+const db = require('../../db/database');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wavelength_player_stats (
+    guild_id           TEXT NOT NULL,
+    user_id            TEXT NOT NULL,
+    username           TEXT NOT NULL,
+    rounds_played      INTEGER NOT NULL DEFAULT 0,
+    rounds_as_clue_giver INTEGER NOT NULL DEFAULT 0,
+    total_score        INTEGER NOT NULL DEFAULT 0,
+    bullseyes          INTEGER NOT NULL DEFAULT 0,
+    synergy_bonuses    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  );
+`);
 
 // ── Prepared statements ────────────────────────────────────────────────────────
 
@@ -35,13 +51,24 @@ const stmtGetGuild = db.prepare(`
   SELECT * FROM wavelength_player_stats WHERE guild_id = ?
 `);
 
+const stmtGetPlayer = db.prepare('SELECT * FROM wavelength_player_stats WHERE guild_id = ? AND user_id = ?');
+
+const stmtScoreboard = db.prepare(`
+  SELECT user_id, username, rounds_played, total_score, bullseyes,
+         CASE WHEN rounds_played > 0 THEN ROUND(1.0 * total_score / rounds_played, 1) ELSE 0 END AS avg_score
+  FROM wavelength_player_stats
+  WHERE guild_id = ? AND rounds_played > 0
+  ORDER BY total_score DESC, avg_score DESC
+  LIMIT 10
+`);
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
  * Records per-player stats for a completed Wavelength round.
  *
  * @param {string} guildId
- * @param {import('../games/wavelength/state')} game
+ * @param {import('./state')} game
  * @param {object} scores  Output of computeScores() from reveal.js
  */
 const recordRound = db.transaction((guildId, game, scores) => {
@@ -95,4 +122,21 @@ function getGuildStats(guildId) {
   return result;
 }
 
-module.exports = { recordRound, getGuildStats };
+/** A player's stats row, or null. */
+function getPlayer(guildId, userId) {
+  return stmtGetPlayer.get(guildId, userId) ?? null;
+}
+
+/** Top 10 players in a guild by total score. */
+function scoreboard(guildId) {
+  return stmtScoreboard.all(guildId);
+}
+
+/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
+function describe(row) {
+  if (!row?.rounds_played) return null;
+  const avg = (row.total_score / row.rounds_played).toFixed(1);
+  return `Wavelength: ${row.rounds_played} rounds, avg score ${avg}, ${row.bullseyes} bullseyes.`;
+}
+
+module.exports = { recordRound, getGuildStats, getPlayer, scoreboard, describe };

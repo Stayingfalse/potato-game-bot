@@ -22,19 +22,31 @@ const SCHEMA = `
     challenge_state       TEXT,
     challenge_counts      TEXT NOT NULL DEFAULT '{}',
     accepted_players      TEXT NOT NULL DEFAULT '[]',
+    challenge_results     TEXT NOT NULL DEFAULT '[]',
     created_at            INTEGER NOT NULL
   );
 `;
 
+/** Columns added after the host_id/phase layout, with the definition each is added with. */
+const ADDED_COLUMNS = {
+  challenge_results: "challenge_results TEXT NOT NULL DEFAULT '[]'",
+};
+
 /**
- * Upgrades an nmj_games table from the original layout, which stored the host as
+ * Upgrades older nmj_games tables. Tables from after the host_id/phase change
+ * only need any later columns added. The original layout stored the host as
  * `creator_id`, the phase as `status` (with 'recruiting' for the lobby) and
  * `players` as an array of user IDs. Saved games are converted in place so games
  * in progress carry on after the upgrade.
  */
 function migrate(db) {
   const columns = db.prepare('PRAGMA table_info(nmj_games)').all().map(c => c.name);
-  if (!columns.includes('creator_id')) return;
+  if (!columns.includes('creator_id')) {
+    for (const [column, definition] of Object.entries(ADDED_COLUMNS)) {
+      if (!columns.includes(column)) db.exec(`ALTER TABLE nmj_games ADD COLUMN ${definition}`);
+    }
+    return;
+  }
 
   const rows = db.prepare('SELECT * FROM nmj_games').all();
   db.exec('ALTER TABLE nmj_games RENAME TO nmj_games_pre_host_id');

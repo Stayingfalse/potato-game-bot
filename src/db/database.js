@@ -23,6 +23,7 @@ db.exec(`
   -- werewords_games is created by src/games/werewords/repository.js.
   -- wavelength_games is created by src/games/wavelength/repository.js.
   -- nmj_games is created by src/games/nmj/repository.js.
+  -- wavelength_player_stats and nmj_player_stats are created by each game's stats.js.
   -- cheese_thief_games and herd_mentality_games may still exist in older databases;
   -- those games were removed and nothing reads the tables any more.
 
@@ -42,17 +43,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
-  CREATE TABLE IF NOT EXISTS wavelength_player_stats (
-    guild_id           TEXT NOT NULL,
-    user_id            TEXT NOT NULL,
-    username           TEXT NOT NULL,
-    rounds_played      INTEGER NOT NULL DEFAULT 0,
-    rounds_as_clue_giver INTEGER NOT NULL DEFAULT 0,
-    total_score        INTEGER NOT NULL DEFAULT 0,
-    bullseyes          INTEGER NOT NULL DEFAULT 0,
-    synergy_bonuses    INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (guild_id, user_id)
-  );
 
   CREATE TABLE IF NOT EXISTS birthdays (
     guild_id     TEXT NOT NULL,

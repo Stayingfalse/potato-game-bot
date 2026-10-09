@@ -188,6 +188,17 @@ describe('a full game through the real handlers', () => {
     assert.ok(JSON.stringify(origin.sent[0].components).includes('wins No More Jockeys'));
     assert.deepEqual(repository.getAll(), []);
   });
+
+  it('records the finished game in each player\'s stats', () => {
+    const rows = db.prepare('SELECT * FROM nmj_player_stats ORDER BY user_id').all();
+    const byId = Object.fromEntries(rows.map(r => [r.user_id, r]));
+    assert.deepEqual(Object.keys(byId), ['a', 'b', 'h']);
+    for (const row of rows) assert.equal(row.games_played, 1);
+    assert.deepEqual([byId.h.wins, byId.a.wins, byId.b.wins], [1, 0, 0]);
+    assert.deepEqual([byId.h.knockouts, byId.b.knockouts], [1, 1]);
+    assert.deepEqual([byId.a.times_eliminated, byId.b.times_eliminated, byId.h.times_eliminated], [1, 1, 0]);
+    assert.equal(byId.a.username, 'Ann');
+  });
 });
 
 describe('/nmj start and end', () => {
@@ -224,5 +235,59 @@ describe('/nmj start and end', () => {
     assert.ok(game instanceof NoMoreJockeysGameState);
     assert.equal(game.hostId, 'host1');
     assert.equal(thread.sent.length, 1, 'nothing new posted');
+  });
+});
+
+describe('stats', () => {
+  const stats = src('games/nmj/stats');
+
+  it('counts failed challenges, and keeps a known username when a later game has none', () => {
+    const game = new NoMoreJockeysGameState('stats-guild', 'C', 'T', 'p1', 'P1');
+    game.players = new Map([['p1', { id: 'p1', username: 'P1' }], ['p2', { id: 'p2', username: 'P2' }]]);
+    game.challengeResults = [
+      { challengerId: 'p2', targetId: 'p1', success: false },
+      { challengerId: 'p1', targetId: 'p2', success: true },
+    ];
+    stats.recordGame(game, 'p1');
+    game.players.set('p2', { id: 'p2', username: null });
+    stats.recordGame(game, 'p1');
+
+    const p1 = stats.getPlayer('stats-guild', 'p1');
+    const p2 = stats.getPlayer('stats-guild', 'p2');
+    assert.deepEqual([p1.games_played, p1.wins, p1.knockouts, p1.failed_challenges], [2, 2, 2, 0]);
+    assert.deepEqual([p2.games_played, p2.wins, p2.failed_challenges, p2.times_eliminated], [2, 0, 2, 2]);
+    assert.equal(p2.username, 'P2');
+    assert.deepEqual(stats.scoreboard('stats-guild').map(r => r.user_id), ['p1', 'p2']);
+    assert.equal(stats.describe(p1), 'No More Jockeys: 2 games, 2 wins, 2 successful challenges.');
+    assert.equal(stats.describe(null), null);
+  });
+
+  it('a game ended early with /nmj end isn\'t counted', async () => {
+    const thread = createThread('ended-early');
+    const channel = createChannel('ended-early-channel', thread);
+    const manager = newManager();
+    const client = createClient([thread, channel], { nmjManager: manager });
+    const game = manager.createGame('early-guild', channel.id, thread.id, 'e1', 'E1');
+    for (const id of ['e1', 'e2', 'e3']) manager.addPlayer(thread.id, user(id));
+    manager.beginGame(thread.id);
+    game.challengeResults.push({ challengerId: 'e2', targetId: 'e1', success: false });
+
+    const reloaded = NoMoreJockeysGameState.fromRow(repository.getAll().find(r => r.thread_id === thread.id) ?? NoMoreJockeysGameState.toRow(game));
+    repository.upsert(game);
+    assert.deepEqual(NoMoreJockeysGameState.fromRow(repository.getAll().find(r => r.thread_id === thread.id)).challengeResults, game.challengeResults, 'challenge results are saved');
+    assert.ok(reloaded);
+
+    const end = slashCommand({ sub: 'end', user: user('e1'), channel, channelId: thread.id });
+    await quietly(() => nmj.command.execute(end, client));
+    assert.equal(manager.getGame(thread.id), null);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM nmj_player_stats WHERE guild_id = 'early-guild'").get().n, 0);
+  });
+
+  it('adds the challenge_results column to a table from before it existed', () => {
+    db.exec('ALTER TABLE nmj_games DROP COLUMN challenge_results');
+    delete require.cache[require.resolve('../src/games/nmj/repository')];
+    src('games/nmj/repository');
+    const columns = db.prepare('PRAGMA table_info(nmj_games)').all().map(c => c.name);
+    assert.ok(columns.includes('challenge_results'));
   });
 });

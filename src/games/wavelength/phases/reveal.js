@@ -1,7 +1,7 @@
 'use strict';
 
 const WavelengthRepository = require('../repository');
-const WavelengthStatsRepository = require('../../../db/WavelengthStatsRepository');
+const WavelengthStatsRepository = require('../stats');
 
 const TIER_BULLSEYE = 0;
 const TIER_CLOSE = 5;

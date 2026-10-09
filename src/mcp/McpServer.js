@@ -14,12 +14,13 @@
 //  GET  /resources/channels/:channelId         Recent channel conversation log
 //  GET  /resources/channels/:channelId/participants  Active users in channel
 //  GET  /resources/scoreboards/:guildId        Werewords top-10 scoreboard
-//  GET  /resources/scoreboards/:guildId/wavelength  Wavelength top-10 scoreboard
+//  GET  /resources/scoreboards/:guildId/:gameId  Top-10 scoreboard for any game with stats
 //  POST /tools/log_message                     Log a message event
 //  POST /tools/update_topic_notes              Update user topic notes
 // ============================================================
 
 const http = require('http');
+const { gamesWithStats } = require('../games/_core/stats');
 
 const CAPABILITIES = {
   name:        'potato-game-bot-context',
@@ -31,7 +32,7 @@ const CAPABILITIES = {
     { uri: '/resources/channels/{channelId}/profile',          description: 'Stored topic notes for a channel' },
     { uri: '/resources/channels/{channelId}/participants',     description: 'Users active in a channel in the last N ms' },
     { uri: '/resources/scoreboards/{guildId}',                 description: 'Werewords top-10 scoreboard for a guild' },
-    { uri: '/resources/scoreboards/{guildId}/wavelength',      description: 'Wavelength top-10 scoreboard for a guild' },
+    { uri: '/resources/scoreboards/{guildId}/{gameId}',        description: 'Top-10 scoreboard for a guild in one game (see `games`)' },
   ],
   tools: [
     { name: 'log_message',                description: 'Append a message to the conversation log and update the user profile.' },
@@ -105,7 +106,9 @@ class McpServer {
 
   async _route(method, path, url, req) {
     // ── GET / ─────────────────────────────────────────────────────────────────
-    if (method === 'GET' && path === '/') return CAPABILITIES;
+    if (method === 'GET' && path === '/') {
+      return { ...CAPABILITIES, games: gamesWithStats().map(game => ({ id: game.id, name: game.name })) };
+    }
 
     // ── GET /resources/users/:guildId/:userId ─────────────────────────────────
     let m = path.match(/^\/resources\/users\/([^/]+)\/([^/]+)$/);
@@ -135,10 +138,12 @@ class McpServer {
       return msgs.reverse();
     }
 
-    // ── GET /resources/scoreboards/:guildId/wavelength ────────────────────────
-    m = path.match(/^\/resources\/scoreboards\/([^/]+)\/wavelength$/);
+    // ── GET /resources/scoreboards/:guildId/:gameId ───────────────────────────
+    m = path.match(/^\/resources\/scoreboards\/([^/]+)\/([^/]+)$/);
     if (method === 'GET' && m) {
-      return this._repo.getWavelengthScoreboard(m[1]);
+      const scoreboard = this._repo.getScoreboard(m[1], m[2]);
+      if (!scoreboard) throw Object.assign(new Error(`No game with stats called "${m[2]}"`), { status: 404 });
+      return scoreboard;
     }
 
     // ── GET /resources/scoreboards/:guildId ──────────────────────────────────

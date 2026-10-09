@@ -50,6 +50,9 @@ class NoMoreJockeysGameState extends BaseGameState {
 
     /** Map<playerId, remainingTokens> */
     this.challengeCounts = new Map();
+
+    /** Every resolved challenge this game, for stats: { challengerId, targetId, success } */
+    this.challengeResults = [];
   }
 
   /** Player IDs in turn order, including eliminated players. */
@@ -80,6 +83,7 @@ class NoMoreJockeysGameState extends BaseGameState {
     game.challengeState = row.challenge_state ? deserializeChallengeState(JSON.parse(row.challenge_state)) : null;
     game.challengeCounts = new Map(Object.entries(JSON.parse(row.challenge_counts || '{}')));
     game.acceptedPlayers = new Set(JSON.parse(row.accepted_players || '[]'));
+    game.challengeResults = JSON.parse(row.challenge_results || '[]');
     game._createdAt = row.created_at;
     return game;
   }
@@ -104,6 +108,7 @@ class NoMoreJockeysGameState extends BaseGameState {
       challenge_state: game.challengeState ? JSON.stringify(serializeChallengeState(game.challengeState)) : null,
       challenge_counts: JSON.stringify(Object.fromEntries(game.challengeCounts ?? [])),
       accepted_players: JSON.stringify([...(game.acceptedPlayers ?? [])]),
+      challenge_results: JSON.stringify(game.challengeResults ?? []),
       created_at: game._createdAt ?? Date.now(),
     };
   }

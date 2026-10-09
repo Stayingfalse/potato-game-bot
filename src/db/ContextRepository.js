@@ -8,11 +8,13 @@
 //    sassy_user_profiles   — per-user profile, message count, topic notes
 //    sassy_conversation_log — rolling message log per channel
 //    sassy_chat_history    — persisted Gemini/OpenAI chat history per channel
-//    werewords_player_stats — read-only for scoreboard / user context
-//    wavelength_player_stats — read-only for scoreboard / user context
+//
+//  Game stats and scoreboards come from each game's stats hook
+//  (see src/games/_core/stats.js).
 // ============================================================
 
 const db = require('./database');
+const { getPlayerStats, describePlayer, getScoreboard } = require('../games/_core/stats');
 
 // How many days of conversation log to keep (older rows are pruned).
 const LOG_RETENTION_DAYS = parseInt(process.env.CONTEXT_LOG_RETENTION_DAYS || '30', 10);
@@ -35,14 +37,6 @@ const stmtGetProfile = db.prepare(`
 
 const stmtUpdateTopicNotes = db.prepare(`
   UPDATE sassy_user_profiles SET topic_notes = ? WHERE guild_id = ? AND user_id = ?
-`);
-
-const stmtGetWWStats = db.prepare(`
-  SELECT * FROM werewords_player_stats WHERE guild_id = ? AND user_id = ?
-`);
-
-const stmtGetWLStats = db.prepare(`
-  SELECT * FROM wavelength_player_stats WHERE guild_id = ? AND user_id = ?
 `);
 
 const stmtLogConv = db.prepare(`
@@ -93,24 +87,6 @@ const stmtUpsertChannelProfile = db.prepare(`
     updated_at  = excluded.updated_at
 `);
 
-const stmtWWScoreboard = db.prepare(`
-  SELECT user_id, username, games_played, wins, losses,
-         CASE WHEN games_played > 0 THEN ROUND(100.0 * wins / games_played, 1) ELSE 0 END AS win_pct
-  FROM werewords_player_stats
-  WHERE guild_id = ? AND games_played > 0
-  ORDER BY wins DESC, win_pct DESC
-  LIMIT 10
-`);
-
-const stmtWLScoreboard = db.prepare(`
-  SELECT user_id, username, rounds_played, total_score, bullseyes,
-         CASE WHEN rounds_played > 0 THEN ROUND(1.0 * total_score / rounds_played, 1) ELSE 0 END AS avg_score
-  FROM wavelength_player_stats
-  WHERE guild_id = ? AND rounds_played > 0
-  ORDER BY total_score DESC, avg_score DESC
-  LIMIT 10
-`);
-
 const stmtChannelParticipants = db.prepare(`
   SELECT DISTINCT user_id, username FROM sassy_conversation_log
   WHERE channel_id = ? AND timestamp > ?
@@ -139,6 +115,9 @@ class ContextRepository {
 
   /**
    * Return full context for a user: profile + game stats + recent messages.
+   * `gameStats` has a row (or null) per game with stats, keyed by game id;
+   * `wwStats` / `wlStats` repeat the Werewords and Wavelength rows for
+   * existing MCP clients.
    *
    * @param {string} guildId
    * @param {string} userId
@@ -146,10 +125,15 @@ class ContextRepository {
    */
   getUserContext(guildId, userId) {
     const profile     = stmtGetProfile.get(guildId, userId) ?? null;
-    const wwStats     = stmtGetWWStats.get(guildId, userId) ?? null;
-    const wlStats     = stmtGetWLStats.get(guildId, userId) ?? null;
+    const gameStats   = getPlayerStats(guildId, userId);
     const recentMsgs  = stmtGetRecentUserConv.all(guildId, userId, 10);
-    return { profile, wwStats, wlStats, recentMessages: recentMsgs };
+    return {
+      profile,
+      gameStats,
+      wwStats: gameStats.werewords ?? null,
+      wlStats: gameStats.wavelength ?? null,
+      recentMessages: recentMsgs,
+    };
   }
 
   /**
@@ -175,23 +159,14 @@ class ContextRepository {
   }
 
   /**
-   * Get top-10 Werewords scoreboard for a guild.
+   * Get a game's top-10 scoreboard for a guild (Werewords if no game is given).
    *
    * @param {string} guildId
-   * @returns {Array}
+   * @param {string} [gameId='werewords']
+   * @returns {Array|null} null if there's no game with that id that records stats
    */
-  getScoreboard(guildId) {
-    return stmtWWScoreboard.all(guildId);
-  }
-
-  /**
-   * Get top-10 Wavelength scoreboard for a guild.
-   *
-   * @param {string} guildId
-   * @returns {Array}
-   */
-  getWavelengthScoreboard(guildId) {
-    return stmtWLScoreboard.all(guildId);
+  getScoreboard(guildId, gameId = 'werewords') {
+    return getScoreboard(gameId, guildId);
   }
 
   /**
@@ -313,7 +288,7 @@ class ContextRepository {
    * @returns {string|null}
    */
   buildUserContextString(guildId, userId) {
-    const { profile, wwStats, wlStats } = this.getUserContext(guildId, userId);
+    const profile = stmtGetProfile.get(guildId, userId);
     if (!profile) return null;
 
     const parts = [];
@@ -323,15 +298,7 @@ class ContextRepository {
       parts.push(`Topics they often discuss: ${profile.topic_notes}.`);
     }
 
-    if (wwStats?.games_played > 0) {
-      const pct = wwStats.games_played > 0 ? Math.round((100 * wwStats.wins) / wwStats.games_played) : 0;
-      parts.push(`Werewords record: ${wwStats.games_played} games, ${wwStats.wins} wins (${pct}%).`);
-    }
-
-    if (wlStats?.rounds_played > 0) {
-      const avg = wlStats.rounds_played > 0 ? (wlStats.total_score / wlStats.rounds_played).toFixed(1) : 0;
-      parts.push(`Wavelength: ${wlStats.rounds_played} rounds, avg score ${avg}, ${wlStats.bullseyes} bullseyes.`);
-    }
+    parts.push(...describePlayer(guildId, userId));
 
     return parts.join(' ');
   }

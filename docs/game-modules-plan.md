@@ -234,9 +234,12 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Reveal and vote deadlines are saved (`phaseEndsAt`, `werewolfRevealed`). Restore re-renders the game message and re-arms only the remaining time; no "Bot restarted" message. A "Pick the Seer" button lets a revealed Werewolf reopen their picker.
 - Fixed: the host's End Game button crashed the end sequence (no banner for `host_cancelled`), leaving the session without Rematch or Close buttons. A cancelled game now shows "Game Cancelled" and isn't counted in stats or session history.
 
-**Step 7: Optional stats.**
-- Add a `stats` hook for NMJ (wins, games played), and for any rebuilt games.
-- Make the MCP and dashboard scoreboards registry-driven.
+**Step 7: Stats.** ✅ Done.
+- Each game's manifest can point to a `stats` module with `getPlayer`, `scoreboard` and `describe`. `games/_core/stats.js` collects them, and the MCP server and the AI user context read from it instead of hard-coding Werewords and Wavelength.
+- MCP: `/resources/scoreboards/:guildId/:gameId` serves any game with stats; `/resources/scoreboards/:guildId` (Werewords) and `.../wavelength` still work, and `getUserContext` keeps `wwStats` / `wlStats` alongside the new `gameStats`.
+- NMJ now records games played, wins, times eliminated, successful challenges (knockouts) and failed challenges in `nmj_player_stats`, once per game that finishes with a winner. Challenge results are saved with the game (`challenge_results`), so a restart mid-game doesn't lose them.
+- Wavelength's stats module and table moved into `games/wavelength/stats.js`. Werewords' table stays in `db/database.js` because the one-off `stats.json` import there writes into it.
+- The dashboard has no scoreboards, so nothing changed there.
 
 **Step 8: Template and docs.**
 - Add `src/games/_template/` and a "Adding a game" README section.

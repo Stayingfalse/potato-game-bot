@@ -4,6 +4,9 @@
  * Werewords player stats — replaces the old file-based StatsManager.
  * Public API is intentionally API-compatible with the old StatsManager so
  * call sites only need a require-path change.
+ *
+ * The werewords_player_stats table is created in db/database.js, because the
+ * one-off stats.json import there writes into it.
  */
 
 const db = require('../../db/database');
@@ -131,4 +134,32 @@ function getGuildStats(guildId) {
   return result;
 }
 
-module.exports = { recordGame, getGuildStats };
+const stmtGetPlayer = db.prepare('SELECT * FROM werewords_player_stats WHERE guild_id = ? AND user_id = ?');
+
+const stmtScoreboard = db.prepare(`
+  SELECT user_id, username, games_played, wins, losses,
+         CASE WHEN games_played > 0 THEN ROUND(100.0 * wins / games_played, 1) ELSE 0 END AS win_pct
+  FROM werewords_player_stats
+  WHERE guild_id = ? AND games_played > 0
+  ORDER BY wins DESC, win_pct DESC
+  LIMIT 10
+`);
+
+/** A player's stats row, or null. */
+function getPlayer(guildId, userId) {
+  return stmtGetPlayer.get(guildId, userId) ?? null;
+}
+
+/** Top 10 players in a guild by wins. */
+function scoreboard(guildId) {
+  return stmtScoreboard.all(guildId);
+}
+
+/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
+function describe(row) {
+  if (!row?.games_played) return null;
+  const pct = Math.round((100 * row.wins) / row.games_played);
+  return `Werewords record: ${row.games_played} games, ${row.wins} wins (${pct}%).`;
+}
+
+module.exports = { recordGame, getGuildStats, getPlayer, scoreboard, describe };

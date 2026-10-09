@@ -14,4 +14,5 @@ module.exports = {
   command: require('./command'),
   handleInteraction,
   restore: require('./restore'),
+  stats: require('./stats'),
 };

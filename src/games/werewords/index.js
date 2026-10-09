@@ -15,4 +15,5 @@ module.exports = {
   handleInteraction,
   handleMessage,
   restore: require('./restore'),
+  stats: require('./stats'),
 };

@@ -10,6 +10,7 @@ const {
 const { renderGameMessage, renderSpectatorHistory } = require('./render');
 const { findBestCategoryMatch } = require('../../utils/fuzzyMatch');
 const { MIN_PLAYERS } = require('./manager');
+const { recordGame } = require('./stats');
 const { lockAndArchive } = require('../_core/threads');
 const { editOrSend } = require('../_core/messages');
 
@@ -138,10 +139,12 @@ function advanceTurn(game) {
   if (idx !== -1) game.currentPlayerIndex = idx;
 }
 
-/** Ends the game: posts final state to the starting channel, locks/archives the thread, cleans up state. */
-async function endGame(game, client, resultText) {
+/** Ends the game: records stats if there is a winner, posts the final state to the starting channel, locks/archives the thread and cleans up. */
+async function endGame(game, client, resultText, { winnerId } = {}) {
   game.phase = 'ended';
   persistGame(client, game);
+  // Only a game that finished with a winner counts towards stats.
+  if (winnerId) recordGame(game, winnerId);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (thread) {
@@ -460,6 +463,7 @@ async function handleButton(interaction, client, game) {
       if (thread) await purgeThreadMessages(thread, game.messageId);
 
       game.eliminatedPlayers.push(pending.playerId);
+      game.challengeResults.push({ challengerId: ch.challengerId, targetId: pending.playerId, success: true });
       game.challengeCounts.set(ch.challengerId, (game.challengeCounts.get(ch.challengerId) ?? 0) + 1);
       const eliminatedIdx = game.turnOrder().indexOf(pending.playerId);
       clearPendingMove(game);
@@ -467,7 +471,7 @@ async function handleButton(interaction, client, game) {
 
       if (checkForWinner(game)) {
         const winner = game.alivePlayers()[0];
-        return endGame(game, client, winner ? `🏆 <@${winner}> wins No More Jockeys!` : '🏁 The game has ended — no players remain.');
+        return endGame(game, client, winner ? `🏆 <@${winner}> wins No More Jockeys!` : '🏁 The game has ended — no players remain.', { winnerId: winner });
       }
 
       const idx = nextAliveIndex(game, eliminatedIdx);
@@ -481,6 +485,7 @@ async function handleButton(interaction, client, game) {
     // Unsuccessful challenge — challenger's token stays spent, move returns to Accept stage.
     // Clear the challenged player's messages so they can't quietly delete or edit what they said.
     if (thread) await purgeThreadMessages(thread, game.messageId, pending.playerId);
+    game.challengeResults.push({ challengerId: ch.challengerId, targetId: pending.playerId, success: false });
     game.pendingMove.stage = 'respond';
     game.acceptedPlayers = new Set();
     game.challengeState = null;
