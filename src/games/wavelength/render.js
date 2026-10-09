@@ -175,4 +175,5 @@ async function renderGameMessage(game, options = {}) {
 
 module.exports = {
   renderGameMessage,
+  createContainer,
 };
