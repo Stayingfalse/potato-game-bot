@@ -42,10 +42,7 @@ module.exports = {
         // Suppress unprompted interjections while an active game is running in
         // this thread so Sassy doesn't disrupt gameplay.  Direct mentions/replies
         // and DMs still work normally.
-        const inActiveThread = message.guild && (
-          !!client.gameManager.getGame(message.channel.id) ||
-          !!client.cheeseThiefManager?.getGame(message.channel.id)
-        );
+        const inActiveThread = message.guild && !!client.gameManager.getGame(message.channel.id);
         await client.sassyManager.handleMessage(message, { suppressInterjections: inActiveThread });
       }
     } catch (err) {

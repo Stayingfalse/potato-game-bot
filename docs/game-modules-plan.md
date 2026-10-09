@@ -2,11 +2,15 @@
 
 Scope: Werewords (WW), Cheese Thief (CT), Herd Mentality (HM), Wavelength (WL), No More Jockeys (NMJ).
 
+> **Update:** Cheese Thief and Herd Mentality were removed in Step 5, to be rebuilt later on the new template rather than refactored (see section 5). The remaining games are WW, WL and NMJ.
+
 NMJ and the recently reworked WL are the newer pattern. WW, CT and HM are the older one. The goal is to move every game onto the newer pattern, then pull the parts every game shares into a small framework so that adding a game means adding one folder.
 
 ---
 
-## 1. What the code does today
+## 1. What the code did at the start
+
+This section records the review as it stood before Step 0. Later steps changed much of it, and CT and HM have since been removed.
 
 ### 1.1 Two generations of game
 
@@ -101,7 +105,7 @@ src/games/
     messages.js          # updatePersistentMessage(game, client, payload)
     errors.js            # safeReply / withErrorReply
     random.js            # shuffle, sampleN
-  werewords/  cheesethief/  herdmentality/  wavelength/  nmj/
+  werewords/  wavelength/  nmj/
     index.js             # the module manifest (below)
     state.js             # XGameState extends BaseGameState
     manager.js           # XManager extends BaseGameManager (game-specific actions only)
@@ -208,41 +212,50 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Timers: Step 2's shared `timerKeys` cleanup replaced the `game.timers` idea. Wavelength's own duplicate `clearGameTimers` helper is gone.
 - Fixed a crash on main since `9c3dfc1`: `render.js` didn't export `createContainer`, so ending a round and closing a session both threw.
 
-**Step 5: HM.**
-- Split the 900-line event file into state, render, handlers and phases.
-- Move the lobby into the thread using Components V2 with a single persistent message.
-- Add `/herdmentality start|end`.
-- Persist `reviewMessageId`, and the review state if it moves into the main message.
+**Step 5: Remove HM and CT.** ✅ Done.
+- Deleted both games: their folders in `src/games/`, managers, repositories and the Herd Mentality question bank. Their slash commands, buttons, dashboard entries and crash recovery went with them, because those all come from the registry.
+- `db/database.js` no longer creates `cheese_thief_games` or `herd_mentality_games`. Existing databases keep those tables and their rows; nothing reads them.
+- Sassy's "don't interject during a game" check no longer looks for Cheese Thief games.
+- README and `package.json` no longer mention Cheese Thief.
 
-**Step 6: CT.**
-- Same split as HM.
-- Keep ephemerals for secret info, but put the public state (wake/discussion/vote) into one rendered message.
-- Use `phaseEndsAt` for timer re-arming on restore. That field already exists.
-
-**Step 7: WW.** Largest.
-- Rename `GameManager` / `GameRepository` / `StatsRepository` / `game/phases` to `werewords`-specific names.
-- Pull the ~1100 lines of WW handling out of the shared `interactionCreate.js`.
+**Step 6: WW.** Largest.
+- Rename `GameManager` / `GameRepository` / `StatsRepository` / `game/phases` to `werewords`-specific names and move them into `games/werewords/`, as for NMJ and WL.
+- Split `games/werewords/handlers.js` (moved out of the shared listener in Step 2, still ~1150 lines) into smaller handler and phase files.
 - Persist `sessionHistory`, `readyPlayers` and `readyMessageId`.
 - Convert the board, ready and vote messages to one rendered message.
 
-**Step 8: Optional stats.**
-- Add a `stats` hook for CT/HM/NMJ (wins, games played).
+**Step 7: Optional stats.**
+- Add a `stats` hook for NMJ (wins, games played), and for any rebuilt games.
 - Make the MCP and dashboard scoreboards registry-driven.
 
-**Step 9: Template and docs.**
+**Step 8: Template and docs.**
 - Add `src/games/_template/` and a "Adding a game" README section.
 
 ### Decisions needed from you
 
-1. **Private vs public threads.** Should CT and WW (hidden roles) move to public threads like NMJ/WL, or stay private? Recommendation: make it a manifest option and default to public. Keep CT and WW private unless you prefer otherwise.
+1. **Private vs public threads.** Should WW (hidden roles) move to a public thread like NMJ/WL, or stay private? Recommendation: make it a manifest option, default to public, and keep WW private unless you prefer otherwise.
 2. **Command shape.** Should `/werewords` become `/werewords start`? The change affects users' muscle memory. Recommendation: yes, for consistency, and deploy both shapes for one release.
 3. **Breaking in-flight games.** ✅ Decided: migrate saved games rather than clearing them. Each game that changes its saved layout ships a one-time upgrade with its repository, as NMJ does in Step 3.
 
 ### Testing
 
-There are no tests today. Before step 2, add a lightweight `node:test` suite for:
+There is still no committed test suite. Each step so far was checked with throwaway scripts: an in-memory SQLite database, fake Discord objects and, for NMJ and WL, a full game played through the real handlers. Turning those into a committed `node:test` suite would protect the remaining steps. It should cover:
 - the manager APIs
-- `fromRow(toRow(state))` round-trips
+- `fromRow(toRow(state))` round-trips, and each game's table upgrade
 - the router's prefix dispatch
+- a scripted game per module
 
-These are pure functions once rendering is separated from Discord I/O, and they protect every later step.
+---
+
+## 5. Future: rebuilding Herd Mentality and Cheese Thief
+
+Both games were removed rather than refactored, to be rebuilt on the template once it exists (Step 8).
+
+- **Recovering the old code and data.** Everything is in git history. Find the removal commit with `git log --diff-filter=D --oneline -- src/data/herd_mentality_questions.json`, then read any file from the commit before it, e.g. `git show <commit>^:src/data/herd_mentality_questions.json` for the question bank, or `<commit>^:src/games/cheesethief/handlers.js` for the Cheese Thief rules logic.
+- **Use new table names.** Existing databases still contain `cheese_thief_games` and `herd_mentality_games` in the old layout. A rebuilt game's `CREATE TABLE IF NOT EXISTS` with the same name would silently keep the old table, so either pick new names or have the new repository's `migrate` drop or convert the old table first.
+- **Build them like NMJ:**
+  - `/herdmentality start|end` and `/cheesethief start|end`
+  - the lobby and game state in one message inside the thread, rendered from state
+  - ephemerals only for secret information, such as Cheese Thief roles and dice
+  - timers re-armed on restore from a saved `phaseEndsAt`
+- **Cheese Thief's ephemeral tokens.** It edited players' private messages through stored interaction tokens, which are lost on restart. A rebuild should let players reopen their private view from a button instead of relying on those tokens.
