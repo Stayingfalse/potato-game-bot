@@ -3,6 +3,7 @@ const { isDemon } = require('../../utils/roles');
 const { endGame } = require('./endGame');
 const { buildPlayerStatsEmbed } = require('./sessionEnd');
 const GameRepository = require('../../db/GameRepository');
+const { editMessage } = require('../../games/_core/messages');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
@@ -124,10 +125,7 @@ async function startVotingPhase(game, client) {
   }
 
   // Remove Wordsmith action buttons from the board.
-  if (game.boardMessageId) {
-    const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-    if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});
-  }
+  await editMessage(thread, game.boardMessageId, { components: [] });
 
   // Announce the forbidden word.
   await thread.send({ embeds: [buildWordRevealEmbed(game)] }).catch(() => {});

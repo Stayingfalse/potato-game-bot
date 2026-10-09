@@ -1,4 +1,5 @@
 const CheeseThiefRepository = require('../db/CheeseThiefRepository');
+const { shuffle } = require('../games/_core/random');
 
 class CheeseThiefGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
@@ -43,13 +44,7 @@ const CT_ROLES = Object.freeze({
 function assignCheeseThiefRoles(players) {
   if (players.length < 3) throw new Error('At least 3 players are required to start Cheese Thief.');
 
-  const shuffled = [...players];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-
-  const result = shuffled.map(p => ({ ...p, role: CT_ROLES.SLEEPY_MICE, dieValue: null, isAccomplice: false }));
+  const result = shuffle(players).map(p => ({ ...p, role: CT_ROLES.SLEEPY_MICE, dieValue: null, isAccomplice: false }));
   result[0].role = CT_ROLES.THIEF;
   result[1].role = CT_ROLES.FALL_MOUSE;
   return result;

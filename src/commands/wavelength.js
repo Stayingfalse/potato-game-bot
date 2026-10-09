@@ -3,11 +3,11 @@
 const {
   SlashCommandBuilder,
   MessageFlags,
-  ChannelType,
   PermissionFlagsBits,
 } = require('discord.js');
 const { renderGameMessage } = require('../game/wavelength/render');
 const WavelengthRepository = require('../db/WavelengthRepository');
+const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../games/_core/threads');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -35,31 +35,23 @@ module.exports = {
         });
       }
 
-      let thread;
-      try {
-        thread = await channel.threads.create({
-          name: `Wavelength 〰️ — ${user.username}`,
-          type: ChannelType.PublicThread,
-          autoArchiveDuration: 1440,
-          reason: `Wavelength game started by ${user.username}`,
-        });
-        await thread.members.add(user.id);
-      } catch {
+      const thread = await createGameThread(channel, {
+        name: `Wavelength 〰️ — ${user.username}`,
+        isPrivate: false,
+        autoArchiveDuration: 1440,
+        reason: `Wavelength game started by ${user.username}`,
+        hostId: user.id,
+      });
+      if (!thread) {
         return interaction.reply({
-          content:
-            '❌ **Missing permissions.** The bot needs:\n' +
-            '• `Create Public Threads`\n' +
-            '• `Send Messages in Threads`\n' +
-            '• `Manage Threads`',
+          content: missingThreadPermissionsMessage({ isPrivate: false }),
           flags: MessageFlags.Ephemeral,
         });
       }
 
       const raceWinner = wavelengthManager.getGameByHost(guildId, user.id);
       if (raceWinner) {
-        await thread.delete('Duplicate Wavelength game thread').catch(async () => {
-          await thread.setArchived(true).catch(() => {});
-        });
+        await deleteThread(thread, 'Duplicate Wavelength game thread');
         return interaction.reply({
           content: `You already have an active **Wavelength** game — join it in <#${raceWinner.threadId}>.`,
           flags: MessageFlags.Ephemeral,

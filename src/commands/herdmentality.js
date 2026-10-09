@@ -3,12 +3,17 @@
 const {
   SlashCommandBuilder,
   MessageFlags,
-  ChannelType,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const {
+  createGameThread,
+  deleteThread,
+  fetchChannel,
+  missingThreadPermissionsMessage,
+} = require('../games/_core/threads');
 
 function buildLobbyEmbed(game) {
   const players = [...game.players.values()]
@@ -54,30 +59,19 @@ module.exports = {
     const existing = herdMentalityManager.getGameByHost(guildId, user.id);
     if (existing) {
       herdMentalityManager.deleteGame(existing.threadId);
-      const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
-      if (oldThread) {
-        await oldThread.delete('Host started a new Herd Mentality game').catch(async () => {
-          await oldThread.setArchived(true).catch(() => {});
-        });
-      }
+      await deleteThread(await fetchChannel(client, existing.threadId), 'Host started a new Herd Mentality game');
     }
 
-    let thread;
-    try {
-      thread = await channel.threads.create({
-        name: `Herd Mentality 🐄 — ${user.username}`,
-        type: ChannelType.PrivateThread,
-        autoArchiveDuration: 60,
-        reason: `Herd Mentality game started by ${user.username}`,
-      });
-      await thread.members.add(user.id);
-    } catch {
+    const thread = await createGameThread(channel, {
+      name: `Herd Mentality 🐄 — ${user.username}`,
+      isPrivate: true,
+      autoArchiveDuration: 60,
+      reason: `Herd Mentality game started by ${user.username}`,
+      hostId: user.id,
+    });
+    if (!thread) {
       return interaction.reply({
-        content:
-          '❌ **Missing permissions.** The bot needs:\n' +
-          '• `Create Private Threads`\n' +
-          '• `Send Messages in Threads`\n' +
-          '• `Manage Threads`',
+        content: missingThreadPermissionsMessage({ isPrivate: true }),
         flags: MessageFlags.Ephemeral,
       });
     }

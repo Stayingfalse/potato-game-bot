@@ -2,6 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { isLibrarian } = require('../../utils/roles');
 const { endGame } = require('./endGame');
 const GameRepository = require('../../db/GameRepository');
+const { editMessage } = require('../../games/_core/messages');
 
 const REVEAL_COLOR = 0xFEE75C; // yellow
 
@@ -96,10 +97,7 @@ async function startRevealPhase(game, client) {
   }
 
   // Remove Wordsmith action buttons from the board now that the word phase is over.
-  if (game.boardMessageId) {
-    const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-    if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});
-  }
+  await editMessage(thread, game.boardMessageId, { components: [] });
 
   await thread.send({
     embeds: [buildRevealEmbed(game)],

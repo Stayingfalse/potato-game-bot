@@ -10,6 +10,9 @@ const {
 const { renderGameMessage, renderSpectatorHistory } = require('../game/nmj/render');
 const { findBestCategoryMatch } = require('../utils/fuzzyMatch');
 const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
+const { replyWithError } = require('../games/_core/errors');
+const { lockAndArchive } = require('../games/_core/threads');
+const { editOrSend } = require('../games/_core/messages');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,16 +40,9 @@ async function updateGameMessage(game, client, resultText, preFetchedThread) {
   if (!thread) return;
   const displayNames = await fetchDisplayNames(thread, game);
   const { components, flags } = renderGameMessage(game, resultText, { displayNames });
-  if (game.messageId) {
-    const msg = await thread.messages.fetch(game.messageId).catch(() => null);
-    if (msg) {
-      await msg.edit({ components, flags }).catch(() => {});
-      return;
-    }
-  }
-  const sent = await thread.send({ components, flags }).catch(() => null);
-  if (sent) {
-    game.messageId = sent.id;
+  const result = await editOrSend(thread, game.messageId, { components, flags });
+  if (result?.created) {
+    game.messageId = result.message.id;
     persistGame(client, game);
   }
 }
@@ -159,8 +155,7 @@ async function endGame(game, client, resultText) {
   }
 
   if (thread) {
-    await thread.setLocked(true).catch(() => {});
-    await thread.setArchived(true).catch(() => {});
+    await lockAndArchive(thread);
   }
 
   client.nmjManager.deleteGame(game.threadId);
@@ -610,12 +605,7 @@ module.exports = {
         return await handleButton(interaction, client, game);
       } catch (error) {
         console.error('[NMJ button error]', error);
-        const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(payload).catch(() => {});
-        } else {
-          await interaction.reply(payload).catch(() => {});
-        }
+        await replyWithError(interaction);
       }
       return;
     }
@@ -631,12 +621,7 @@ module.exports = {
         return await handleModal(interaction, client, game);
       } catch (error) {
         console.error('[NMJ modal error]', error);
-        const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(payload).catch(() => {});
-        } else {
-          await interaction.reply(payload).catch(() => {});
-        }
+        await replyWithError(interaction);
       }
     }
   },

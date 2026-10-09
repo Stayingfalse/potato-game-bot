@@ -24,6 +24,7 @@ const { evaluateSessionGoal } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('../../db/WavelengthRepository');
+const { editOrSend } = require('../../games/_core/messages');
 
 const spectra = require('./spectra.json');
 const MIN_PLAYERS = 2;
@@ -41,32 +42,20 @@ async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   const useRoundMessage = game.roundMessageId || ['cluing', 'guessing', 'reveal', 'ended'].includes(game.phase);
   const targetMessageId = useRoundMessage ? game.roundMessageId : game.messageId;
 
-  if (targetMessageId) {
-    const msg = await thread.messages.fetch(targetMessageId).catch(() => null);
-    if (msg) {
-      // The message still exists — only ever edit it in place. If the edit itself fails
-      // (e.g. a transient API error), do NOT fall through to sending a brand-new message,
-      // since that would leave two persistent game messages in the thread.
-      const edited = await msg.edit(payload).catch(() => null);
-      return !!edited;
-    }
-    if (options.createIfMissing === false) return false;
-  } else if (options.createIfMissing === false) {
-    return false;
-  }
+  const result = await editOrSend(thread, targetMessageId, payload, {
+    createIfMissing: options.createIfMissing !== false,
+  });
+  if (!result) return false;
 
-  const sent = await thread.send(payload).catch(() => null);
-  if (sent) {
+  if (result.created) {
     if (useRoundMessage) {
-      game.roundMessageId = sent.id;
+      game.roundMessageId = result.message.id;
     } else {
-      game.messageId = sent.id;
+      game.messageId = result.message.id;
     }
     WavelengthRepository.upsert(game);
-    return true;
   }
-
-  return false;
+  return true;
 }
 
 async function replaceCurrentInteractionMessage(interaction, game, options = {}) {

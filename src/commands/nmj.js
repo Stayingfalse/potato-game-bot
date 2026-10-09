@@ -1,8 +1,9 @@
 'use strict';
 
-const { SlashCommandBuilder, MessageFlags, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { renderGameMessage } = require('../game/nmj/render');
 const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
+const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../games/_core/threads');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,22 +33,16 @@ module.exports = {
         });
       }
 
-      let thread;
-      try {
-        thread = await channel.threads.create({
-          name: `No More Jockeys — ${user.username}`,
-          type: ChannelType.PublicThread,
-          autoArchiveDuration: 1440,
-          reason: `No More Jockeys game started by ${user.username}`,
-        });
-        await thread.members.add(user.id);
-      } catch {
+      const thread = await createGameThread(channel, {
+        name: `No More Jockeys — ${user.username}`,
+        isPrivate: false,
+        autoArchiveDuration: 1440,
+        reason: `No More Jockeys game started by ${user.username}`,
+        hostId: user.id,
+      });
+      if (!thread) {
         return interaction.reply({
-          content:
-            '❌ **Missing permissions.** The bot needs:\n' +
-            '• `Create Public Threads`\n' +
-            '• `Send Messages in Threads`\n' +
-            '• `Manage Threads`',
+          content: missingThreadPermissionsMessage({ isPrivate: false }),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -57,9 +52,7 @@ module.exports = {
       // we just created and point the user at the original game.
       const raceWinner = nmjManager.getGameByCreator(guildId, user.id);
       if (raceWinner) {
-        await thread.delete('Duplicate No More Jockeys game thread').catch(async () => {
-          await thread.setArchived(true).catch(() => {});
-        });
+        await deleteThread(thread, 'Duplicate No More Jockeys game thread');
         return interaction.reply({
           content: `You already have an active **No More Jockeys** game — join it in <#${raceWinner.threadId}>.`,
           flags: MessageFlags.Ephemeral,

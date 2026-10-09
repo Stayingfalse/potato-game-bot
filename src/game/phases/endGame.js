@@ -1,5 +1,7 @@
 const { runEndSequence }  = require('./sessionEnd');
 const GameRepository      = require('../../db/GameRepository');
+const { fetchChannel } = require('../../games/_core/threads');
+const { editMessage } = require('../../games/_core/messages');
 
 // ── Outcome definitions (kept for reference / future use) ─────────────────────
 
@@ -75,11 +77,7 @@ async function endGame(game, client, outcome, seerVictimUserId = null) {
 
   // Remove Wordsmith action buttons from the board so they can't be clicked.
   if (game.boardMessageId) {
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    if (thread) {
-      const boardMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-      if (boardMsg) await boardMsg.edit({ components: [] }).catch(() => {});
-    }
+    await editMessage(await fetchChannel(client, game.threadId), game.boardMessageId, { components: [] });
   }
 
   // Hand off to the full end-game presentation sequence.

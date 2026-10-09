@@ -1,5 +1,7 @@
 'use strict';
 
+const { editMessage } = require('../games/_core/messages');
+
 /**
  * Crash-recovery: reload all active games from the DB and re-hook timers/buttons.
  * Called once from ready.js after the bot logs in.
@@ -176,15 +178,10 @@ async function restoreWerewords(client, GameRepository) {
     if (row.phase === 'playing') {
       // Restart the countdown from saved time_left.
       startGameTimer(game, thread, client);
-      if (game.boardMessageId) {
-        const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-        if (bMsg) {
-          await bMsg.edit({
-            embeds: [buildBoardEmbed(game)],
-            components: buildMayorActionComponents(game.tokens),
-          }).catch(() => {});
-        }
-      }
+      await editMessage(thread, game.boardMessageId, {
+        embeds: [buildBoardEmbed(game)],
+        components: buildMayorActionComponents(game.tokens),
+      });
     } else if (row.phase === 'voting') {
       // Re-post vote buttons. Auto-tally after 60 s.
       const { tallyVotes } = require('../game/phases/voting');

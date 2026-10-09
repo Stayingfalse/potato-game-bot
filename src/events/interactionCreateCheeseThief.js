@@ -1,6 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { CT_ROLES } = require('../game/CheeseThiefManager');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/cheesethief');
+const { replyWithError } = require('../games/_core/errors');
+const { fetchChannel, lockAndArchive } = require('../games/_core/threads');
+const { editMessage } = require('../games/_core/messages');
 
 const WAKE_DURATION_MS = 15_000;
 const NIGHT_DELAY_MIN_MS = 5_000;
@@ -226,11 +229,8 @@ async function broadcastEphemeralUpdates(client, game, thread, buildPayload) {
 
 async function updateReadyEmbed(game, client) {
   if (!game.readyMessageId) return;
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-  const msg = await thread.messages.fetch(game.readyMessageId).catch(() => null);
-  if (!msg) return;
-  await msg.edit({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => {});
+  const thread = await fetchChannel(client, game.threadId);
+  await editMessage(thread, game.readyMessageId, { embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() });
 }
 
 function getAwakePlayerIds(game, wakeNumber) {
@@ -633,10 +633,7 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
     const thread = await client.channels.fetch(threadId).catch(() => null);
     if (thread) {
       await thread.send({ content: '✖️ The host cancelled the session. This thread will be archived shortly.' }).catch(() => {});
-      setTimeout(async () => {
-        await thread.setLocked(true).catch(() => {});
-        await thread.setArchived(true).catch(() => {});
-      }, 5_000);
+      lockAndArchive(thread, { delayMs: 5_000 });
     }
 
     client.cheeseThiefManager.deleteGame(threadId);
@@ -963,11 +960,8 @@ module.exports = {
       if (!thread) return interaction.reply({ content: 'Game thread no longer exists.', flags: MessageFlags.Ephemeral });
 
       if (openSignups) {
-        const channel = await client.channels.fetch(game.channelId).catch(() => null);
-        const lobbyMsg = channel ? await channel.messages.fetch(game.messageId).catch(() => null) : null;
-        if (lobbyMsg) {
-          await lobbyMsg.edit({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) }).catch(() => {});
-        }
+        const channel = await fetchChannel(client, game.channelId);
+        await editMessage(channel, game.messageId, { embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) });
         return interaction.reply({ content: '📋 Open sign-ups enabled in the main channel lobby.', flags: MessageFlags.Ephemeral });
       }
 
@@ -993,8 +987,7 @@ module.exports = {
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (thread) {
         await thread.send({ content: '🔒 Session closed. Archiving thread.' }).catch(() => {});
-        await thread.setLocked(true).catch(() => {});
-        await thread.setArchived(true).catch(() => {});
+        await lockAndArchive(thread);
       }
       client.cheeseThiefManager.deleteGame(game.threadId);
       return interaction.editReply({ content: '✅ Session closed.' }).catch((err) => {
@@ -1003,12 +996,7 @@ module.exports = {
     }
     } catch (error) {
       console.error('[CheeseThief button error]', error);
-      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(payload).catch(() => {});
-      } else {
-        await interaction.reply(payload).catch(() => {});
-      }
+      await replyWithError(interaction);
     }
   },
 };

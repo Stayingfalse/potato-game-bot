@@ -1,6 +1,7 @@
 'use strict';
 
 const WavelengthRepository = require('../db/WavelengthRepository');
+const { sampleN } = require('../games/_core/random');
 
 class WavelengthGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
@@ -233,12 +234,7 @@ class WavelengthManager {
     if (!game.clueGiverId) return;
     game.targetPosition = Math.floor(Math.random() * 101);
 
-    const pool = [...spectraPool];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    game.spectrumOptions = pool.slice(0, 2);
+    game.spectrumOptions = sampleN(spectraPool, 2);
 
     game.guesses = new Map();
     for (const id of playerIds) {

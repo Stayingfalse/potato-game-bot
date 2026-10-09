@@ -1,6 +1,7 @@
 'use strict';
 
 const NoMoreJockeysRepository = require('../db/NoMoreJockeysRepository');
+const { shuffle } = require('../games/_core/random');
 
 const CHALLENGE_TOKENS_PER_PLAYER = 3;
 const MIN_PLAYERS = 3;
@@ -150,12 +151,7 @@ class NoMoreJockeysManager {
   spinWheel(threadId) {
     const game = this.games.get(threadId);
     if (!game) return null;
-    const shuffled = [...game.players];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    game.players = shuffled;
+    game.players = shuffle(game.players);
     NoMoreJockeysRepository.upsert(game);
     return game;
   }

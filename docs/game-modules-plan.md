@@ -184,7 +184,7 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Add `.catch` to the slash-command error reply.
 - Fix the `werewords_games.tokens` default.
 
-**Step 1: Core utilities.** No behaviour change.
+**Step 1: Core utilities.** ✅ Done.
 - Add `_core/random.js`, `errors.js`, `threads.js` and `messages.js`.
 - Replace the duplicated shuffle, error-reply and permission-message code in all 5 games.
 

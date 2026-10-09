@@ -2,6 +2,8 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { ROLES, isDemon, getRoleDisplayName } = require('../../utils/roles');
 const { recordGame } = require('../../db/StatsRepository');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
+const { fetchChannel } = require('../../games/_core/threads');
+const { editMessage } = require('../../games/_core/messages');
 
 const ROLE_EMOJI = {
   [ROLES.MAYOR]:    '📝',
@@ -225,20 +227,14 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
 
   // 6. Update main channel embed.
   if (game.channelId && game.messageId) {
-    const channel = await client.channels.fetch(game.channelId).catch(() => null);
-    if (channel) {
-      const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
-      if (lobbyMsg) {
-        const { title } = OUTCOME_BANNER[outcome];
-        const waitEmbed = new EmbedBuilder()
-          .setTitle(`🔮  Werewords — Game ${game.gameNumber} Complete`)
-          .setDescription(`**${title}** — waiting for the host to start the next game or close the session.`)
-          .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
-          .setColor(OUTCOME_COLOR[outcome])
-          .setTimestamp();
-        await lobbyMsg.edit({ embeds: [waitEmbed], components: [] }).catch(() => {});
-      }
-    }
+    const { title } = OUTCOME_BANNER[outcome];
+    const waitEmbed = new EmbedBuilder()
+      .setTitle(`🔮  Werewords — Game ${game.gameNumber} Complete`)
+      .setDescription(`**${title}** — waiting for the host to start the next game or close the session.`)
+      .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
+      .setColor(OUTCOME_COLOR[outcome])
+      .setTimestamp();
+    await editMessage(await fetchChannel(client, game.channelId), game.messageId, { embeds: [waitEmbed], components: [] });
   }
 }
 

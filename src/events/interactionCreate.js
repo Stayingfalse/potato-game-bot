@@ -27,19 +27,13 @@ const {
   getRoleDisplayName,
 } = require('../utils/roles');
 const words = require('../data/words.json');
+const { sampleN } = require('../games/_core/random');
+const { replyWithError } = require('../games/_core/errors');
+const { fetchChannel, lockAndArchive } = require('../games/_core/threads');
+const { editMessage } = require('../games/_core/messages');
 
 // Flatten all words from every category into a single pool at load time.
 const wordPool = words.categories.flatMap(c => c.words);
-
-/** Pick `n` unique items at random from an array. */
-function sampleN(arr, n) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-}
 
 function getWordsmithSecretRoleText(player) {
   if (player?.role !== ROLES.MAYOR || !player.secretRole) return '';
@@ -48,14 +42,11 @@ function getWordsmithSecretRoleText(player) {
 
 async function refreshBoardMessage(game, client) {
   if (!game?.boardMessageId) return;
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-  const board = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-  if (!board) return;
-  await board.edit({
+  const thread = await fetchChannel(client, game.threadId);
+  await editMessage(thread, game.boardMessageId, {
     embeds: [buildBoardEmbed(game)],
     components: [],
-  }).catch(() => {});
+  });
 }
 
 /**
@@ -102,14 +93,11 @@ function buildReadyComponents() {
 /** Edits the "Game Started" embed to reflect the current ready-up state. */
 async function updateReadyEmbed(game, client) {
   if (!game.readyMessageId) return;
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-  const msg = await thread.messages.fetch(game.readyMessageId).catch(() => null);
-  if (!msg) return;
-  await msg.edit({
+  const thread = await fetchChannel(client, game.threadId);
+  await editMessage(thread, game.readyMessageId, {
     embeds: [buildGameThreadEmbed(game)],
     components: buildPlayingComponents(),
-  }).catch(() => {});
+  });
 }
 
 /**
@@ -159,12 +147,7 @@ module.exports = {
         await command.execute(interaction, client);
       } catch (error) {
         console.error('[Command error]', error);
-        const payload = { content: '❌ An error occurred running that command.', flags: MessageFlags.Ephemeral };
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(payload).catch(() => {});
-        } else {
-          await interaction.reply(payload).catch(() => {});
-        }
+        await replyWithError(interaction, '❌ An error occurred running that command.');
       }
       return;
     }
@@ -180,12 +163,7 @@ module.exports = {
           return await handleWavelengthInteraction(interaction, client);
         } catch (error) {
           console.error('[Wavelength modal error]', error);
-          const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-          if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(payload).catch(() => {});
-          } else {
-            await interaction.reply(payload).catch(() => {});
-          }
+          await replyWithError(interaction);
         }
         return;
       }
@@ -245,12 +223,7 @@ module.exports = {
           await maybeStartTimer(game, client);
         } catch (error) {
           console.error('[Werewords modal error]', error);
-          const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-          if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(payload).catch(() => {});
-          } else {
-            await interaction.reply(payload).catch(() => {});
-          }
+          await replyWithError(interaction);
         }
         return;
       }
@@ -274,12 +247,7 @@ module.exports = {
         return await handleWavelengthInteraction(interaction, client);
       } catch (error) {
         console.error('[Wavelength button error]', error);
-        const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(payload).catch(() => {});
-        } else {
-          await interaction.reply(payload).catch(() => {});
-        }
+        await replyWithError(interaction);
       }
       return;
     }
@@ -406,10 +374,7 @@ module.exports = {
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread) {
           await thread.send({ content: '✖️ The host cancelled the session. This thread will be archived shortly.' }).catch(() => {});
-          setTimeout(async () => {
-            await thread.setLocked(true).catch(() => {});
-            await thread.setArchived(true).catch(() => {});
-          }, 5_000);
+          lockAndArchive(thread, { delayMs: 5_000 });
         }
 
         client.gameManager.deleteGame(threadId);
@@ -454,16 +419,11 @@ module.exports = {
 
       // Update main-channel lobby embed → Game In Progress.
       if (game.channelId && game.messageId) {
-        const mainChannel = await client.channels.fetch(game.channelId).catch(() => null);
-        if (mainChannel) {
-          const lobbyMsg = await mainChannel.messages.fetch(game.messageId).catch(() => null);
-          if (lobbyMsg) {
-            await lobbyMsg.edit({
-              embeds: [buildActiveEmbed(game)],
-              components: [],
-            }).catch(() => {});
-          }
-        }
+        const mainChannel = await fetchChannel(client, game.channelId);
+        await editMessage(mainChannel, game.messageId, {
+          embeds: [buildActiveEmbed(game)],
+          components: [],
+        });
       }
 
       const thread = await client.channels.fetch(channelId).catch(() => null);
@@ -981,14 +941,12 @@ module.exports = {
       if (panelThread) {
         for (const [pid, msgId] of game.voicePlayerMessageIds) {
           if (pid === targetPlayerId) continue; // already updated via deferUpdate
-          const panelMsg = await panelThread.messages.fetch(msgId).catch(() => null);
-          if (!panelMsg) continue;
           const panelPlayer = game.players.get(pid);
           if (!panelPlayer) continue;
-          await panelMsg.edit({
+          await editMessage(panelThread, msgId, {
             content: buildVoicePlayerContent(panelPlayer),
             components: buildVoicePlayerComponents(pid, game.tokens),
-          }).catch(() => {});
+          });
         }
       }
 
@@ -1148,16 +1106,11 @@ module.exports = {
 
       // Update main channel embed → In Progress.
       if (resetGame.channelId && resetGame.messageId) {
-        const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
-        if (channel) {
-          const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
-          if (lobbyMsg) {
-            await lobbyMsg.edit({
-              embeds: [buildActiveEmbed(resetGame)],
-              components: [],
-            }).catch(() => {});
-          }
-        }
+        const channel = await fetchChannel(client, resetGame.channelId);
+        await editMessage(channel, resetGame.messageId, {
+          embeds: [buildActiveEmbed(resetGame)],
+          components: [],
+        });
       }
 
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -1203,16 +1156,11 @@ module.exports = {
 
       // Restore main channel lobby embed with buttons active.
       if (resetGame.channelId && resetGame.messageId) {
-        const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
-        if (channel) {
-          const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
-          if (lobbyMsg) {
-            await lobbyMsg.edit({
-              embeds: [buildLobbyEmbed(resetGame)],
-              components: buildLobbyComponents(resetGame.threadId),
-            }).catch(() => {});
-          }
-        }
+        const channel = await fetchChannel(client, resetGame.channelId);
+        await editMessage(channel, resetGame.messageId, {
+          embeds: [buildLobbyEmbed(resetGame)],
+          components: buildLobbyComponents(resetGame.threadId),
+        });
       }
 
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -1244,27 +1192,18 @@ module.exports = {
           embeds: [buildSessionSummaryEmbed(game, guildStats)],
         }).catch(() => {});
 
-        setTimeout(async () => {
-          await thread.setLocked(true).catch(() => {});
-          await thread.setArchived(true).catch(() => {});
-        }, 5_000);
+        lockAndArchive(thread, { delayMs: 5_000 });
       }
 
       // Update main channel embed.
       if (game.channelId && game.messageId) {
-        const channel = await client.channels.fetch(game.channelId).catch(() => null);
-        if (channel) {
-          const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
-          if (lobbyMsg) {
-            const closedEmbed = new EmbedBuilder()
-              .setTitle('🔮  Werewords — Session Ended')
-              .setDescription(`${game.gameNumber} game${game.gameNumber !== 1 ? 's' : ''} played. Thanks for playing!`)
-              .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
-              .setColor(0x5865F2)
-              .setTimestamp();
-            await lobbyMsg.edit({ embeds: [closedEmbed], components: [] }).catch(() => {});
-          }
-        }
+        const closedEmbed = new EmbedBuilder()
+          .setTitle('🔮  Werewords — Session Ended')
+          .setDescription(`${game.gameNumber} game${game.gameNumber !== 1 ? 's' : ''} played. Thanks for playing!`)
+          .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
+          .setColor(0x5865F2)
+          .setTimestamp();
+        await editMessage(await fetchChannel(client, game.channelId), game.messageId, { embeds: [closedEmbed], components: [] });
       }
 
       client.gameManager.deleteGame(game.threadId);
@@ -1273,12 +1212,7 @@ module.exports = {
 
     } catch (error) {
       console.error('[Werewords button error]', error);
-      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(payload).catch(() => {});
-      } else {
-        await interaction.reply(payload).catch(() => {});
-      }
+      await replyWithError(interaction);
     }
   },
 };

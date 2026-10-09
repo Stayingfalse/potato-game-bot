@@ -1,6 +1,12 @@
-const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
 const { upsert: upsertGame } = require('../db/GameRepository');
+const {
+  createGameThread,
+  deleteThread,
+  fetchChannel,
+  missingThreadPermissionsMessage,
+} = require('../games/_core/threads');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,37 +21,20 @@ module.exports = {
     const existing = gameManager.getGameByHost(guildId, user.id);
     if (existing) {
       gameManager.deleteGame(existing.threadId);
-      try {
-        const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
-        if (oldThread) {
-          await oldThread.delete('Host started a new Werewords game').catch(async () => {
-            await oldThread.setArchived(true).catch(() => {});
-          });
-        }
-      } catch {
-        // Thread already gone — nothing to do.
-      }
+      await deleteThread(await fetchChannel(client, existing.threadId), 'Host started a new Werewords game');
     }
 
     // Create a private thread for the game players.
-    let thread;
-    try {
-      thread = await channel.threads.create({
-        name: `Werewords — ${user.username}`,
-        type: ChannelType.PrivateThread,
-        autoArchiveDuration: 60,
-        reason: `Werewords game started by ${user.username}`,
-      });
-      // Add the host to the private thread immediately.
-      await thread.members.add(user.id);
-    } catch {
+    const thread = await createGameThread(channel, {
+      name: `Werewords — ${user.username}`,
+      isPrivate: true,
+      autoArchiveDuration: 60,
+      reason: `Werewords game started by ${user.username}`,
+      hostId: user.id,
+    });
+    if (!thread) {
       return interaction.reply({
-        content:
-          '❌ **Missing permissions.** The bot needs the following in this channel:\n' +
-          '• `Create Private Threads`\n' +
-          '• `Send Messages in Threads`\n' +
-          '• `Manage Threads` *(to clean up finished games)*\n\n' +
-          '*Note: Private threads require a Community server or Boost Level 1+.*',
+        content: missingThreadPermissionsMessage({ isPrivate: true }),
         flags: MessageFlags.Ephemeral,
       });
     }

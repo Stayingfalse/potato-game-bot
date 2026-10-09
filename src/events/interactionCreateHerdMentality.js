@@ -11,6 +11,9 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/herdmentality');
+const { replyWithError } = require('../games/_core/errors');
+const { fetchChannel, lockAndArchive } = require('../games/_core/threads');
+const { editMessage } = require('../games/_core/messages');
 
 const questions = require('../data/herd_mentality_questions.json').questions;
 
@@ -365,10 +368,7 @@ async function revealRound(game, client) {
   if (!thread) return;
 
   // Disable the question message buttons.
-  if (game.questionMessageId) {
-    const qMsg = await thread.messages.fetch(game.questionMessageId).catch(() => null);
-    if (qMsg) await qMsg.edit({ embeds: [buildRoundEmbed(game)], components: [] }).catch(() => {});
-  }
+  await editMessage(thread, game.questionMessageId, { embeds: [buildRoundEmbed(game)], components: [] });
 
   const canMerge = game.reviewGroups.length >= 2;
   const msg = await thread.send({
@@ -426,14 +426,11 @@ async function endGame(game, client, winnerIds) {
 
 async function updateQuestionMessage(game, client) {
   if (!game.questionMessageId) return;
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (!thread) return;
-  const msg = await thread.messages.fetch(game.questionMessageId).catch(() => null);
-  if (!msg) return;
-  await msg.edit({
+  const thread = await fetchChannel(client, game.threadId);
+  await editMessage(thread, game.questionMessageId, {
     embeds: [buildRoundEmbed(game)],
     components: buildRoundComponents(),
-  }).catch(() => {});
+  });
 }
 
 // ── Lobby button handlers ──────────────────────────────────────────────────────
@@ -522,10 +519,7 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
     const thread = await client.channels.fetch(threadId).catch(() => null);
     if (thread) {
       await thread.send({ content: '✖️ The host cancelled the session. This thread will be archived shortly.' }).catch(() => {});
-      setTimeout(async () => {
-        await thread.setLocked(true).catch(() => {});
-        await thread.setArchived(true).catch(() => {});
-      }, 5_000);
+      lockAndArchive(thread, { delayMs: 5_000 });
     }
 
     client.herdMentalityManager.deleteGame(threadId);
@@ -756,10 +750,7 @@ async function handleGameButtons(interaction, client, game) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) {
       await thread.send({ content: '✅ Session closed. This thread will be archived shortly.' }).catch(() => {});
-      setTimeout(async () => {
-        await thread.setLocked(true).catch(() => {});
-        await thread.setArchived(true).catch(() => {});
-      }, 5_000);
+      lockAndArchive(thread, { delayMs: 5_000 });
     }
     return;
   }
@@ -827,16 +818,11 @@ async function handleMergeModal(interaction, client, game) {
   persistGame(client, game);
 
   // Edit the review message so the host sees the updated groups.
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-  if (thread && game.reviewMessageId) {
-    const reviewMsg = await thread.messages.fetch(game.reviewMessageId).catch(() => null);
-    if (reviewMsg) {
-      await reviewMsg.edit({
-        embeds: [buildPreviewEmbed(game)],
-        components: buildPreviewComponents(groups.length >= 2),
-      }).catch(() => {});
-    }
-  }
+  const thread = await fetchChannel(client, game.threadId);
+  await editMessage(thread, game.reviewMessageId, {
+    embeds: [buildPreviewEmbed(game)],
+    components: buildPreviewComponents(groups.length >= 2),
+  });
 
   await interaction.reply({
     content: `✅ Merged **"${absorbedLabel}"** into group ${keepIdx + 1} (${groups.length} group${groups.length !== 1 ? 's' : ''} remaining).`,
@@ -912,12 +898,7 @@ module.exports = {
       return await dispatch(interaction, client);
     } catch (error) {
       console.error('[Herd Mentality interaction error]', error);
-      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(payload).catch(() => {});
-      } else {
-        await interaction.reply(payload).catch(() => {});
-      }
+      await replyWithError(interaction);
     }
   },
 };

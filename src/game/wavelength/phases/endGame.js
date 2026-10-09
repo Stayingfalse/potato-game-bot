@@ -2,6 +2,8 @@
 
 const { MessageFlags } = require('discord.js');
 const WavelengthRepository = require('../../../db/WavelengthRepository');
+const { fetchChannel, lockAndArchive } = require('../../../games/_core/threads');
+const { editMessage } = require('../../../games/_core/messages');
 const { evaluateSessionGoal, computeSessionTotals } = require('./sessionEnd');
 
 function clearGameTimers(game) {
@@ -48,16 +50,12 @@ async function endGame(game, client) {
   await updateGameMessage(game, client);
 
   if (previousRoundMessageId && game.roundMessageId && previousRoundMessageId !== game.roundMessageId) {
-    const thread = await client.channels.fetch(game.threadId).catch(() => null);
-    const oldMessage = await thread?.messages.fetch(previousRoundMessageId).catch(() => null);
-    if (oldMessage) {
-      const { createContainer } = require('../render');
-      const resultsUrl = `https://discord.com/channels/${game.guildId}/${game.threadId}/${game.roundMessageId}`;
-      await oldMessage.edit({
-        components: [createContainer(`✅ Guessing closed — results are in: ${resultsUrl}`, 0x2ECC71)],
-        attachments: [],
-      }).catch(() => {});
-    }
+    const { createContainer } = require('../render');
+    const resultsUrl = `https://discord.com/channels/${game.guildId}/${game.threadId}/${game.roundMessageId}`;
+    await editMessage(await fetchChannel(client, game.threadId), previousRoundMessageId, {
+      components: [createContainer(`✅ Guessing closed — results are in: ${resultsUrl}`, 0x2ECC71)],
+      attachments: [],
+    });
   }
 
   scheduleAutoAdvance(game, client);
@@ -96,10 +94,7 @@ async function closeSession(game, client, reason) {
 
     // Give players a few seconds to read the final closing message before the
     // thread is locked and archived. Runs detached so callers don't block on it.
-    setTimeout(async () => {
-      await thread.setLocked(true).catch(() => {});
-      await thread.setArchived(true).catch(() => {});
-    }, 5_000);
+    lockAndArchive(thread, { delayMs: 5_000 });
   }
 
   client.wavelengthManager.deleteGame(game.threadId);
