@@ -258,8 +258,6 @@ describe('stats', () => {
     assert.deepEqual([p2.games_played, p2.wins, p2.failed_challenges, p2.times_eliminated], [2, 0, 2, 2]);
     assert.equal(p2.username, 'P2');
     assert.deepEqual(stats.scoreboard('stats-guild').map(r => r.user_id), ['p1', 'p2']);
-    assert.equal(stats.describe(p1), 'No More Jockeys: 2 games, 2 wins, 2 successful challenges.');
-    assert.equal(stats.describe(null), null);
   });
 
   it('a game ended early with /nmj end isn\'t counted', async () => {

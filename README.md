@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml/badge.svg)](https://github.com/Stayingfalse/potato-game-bot/actions/workflows/test.yml)
 
-A Discord bot that brings party games and social deduction fun to your server! Host game nights with friends using interactive Discord threads and enjoy AI-powered entertainment.
+A Discord bot that brings party games and social deduction fun to your server! Host game nights with friends using interactive Discord threads.
 
 ## 🎲 Games
 
@@ -69,7 +69,7 @@ A party game of celebrities and ever-growing rules: each turn bans a new categor
 
 ### Birthday Announcements 🎂
 
-Never forget a friend's birthday again! The bot can automatically announce birthdays in your server with fun, sassy messages.
+Never forget a friend's birthday again! The bot can automatically announce birthdays in your server with fun messages.
 
 **Commands:**
 - `/birthday set <date>` - Set your birthday (format: dd/mm or dd/mm/yyyy)
@@ -82,24 +82,6 @@ Never forget a friend's birthday again! The bot can automatically announce birth
 - `/birthday stop` - Disable announcements
 - `/birthday setchannel <channel>` - Choose where announcements appear
 - `/birthday resend` - Re-send today's birthday messages
-
-### SassyBot AI 🤖
-
-An AI companion powered by Google Gemini that adds personality to your server conversations!
-
-**What it does:**
-- Responds when mentioned with witty, sassy replies
-- Occasionally interjects in conversations with clever commentary
-- Understands channel context (board games, social deduction games, etc.)
-- Adjusts response frequency based on channel activity
-- Keeps conversation history for natural, contextual responses
-
-**Features:**
-- 💬 Direct replies when mentioned
-- 🎭 Spontaneous interjections during lively conversations
-- 🧠 Context-aware responses based on your channel's focus
-- 😎 Passive-aggressive personality (helpful but with flair!)
-- ⏱️ Smart cooldowns to avoid spam
 
 ## 🎮 Getting Started
 
@@ -150,7 +132,6 @@ Each game is a folder under `src/games/`, and the bot picks up new folders autom
 - 🔄 Session support for marathon game nights
 - 📊 Statistics tracking and game history
 - 🎨 Rich embeds and interactive buttons
-- 🤖 Optional AI-powered entertainment
 - 🎂 Automated birthday celebration system
 
 ## 📝 Note

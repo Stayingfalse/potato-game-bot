@@ -2,8 +2,8 @@
 
 /**
  * High Roll player stats, per guild. Optional: a game without stats just leaves
- * `stats` out of its manifest. With it, the game's scoreboard and a line about
- * each player show up in the MCP server and the AI's user context.
+ * `stats` out of its manifest. With it, the game offers the standard
+ * getPlayer/scoreboard pair that a leaderboard can read for any game.
  */
 
 const db = require('../../db/database');
@@ -54,7 +54,7 @@ const recordGame = db.transaction(game => {
   }
 });
 
-// The three functions the stats hook needs:
+// The two functions the stats hook needs:
 
 /** A player's stats row, or null. */
 function getPlayer(guildId, userId) {
@@ -66,10 +66,5 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
-function describe(row) {
-  if (!row?.games_played) return null;
-  return `High Roll: ${row.games_played} games, ${row.wins} wins, best roll ${row.best_roll}.`;
-}
 
-module.exports = { recordGame, getPlayer, scoreboard, describe };
+module.exports = { recordGame, getPlayer, scoreboard };

@@ -43,7 +43,7 @@ are skipped, so the template itself is never loaded into the bot.
 | `flow.js` | Phase changes (start, finish, close) and timers, shared by the handlers, the command and restore. |
 | `handlers.js` | One function per button, looked up by customId. The game is found from the thread the button was pressed in. |
 | `restore.js` | Reloads saved games on startup, redraws their message in place and re-arms timers with the time left. |
-| `stats.js` | Optional. Player stats, plus `getPlayer`, `scoreboard` and `describe` for the MCP server and the AI's user context. Leave `stats` out of the manifest if the game has none. |
+| `stats.js` | Optional. Player stats, plus the standard `getPlayer` and `scoreboard` readers. Leave `stats` out of the manifest if the game has none. |
 
 ## Conventions
 

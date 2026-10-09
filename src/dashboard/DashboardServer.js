@@ -40,18 +40,6 @@ const SESSION_TTL_MS   = 24 * 60 * 60 * 1000; // 24 hours
 const MANAGE_GUILD_BIT = 0x20n; // BigInt for safe 53-bit overflow handling
 const HTML_DIR         = path.join(__dirname, 'html');
 
-function parseIntWithFallback(value, fallback, min = 1) {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
-}
-
-const DEFAULT_SASSY_OVERRIDES = {
-  maxHistoryTurns:  parseIntWithFallback(process.env.MAX_HISTORY_TURNS, 20),
-  cooldownMs:       parseIntWithFallback(process.env.COOLDOWN_MS, 2000, 0),
-  interjectCooldown: parseIntWithFallback(process.env.INTERJECT_COOLDOWN, 180000, 0),
-  activityWindowMs: parseIntWithFallback(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
-};
-
 // Known bot features shown in the guild settings UI: every registered game,
 // then the bot's other features.
 const FEATURES = [
@@ -70,41 +58,6 @@ const FEATURES = [
     hasChannels: true,
     defaultEnabled: false,
     wizardType: 'welcomeautomation',
-  },
-  {
-    id: 'sassy',
-    label: 'SassyBot',
-    hasChannels: true,
-    extraFields: [
-      {
-        key: 'maxHistoryTurns',
-        label: 'Max history turns',
-        hint: 'How many conversation turns to remember per channel.',
-        min: 1,
-        defaultValue: DEFAULT_SASSY_OVERRIDES.maxHistoryTurns,
-      },
-      {
-        key: 'cooldownMs',
-        label: 'Direct reply cooldown (ms)',
-        hint: 'Minimum delay between direct replies in the same channel.',
-        min: 0,
-        defaultValue: DEFAULT_SASSY_OVERRIDES.cooldownMs,
-      },
-      {
-        key: 'interjectCooldown',
-        label: 'Interjection cooldown (ms)',
-        hint: 'Minimum delay between unprompted interjections in the same channel.',
-        min: 0,
-        defaultValue: DEFAULT_SASSY_OVERRIDES.interjectCooldown,
-      },
-      {
-        key: 'activityWindowMs',
-        label: 'Activity window (ms)',
-        hint: 'How long message activity is counted for interjection chance.',
-        min: 1,
-        defaultValue: DEFAULT_SASSY_OVERRIDES.activityWindowMs,
-      },
-    ],
   },
 ];
 

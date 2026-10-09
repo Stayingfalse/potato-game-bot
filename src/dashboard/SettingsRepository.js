@@ -67,7 +67,7 @@ function getGuildSettings(guildId) {
  * Upserts a single feature setting for a guild.
  *
  * @param {string}          guildId
- * @param {string}          feature     e.g. 'werewords', 'wavelength', 'sassy'
+ * @param {string}          feature     e.g. 'werewords', 'wavelength', 'birthday'
  * @param {boolean}         enabled
  * @param {string[]|null}   channelIds  null = all channels
  * @param {object|null}     extra       feature-specific JSON config

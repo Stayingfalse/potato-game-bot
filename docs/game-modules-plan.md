@@ -49,7 +49,7 @@ This section records the review as it stood before Step 0. Later steps changed m
   - HM: `reviewMessageId` isn't persisted.
   - CT: ephemeral tokens are lost by design.
   - The schema default for `werewords_games.tokens` (`{"yes":14,"no":5,"maybe":1}`) no longer matches the real shape (`yes_no/maybe/correct/so_close_way_off`).
-- **Stats**: only WW and WL record player stats. CT, HM and NMJ record none, and the MCP server only exposes WW/WL scoreboards.
+- **Stats**: only WW and WL record player stats. CT, HM and NMJ record none, and the MCP server (since removed) only exposes WW/WL scoreboards.
 - **Dashboard**: `DashboardServer.js` hard-codes a feature list that **omits NMJ**.
 
 ### 1.3 Dead and duplicate code
@@ -217,7 +217,7 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 **Step 5: Remove HM and CT.** ✅ Done.
 - Deleted both games: their folders in `src/games/`, managers, repositories and the Herd Mentality question bank. Their slash commands, buttons, dashboard entries and crash recovery went with them, because those all come from the registry.
 - `db/database.js` no longer creates `cheese_thief_games` or `herd_mentality_games`. Existing databases keep those tables and their rows; nothing reads them.
-- Sassy's "don't interject during a game" check no longer looks for Cheese Thief games.
+- Sassy's "don't interject during a game" check no longer looks for Cheese Thief games. (Sassy was removed later.)
 - README and `package.json` no longer mention Cheese Thief.
 
 **Step 6a: WW structure, commands and saving.** ✅ Done.
@@ -237,8 +237,7 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Fixed: the host's End Game button crashed the end sequence (no banner for `host_cancelled`), leaving the session without Rematch or Close buttons. A cancelled game now shows "Game Cancelled" and isn't counted in stats or session history.
 
 **Step 7: Stats.** ✅ Done.
-- Each game's manifest can point to a `stats` module with `getPlayer`, `scoreboard` and `describe`. `games/_core/stats.js` collects them, and the MCP server and the AI user context read from it instead of hard-coding Werewords and Wavelength.
-- MCP: `/resources/scoreboards/:guildId/:gameId` serves any game with stats; `/resources/scoreboards/:guildId` (Werewords) and `.../wavelength` still work, and `getUserContext` keeps `wwStats` / `wlStats` alongside the new `gameStats`.
+- Each game's manifest can point to a `stats` module with `getPlayer` and `scoreboard`. (This step also wired them into the MCP server and the AI user context; both were removed later, see "Removing SassyBot AI and the MCP server" below.)
 - NMJ now records games played, wins, times eliminated, successful challenges (knockouts) and failed challenges in `nmj_player_stats`, once per game that finishes with a winner. Challenge results are saved with the game (`challenge_results`), so a restart mid-game doesn't lose them.
 - Wavelength's stats module and table moved into `games/wavelength/stats.js`. Werewords' table stays in `db/database.js` because the one-off `stats.json` import there writes into it.
 - The dashboard has no scoreboards, so nothing changed there.
@@ -247,6 +246,13 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - `src/games/_template/` is a complete small game, **High Roll**, showing every convention: manifest, `/highroll start|end`, state with `fromRow`/`toRow`, a repository owning its table, one rendered message, a route table for buttons, a saved deadline re-armed on restore, and stats. The registry skips `_` folders, so it isn't loaded into the bot.
 - `test/template.test.js` plays it through; copying the folder to `src/games/highroll/` with no other change makes it a live game (checked).
 - `docs/adding-a-game.md` is the guide: quick start, what each file does, the conventions, and testing. The README links to it and now has a No More Jockeys section.
+
+**Removing SassyBot AI and the MCP server.** ✅ Done.
+- SassyBot had been switched off for a while because people were upset by its replies and interjections, so all AI was removed: `SassyManager`, the MCP context server, `ContextRepository`, `games/_core/stats.js` and the `@google/genai` dependency.
+- Welcome automation now always uses its templates. The dashboard's AI prompt-guidance fields and the SassyBot feature card are gone.
+- Stored data: on the first start after the update, `db/database.js` drops the `sassy_*` tables (chat logs, chat history, user and channel notes), deletes the `sassy` dashboard settings and compacts the database file. This can't be undone, so back up `data/bot.db` first if you want to keep a copy.
+- The stats hook is now just `getPlayer` and `scoreboard`, ready for a `/leaderboard` command if one is wanted.
+- The Sassy, Gemini, DeepSeek and MCP settings were removed from `.env.example` and `docker-compose.yml` (including port 3100).
 
 ### Decisions needed from you
 
@@ -260,6 +266,10 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - `core.test.js`: shared helpers, `createRepository`, `BaseGameManager`, the registry and router
 - `bot.test.js`: startup without logging in, commands, the single interaction listener, restore, deploy-commands
 - `nmj.test.js`, `wavelength.test.js`, `werewords.test.js`: each game's table upgrade, a full scripted game through its real command and handlers, and restarts mid-game
+- `template.test.js`: High Roll played through
+- `stats.test.js`: every game's stats hook
+- `database.test.js`: the one-time removal of the SassyBot data
+- `welcome.test.js`: template welcomes on join
 
 `test/helpers/env.js` gives each test file its own temporary `DATA_DIR`, so tests never touch `data/`. `test/helpers/discord.js` has the fake threads, channels, users and interactions. New games should add a `<id>.test.js` in the same style.
 

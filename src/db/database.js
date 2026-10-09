@@ -66,47 +66,6 @@ db.exec(`
     enabled     INTEGER NOT NULL DEFAULT 0
   );
 
-  -- ── SassyBot / MCP context tables ───────────────────────────────────────────
-
-  -- Per-user profile: message count, last seen, AI-generated topic notes.
-  CREATE TABLE IF NOT EXISTS sassy_user_profiles (
-    guild_id       TEXT NOT NULL,
-    user_id        TEXT NOT NULL,
-    username       TEXT NOT NULL,
-    last_seen      INTEGER NOT NULL DEFAULT 0,
-    message_count  INTEGER NOT NULL DEFAULT 0,
-    topic_notes    TEXT,
-    PRIMARY KEY (guild_id, user_id)
-  );
-
-  -- Rolling conversation log per channel (pruned periodically).
-  CREATE TABLE IF NOT EXISTS sassy_conversation_log (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel_id   TEXT NOT NULL,
-    guild_id     TEXT,
-    user_id      TEXT NOT NULL,
-    username     TEXT NOT NULL,
-    content      TEXT NOT NULL,
-    timestamp    INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_sassy_conv_ch_ts
-    ON sassy_conversation_log(channel_id, timestamp DESC);
-
-  -- Persisted Gemini/OpenAI chat history per channel so context survives restarts.
-  CREATE TABLE IF NOT EXISTS sassy_chat_history (
-    channel_id  TEXT PRIMARY KEY,
-    history     TEXT NOT NULL DEFAULT '[]',
-    updated_at  INTEGER NOT NULL DEFAULT 0
-  );
-
-  -- Per-channel profile: AI-generated topic notes summarising what the channel discusses.
-  CREATE TABLE IF NOT EXISTS sassy_channel_profiles (
-    channel_id   TEXT PRIMARY KEY,
-    guild_id     TEXT,
-    topic_notes  TEXT,
-    updated_at   INTEGER NOT NULL DEFAULT 0
-  );
-
   -- ── Admin dashboard: per-guild feature settings ──────────────────────────────
 
   -- One row per guild+feature combination.  channel_ids is a JSON array of
@@ -122,6 +81,33 @@ db.exec(`
     PRIMARY KEY (guild_id, feature)
   );
 `);
+
+// ── One-time cleanup: remove SassyBot AI data ─────────────────────────────────
+//
+// The SassyBot AI features (and the MCP server that exposed their data) were
+// removed. Delete everything they stored: chat logs, chat history, user and
+// channel profiles, and the per-guild SassyBot settings. Runs on every start
+// but only does work (and compacts the file) the first time.
+
+const SASSY_TABLES = [
+  'sassy_user_profiles',
+  'sassy_conversation_log',
+  'sassy_chat_history',
+  'sassy_channel_profiles',
+];
+
+const removeSassyData = db.transaction(() => {
+  const existing = SASSY_TABLES.filter(table =>
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+  for (const table of existing) db.exec(`DROP TABLE ${table}`);
+  const settings = db.prepare("DELETE FROM guild_settings WHERE feature = 'sassy'").run().changes;
+  return existing.length + settings;
+});
+
+if (removeSassyData() > 0) {
+  db.exec('VACUUM');
+  console.log('[DB] Removed SassyBot AI data');
+}
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
 

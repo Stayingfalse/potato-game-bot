@@ -113,7 +113,6 @@ describe('a game through the real command and buttons', () => {
 
   it('records stats for everyone who rolled', () => {
     assert.deepEqual(stats.scoreboard('guild-1').map(r => [r.user_id, r.wins, r.best_roll]), [['a', 1, 90], ['host', 0, 40], ['b', 0, 15]]);
-    assert.equal(stats.describe(stats.getPlayer('guild-1', 'a')), 'High Roll: 1 games, 1 wins, best roll 90.');
   });
 
   it('Play Again starts the next round; Close ends the session and archives the thread', async () => {

@@ -76,10 +76,5 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
-function describe(row) {
-  if (!row?.games_played) return null;
-  return `No More Jockeys: ${row.games_played} games, ${row.wins} wins, ${row.knockouts} successful challenges.`;
-}
 
-module.exports = { recordGame, getPlayer, scoreboard, describe };
+module.exports = { recordGame, getPlayer, scoreboard };

@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const discord = require('discord.js');
 const { user, componentInteraction, slashCommand, quietly } = require('./helpers/discord');
 
-for (const flag of ['SASSY_ENABLED', 'MCP_ENABLED', 'DASHBOARD_ENABLED']) process.env[flag] = 'false';
+process.env.DASHBOARD_ENABLED = 'false';
 
 /** Starts src/index.js without logging in to Discord and returns the client it built. */
 async function bootBot() {

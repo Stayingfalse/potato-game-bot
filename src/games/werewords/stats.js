@@ -155,11 +155,5 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
-function describe(row) {
-  if (!row?.games_played) return null;
-  const pct = Math.round((100 * row.wins) / row.games_played);
-  return `Werewords record: ${row.games_played} games, ${row.wins} wins (${pct}%).`;
-}
 
-module.exports = { recordGame, getGuildStats, getPlayer, scoreboard, describe };
+module.exports = { recordGame, getGuildStats, getPlayer, scoreboard };

@@ -132,11 +132,5 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-/** One sentence about a player's record, for the AI's user context; null if they haven't played. */
-function describe(row) {
-  if (!row?.rounds_played) return null;
-  const avg = (row.total_score / row.rounds_played).toFixed(1);
-  return `Wavelength: ${row.rounds_played} rounds, avg score ${avg}, ${row.bullseyes} bullseyes.`;
-}
 
-module.exports = { recordRound, getGuildStats, getPlayer, scoreboard, describe };
+module.exports = { recordRound, getGuildStats, getPlayer, scoreboard };
