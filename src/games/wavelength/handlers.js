@@ -23,11 +23,12 @@ const {
 const { evaluateSessionGoal } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
-const WavelengthRepository = require('../../db/WavelengthRepository');
-const { editOrSend } = require('../../games/_core/messages');
+const WavelengthRepository = require('./repository');
+const { editOrSend } = require('../_core/messages');
+
+const { MIN_PLAYERS } = require('./manager');
 
 const spectra = require('./spectra.json');
-const MIN_PLAYERS = 2;
 
 async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
@@ -173,7 +174,8 @@ async function startConfiguredRound(game, client) {
   return true;
 }
 
-async function handleWavelengthInteraction(interaction, client) {
+/** Entry point for every interaction whose customId starts with `wl_`. */
+async function handleInteraction(interaction, client) {
   const { wavelengthManager } = client;
 
   if (interaction.isModalSubmit() && interaction.customId === 'wl_rr_times_modal') {
@@ -726,7 +728,7 @@ async function handleWavelengthInteraction(interaction, client) {
 }
 
 module.exports = {
-  handleWavelengthInteraction,
+  handleInteraction,
   updateGameMessage,
   startConfiguredRound,
   scheduleGuessTimeout,

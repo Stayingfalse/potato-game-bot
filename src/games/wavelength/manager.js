@@ -1,66 +1,11 @@
 'use strict';
 
-const WavelengthRepository = require('../db/WavelengthRepository');
-const { sampleN } = require('../games/_core/random');
-const BaseGameState = require('../games/_core/BaseGameState');
-const BaseGameManager = require('../games/_core/BaseGameManager');
+const BaseGameManager = require('../_core/BaseGameManager');
+const { sampleN } = require('../_core/random');
+const WavelengthRepository = require('./repository');
+const WavelengthGameState = require('./state');
 
-class WavelengthGameState extends BaseGameState {
-  constructor(guildId, channelId, threadId, hostId, hostUsername) {
-    super(guildId, channelId, threadId, hostId, hostUsername);
-
-    // One message per round: this tracks the current round's message, which is
-    // edited as the round advances (cluing → guessing → reveal) and then left
-    // in place when the next round posts a fresh message.
-    this.roundMessageId = null;
-
-    // phase: 'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'
-    // players: userId → {id, username, avatarURL}
-
-    this.clueGiverId = null;
-    this.spectrumOptions = [];
-    this.chosenSpectrum = null;
-    this.targetPosition = null;
-    this.clue = null;
-    this.guesses = new Map();
-    this.guessTimeout = null;
-    this.autoAdvanceTimeout = null;
-    this.sessionHistory = [];
-    this.sessionMode = null;
-    this.gamePace = 'realtime';
-    this.autoAdvanceRounds = false;
-    this.clueOrderState = {
-      roundRobinIndex: 0,
-      snakeIndex: 0,
-      snakeDirection: 1,
-      clueTurnsByPlayer: {},
-    };
-  }
-
-  static fromRow(row) {
-    const game = new WavelengthGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
-    game.messageId = row.message_id;
-    game.roundMessageId = row.round_message_id ?? null;
-    game.phase = row.phase;
-    game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
-    game.clueGiverId = row.clue_giver_id;
-    game.spectrumOptions = row.spectrum_options ? JSON.parse(row.spectrum_options) : [];
-    game.chosenSpectrum = row.chosen_spectrum ? JSON.parse(row.chosen_spectrum) : null;
-    game.targetPosition = row.target_position;
-    game.clue = row.clue;
-    game.guesses = new Map(Object.entries(JSON.parse(row.guesses || '{}')));
-    game.sessionMode = row.session_mode ? JSON.parse(row.session_mode) : null;
-    game.clueOrderState = row.clue_order_state
-      ? JSON.parse(row.clue_order_state)
-      : { roundRobinIndex: 0, snakeIndex: 0, snakeDirection: 1, clueTurnsByPlayer: {} };
-    game.gameNumber = row.game_number;
-    game.sessionHistory = JSON.parse(row.session_history || '[]');
-    game.gamePace = row.game_pace ?? 'realtime';
-    game.autoAdvanceRounds = row.auto_advance_rounds === 1;
-    game._createdAt = row.created_at;
-    return game;
-  }
-}
+const MIN_PLAYERS = 2;
 
 class WavelengthManager extends BaseGameManager {
   constructor() {
@@ -230,5 +175,4 @@ class WavelengthManager extends BaseGameManager {
   }
 }
 
-module.exports = WavelengthManager;
-module.exports.WavelengthGameState = WavelengthGameState;
+module.exports = { WavelengthManager, WavelengthGameState, MIN_PLAYERS };

@@ -5,8 +5,8 @@ const {
   MessageFlags,
   PermissionFlagsBits,
 } = require('discord.js');
-const { renderGameMessage } = require('../../game/wavelength/render');
-const WavelengthRepository = require('../../db/WavelengthRepository');
+const { renderGameMessage } = require('./render');
+const WavelengthRepository = require('./repository');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
@@ -92,7 +92,7 @@ module.exports = {
       }
 
       await interaction.reply({ content: '🛑 Ending the game…', flags: MessageFlags.Ephemeral });
-      const { closeSession } = require('../../game/wavelength/phases/endGame');
+      const { closeSession } = require('./phases/endGame');
       await closeSession(game, client, `🛑 Game ended by <@${interaction.user.id}>.`);
     }
   },

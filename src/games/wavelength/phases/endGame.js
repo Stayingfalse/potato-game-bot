@@ -1,21 +1,10 @@
 'use strict';
 
 const { MessageFlags } = require('discord.js');
-const WavelengthRepository = require('../../../db/WavelengthRepository');
-const { fetchChannel, lockAndArchive } = require('../../../games/_core/threads');
-const { editMessage } = require('../../../games/_core/messages');
+const WavelengthRepository = require('../repository');
+const { fetchChannel, lockAndArchive } = require('../../_core/threads');
+const { editMessage } = require('../../_core/messages');
 const { evaluateSessionGoal, computeSessionTotals } = require('./sessionEnd');
-
-function clearGameTimers(game) {
-  if (game.guessTimeout) {
-    clearTimeout(game.guessTimeout);
-    game.guessTimeout = null;
-  }
-  if (game.autoAdvanceTimeout) {
-    clearTimeout(game.autoAdvanceTimeout);
-    game.autoAdvanceTimeout = null;
-  }
-}
 
 function scheduleAutoAdvance(game, client) {
   const goal = evaluateSessionGoal(game);
@@ -24,7 +13,7 @@ function scheduleAutoAdvance(game, client) {
   game.autoAdvanceTimeout = setTimeout(async () => {
     game.autoAdvanceTimeout = null;
     if (game.phase !== 'ended') return;
-    const { startConfiguredRound } = require('../interactionHandler');
+    const { startConfiguredRound } = require('../handlers');
     const resetGame = client.wavelengthManager.resetForRematch(game.threadId, false);
     if (!resetGame) return;
     await startConfiguredRound(resetGame, client);
@@ -37,7 +26,7 @@ function scheduleAutoAdvance(game, client) {
 async function endGame(game, client) {
   if (game.phase === 'ended') return;
   game.phase = 'ended';
-  clearGameTimers(game);
+  client.wavelengthManager.clearTimers(game);
 
   // The cluing/guessing message is a dead end once results are in — give the
   // round's outcome its own fresh message instead of editing something players
@@ -46,7 +35,7 @@ async function endGame(game, client) {
   game.roundMessageId = null;
   WavelengthRepository.upsert(game);
 
-  const { updateGameMessage } = require('../interactionHandler');
+  const { updateGameMessage } = require('../handlers');
   await updateGameMessage(game, client);
 
   if (previousRoundMessageId && game.roundMessageId && previousRoundMessageId !== game.roundMessageId) {
@@ -64,7 +53,7 @@ async function endGame(game, client) {
 async function closeSession(game, client, reason) {
   if (!game) return;
 
-  clearGameTimers(game);
+  client.wavelengthManager.clearTimers(game);
   game.phase = 'ended';
   WavelengthRepository.upsert(game);
 
@@ -101,7 +90,6 @@ async function closeSession(game, client, reason) {
 }
 
 module.exports = {
-  clearGameTimers,
   scheduleAutoAdvance,
   endGame,
   closeSession,

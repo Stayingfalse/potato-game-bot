@@ -37,30 +37,7 @@ db.exec(`
     created_at           INTEGER NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS wavelength_games (
-    thread_id            TEXT PRIMARY KEY,
-    guild_id             TEXT NOT NULL,
-    channel_id           TEXT NOT NULL,
-    host_id              TEXT NOT NULL,
-    host_username        TEXT NOT NULL,
-    message_id           TEXT,
-    round_message_id     TEXT,
-    phase                TEXT NOT NULL DEFAULT 'lobby',
-    players              TEXT NOT NULL DEFAULT '[]',
-    clue_giver_id        TEXT,
-    spectrum_options     TEXT NOT NULL DEFAULT '[]',
-    chosen_spectrum      TEXT,
-    target_position      INTEGER,
-    clue                 TEXT,
-    guesses              TEXT NOT NULL DEFAULT '{}',
-    session_mode         TEXT,
-    clue_order_state     TEXT,
-    game_number          INTEGER NOT NULL DEFAULT 1,
-    game_pace            TEXT NOT NULL DEFAULT 'realtime',
-    auto_advance_rounds  INTEGER NOT NULL DEFAULT 0,
-    session_history      TEXT NOT NULL DEFAULT '[]',
-    created_at           INTEGER NOT NULL
-  );
+  -- wavelength_games is created by src/games/wavelength/repository.js.
 
   CREATE TABLE IF NOT EXISTS cheese_thief_games (
     thread_id            TEXT PRIMARY KEY,
@@ -215,25 +192,6 @@ db.exec(`
 `);
 
 // ── Lightweight column migrations for existing installs ───────────────────────
-const wlColumns = new Set(db.prepare('PRAGMA table_info(wavelength_games)').all().map(col => col.name));
-if (!wlColumns.has('session_mode')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT');
-}
-if (!wlColumns.has('clue_order_state')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
-}
-if (!wlColumns.has('game_pace')) {
-  db.exec("ALTER TABLE wavelength_games ADD COLUMN game_pace TEXT NOT NULL DEFAULT 'realtime'");
-}
-if (!wlColumns.has('auto_advance_rounds')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN auto_advance_rounds INTEGER NOT NULL DEFAULT 0');
-}
-if (!wlColumns.has('session_history')) {
-  db.exec("ALTER TABLE wavelength_games ADD COLUMN session_history TEXT NOT NULL DEFAULT '[]'");
-}
-if (!wlColumns.has('round_message_id')) {
-  db.exec('ALTER TABLE wavelength_games ADD COLUMN round_message_id TEXT');
-}
 
 const wwColumns = new Set(db.prepare('PRAGMA table_info(werewords_games)').all().map(col => col.name));
 if (!wwColumns.has('session_mode')) {

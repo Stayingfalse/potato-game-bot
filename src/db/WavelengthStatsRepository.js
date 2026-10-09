@@ -41,7 +41,7 @@ const stmtGetGuild = db.prepare(`
  * Records per-player stats for a completed Wavelength round.
  *
  * @param {string} guildId
- * @param {import('../game/WavelengthManager').WavelengthGameState} game
+ * @param {import('../games/wavelength/state')} game
  * @param {object} scores  Output of computeScores() from reveal.js
  */
 const recordRound = db.transaction((guildId, game, scores) => {

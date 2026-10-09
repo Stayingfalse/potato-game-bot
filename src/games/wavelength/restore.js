@@ -1,16 +1,16 @@
 'use strict';
 
-const WavelengthRepository = require('../../db/WavelengthRepository');
+const WavelengthRepository = require('./repository');
 
 /** Crash recovery: reloads saved Wavelength games and re-hooks their timers and buttons. */
 async function restore(client) {
   const rows = WavelengthRepository.getAll();
   if (rows.length === 0) return;
 
-  const { WavelengthGameState } = require('../../game/WavelengthManager');
-  const { updateGameMessage, scheduleGuessTimeout } = require('../../game/wavelength/interactionHandler');
-  const { scheduleAutoAdvance } = require('../../game/wavelength/phases/endGame');
-  const { evaluateSessionGoal } = require('../../game/wavelength/phases/sessionEnd');
+  const WavelengthGameState = require('./state');
+  const { updateGameMessage, scheduleGuessTimeout } = require('./handlers');
+  const { scheduleAutoAdvance } = require('./phases/endGame');
+  const { evaluateSessionGoal } = require('./phases/sessionEnd');
 
   for (const row of rows) {
     const game = WavelengthGameState.fromRow(row);

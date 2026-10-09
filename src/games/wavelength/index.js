@@ -1,7 +1,7 @@
 'use strict';
 
-const WavelengthManager = require('../../game/WavelengthManager');
-const { handleWavelengthInteraction: handleInteraction } = require('../../game/wavelength/interactionHandler');
+const { WavelengthManager } = require('./manager');
+const { handleInteraction } = require('./handlers');
 
 /** Wavelength game manifest — see src/games/_core/registry.js for the fields. */
 module.exports = {

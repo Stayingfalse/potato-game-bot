@@ -73,7 +73,7 @@ Use NMJ/WL as the reference and normalise the details:
    - Fields: `guildId, channelId, threadId, hostId, hostUsername, messageId, phase, players: Map<id, Player>, gameNumber, _createdAt`.
    - NMJ renames: `creatorId → hostId`, `status → phase`, `players[] → Map` plus a separate `turnOrder: string[]`.
 6. **State class** with `static fromRow(row)` and `toRow()`. Restore must never hand-build objects.
-7. **Timers**: store them in `game.timers` (a `Map<name, handle>`). Use a shared `clearTimers(game)` helper, so `deleteGame` and `reset*` never list timers by hand.
+7. **Timers**: each manager lists its timer fields once (`timerKeys`), and the shared `clearTimers(game)` stops them, so `deleteGame` and `reset*` never list timers by hand.
 8. **Manager API**, the same for every game:
    - `create`, `get`, `getByHost` (ignores ended games), `delete → boolean`, `save`, `addPlayer`, `removePlayer`, `resetForRematch`.
    - Limits come from the game's `minPlayers` / `maxPlayers`.
@@ -201,11 +201,12 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - State (`state.js`, with `fromRow`/`toRow`), manager, repository and render now all live in `games/nmj/`.
 - NMJ owns its table: `games/nmj/repository.js` holds the schema and a one-time upgrade. On startup it converts saved games from the old layout inside a transaction, so games in progress carry on.
 
-**Step 4: WL.**
-- Move to `games/wavelength/`.
-- Make `deleteGame` return a boolean.
-- Make `getByHost` ignore ended games.
-- Move timers into `game.timers`.
+**Step 4: WL.** ✅ Done.
+- Everything moved to `games/wavelength/`: state (with `fromRow`/`toRow`), manager, repository (owning the table schema and its column upgrades), handlers, render, image generation, phases and spectra.
+- `deleteGame` already returned a boolean after Step 2.
+- `getByHost` deliberately still counts `'ended'` games. In Wavelength `'ended'` means a round finished and the session is waiting to rematch or close; closing deletes the game. Ignoring `'ended'` would let a host open a second session alongside the first.
+- Timers: Step 2's shared `timerKeys` cleanup replaced the `game.timers` idea. Wavelength's own duplicate `clearGameTimers` helper is gone.
+- Fixed a crash on main since `9c3dfc1`: `render.js` didn't export `createContainer`, so ending a round and closing a session both threw.
 
 **Step 5: HM.**
 - Split the 900-line event file into state, render, handlers and phases.
