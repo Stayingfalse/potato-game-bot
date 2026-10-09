@@ -844,6 +844,55 @@ async function handleMergeModal(interaction, client, game) {
   });
 }
 
+// ── Interaction dispatch ───────────────────────────────────────────────────────
+
+async function dispatch(interaction, client) {
+  const { herdMentalityManager } = client;
+
+  // ── Handle button interactions ─────────────────────────────────────────────
+  if (interaction.isButton()) {
+    const { customId, channelId } = interaction;
+
+    // Lobby buttons encode threadId in customId.
+    if (
+      customId.startsWith('hm_join_') ||
+      customId.startsWith('hm_leave_') ||
+      customId.startsWith('hm_start_') ||
+      customId.startsWith('hm_cancel_')
+    ) {
+      const threadId = customId.split('_')[2];
+      const game = herdMentalityManager.getGame(threadId);
+      return handleLobbyButtons(interaction, client, game, threadId);
+    }
+
+    // All other buttons use channelId (= threadId) to find the game.
+    const game = herdMentalityManager.getGame(channelId);
+    if (!game) {
+      return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+    }
+    return handleGameButtons(interaction, client, game);
+  }
+
+  // ── Handle modal submissions ───────────────────────────────────────────────
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'hm_answer_modal') {
+      const game = herdMentalityManager.getGame(interaction.channelId);
+      if (!game) {
+        return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+      }
+      return handleAnswerModal(interaction, client, game);
+    }
+
+    if (interaction.customId === 'hm_merge_modal') {
+      const game = herdMentalityManager.getGame(interaction.channelId);
+      if (!game) {
+        return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
+      }
+      return handleMergeModal(interaction, client, game);
+    }
+  }
+}
+
 // ── Module export (interactionCreate event) ────────────────────────────────────
 
 module.exports = {
@@ -855,49 +904,19 @@ module.exports = {
   computeReviewGroups,
 
   async execute(interaction, client) {
-    const { herdMentalityManager } = client;
+    const isOurs = (interaction.isButton() || interaction.isModalSubmit())
+      && interaction.customId.startsWith('hm_');
+    if (!isOurs) return;
 
-    // ── Handle button interactions ─────────────────────────────────────────────
-    if (interaction.isButton()) {
-      const { customId, channelId } = interaction;
-      if (!customId.startsWith('hm_')) return;
-
-      // Lobby buttons encode threadId in customId.
-      if (
-        customId.startsWith('hm_join_') ||
-        customId.startsWith('hm_leave_') ||
-        customId.startsWith('hm_start_') ||
-        customId.startsWith('hm_cancel_')
-      ) {
-        const threadId = customId.split('_')[2];
-        const game = herdMentalityManager.getGame(threadId);
-        return handleLobbyButtons(interaction, client, game, threadId);
-      }
-
-      // All other buttons use channelId (= threadId) to find the game.
-      const game = herdMentalityManager.getGame(channelId);
-      if (!game) {
-        return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
-      }
-      return handleGameButtons(interaction, client, game);
-    }
-
-    // ── Handle modal submissions ───────────────────────────────────────────────
-    if (interaction.isModalSubmit()) {
-      if (interaction.customId === 'hm_answer_modal') {
-        const game = herdMentalityManager.getGame(interaction.channelId);
-        if (!game) {
-          return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
-        }
-        return handleAnswerModal(interaction, client, game);
-      }
-
-      if (interaction.customId === 'hm_merge_modal') {
-        const game = herdMentalityManager.getGame(interaction.channelId);
-        if (!game) {
-          return interaction.reply({ content: 'There is no active Herd Mentality game here.', flags: MessageFlags.Ephemeral });
-        }
-        return handleMergeModal(interaction, client, game);
+    try {
+      return await dispatch(interaction, client);
+    } catch (error) {
+      console.error('[Herd Mentality interaction error]', error);
+      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
       }
     }
   },

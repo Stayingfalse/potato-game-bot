@@ -58,6 +58,7 @@ const FEATURES = [
   { id: 'wavelength',   label: 'Wavelength',   hasChannels: true  },
   { id: 'cheesethief',  label: 'Cheese Thief', hasChannels: true  },
   { id: 'herdmentality',label: 'Herd Mentality',hasChannels: true },
+  { id: 'nmj',          label: 'No More Jockeys', hasChannels: true },
   { id: 'birthday',     label: 'Birthdays',    hasChannels: true  },
   {
     id: 'rolemenu',

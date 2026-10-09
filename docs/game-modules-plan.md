@@ -177,7 +177,7 @@ module.exports = {
 
 Each step leaves the bot working. Do one game per PR from step 3 onwards.
 
-**Step 0: Hygiene.** Small and safe, ship first.
+**Step 0: Hygiene.** ✅ Done.
 - Delete `game/wavelength/phases/render.js`.
 - Add NMJ to the dashboard `FEATURES` list.
 - Wrap HM dispatch in try/catch.

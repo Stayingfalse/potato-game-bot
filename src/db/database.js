@@ -29,7 +29,7 @@ db.exec(`
     players              TEXT NOT NULL DEFAULT '[]',
     word                 TEXT,
     word_options         TEXT NOT NULL DEFAULT '[]',
-    tokens               TEXT NOT NULL DEFAULT '{"yes":14,"no":5,"maybe":1}',
+    tokens               TEXT NOT NULL DEFAULT '{"yes_no":36,"maybe":12,"correct":1,"so_close_way_off":2}',
     time_left            INTEGER NOT NULL DEFAULT 240,
     votes                TEXT NOT NULL DEFAULT '{}',
     game_number          INTEGER NOT NULL DEFAULT 1,

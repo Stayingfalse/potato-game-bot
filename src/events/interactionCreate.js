@@ -161,9 +161,9 @@ module.exports = {
         console.error('[Command error]', error);
         const payload = { content: '❌ An error occurred running that command.', flags: MessageFlags.Ephemeral };
         if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(payload);
+          await interaction.followUp(payload).catch(() => {});
         } else {
-          await interaction.reply(payload);
+          await interaction.reply(payload).catch(() => {});
         }
       }
       return;
