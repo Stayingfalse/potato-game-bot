@@ -2,6 +2,7 @@
 
 const NoMoreJockeysRepository = require('../db/NoMoreJockeysRepository');
 const { shuffle } = require('../games/_core/random');
+const BaseGameManager = require('../games/_core/BaseGameManager');
 
 const CHALLENGE_TOKENS_PER_PLAYER = 3;
 const MIN_PLAYERS = 3;
@@ -90,42 +91,21 @@ function deserializeChallengeState(raw) {
   return { ...raw, votes: new Map(Object.entries(raw.votes || {})) };
 }
 
-class NoMoreJockeysManager {
+class NoMoreJockeysManager extends BaseGameManager {
   constructor() {
-    /** @type {Map<string, NoMoreJockeysGameState>} */
-    this.games = new Map();
+    super({ repository: NoMoreJockeysRepository });
   }
 
   createGame(guildId, channelId, threadId, creatorId) {
-    const game = new NoMoreJockeysGameState(guildId, channelId, threadId, creatorId);
-    this.games.set(threadId, game);
-    NoMoreJockeysRepository.upsert(game);
-    return game;
+    return this.registerGame(new NoMoreJockeysGameState(guildId, channelId, threadId, creatorId));
   }
 
-  getGame(threadId) {
-    return this.games.get(threadId) ?? null;
-  }
-
+  // NMJ stores its host as `creatorId` (not `hostId`), so use this rather than getGameByHost.
   getGameByCreator(guildId, creatorId) {
     for (const game of this.games.values()) {
       if (game.guildId === guildId && game.creatorId === creatorId && game.status !== 'ended') return game;
     }
     return null;
-  }
-
-  deleteGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    NoMoreJockeysRepository.remove(threadId);
-    this.games.delete(threadId);
-    return true;
-  }
-
-  saveGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return;
-    NoMoreJockeysRepository.upsert(game);
   }
 
   addPlayer(threadId, user) {

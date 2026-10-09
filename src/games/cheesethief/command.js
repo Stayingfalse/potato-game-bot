@@ -4,7 +4,7 @@ const {
   deleteThread,
   fetchChannel,
   missingThreadPermissionsMessage,
-} = require('../games/_core/threads');
+} = require('../_core/threads');
 
 function buildLobbyEmbed(game) {
   const players = [...game.players.values()]

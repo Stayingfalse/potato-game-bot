@@ -1,9 +1,8 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const { CT_ROLES } = require('../game/CheeseThiefManager');
-const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/cheesethief');
-const { replyWithError } = require('../games/_core/errors');
-const { fetchChannel, lockAndArchive } = require('../games/_core/threads');
-const { editMessage } = require('../games/_core/messages');
+const { CT_ROLES } = require('../../game/CheeseThiefManager');
+const { buildLobbyEmbed, buildLobbyComponents } = require('./command');
+const { fetchChannel, lockAndArchive } = require('../_core/threads');
+const { editMessage } = require('../_core/messages');
 
 const WAKE_DURATION_MS = 15_000;
 const NIGHT_DELAY_MIN_MS = 5_000;
@@ -732,271 +731,266 @@ async function resumeCheeseThiefGame(game, client) {
   return true;
 }
 
+/** Entry point for every interaction whose customId starts with `ct_`. */
+async function handleInteraction(interaction, client) {
+  if (!interaction.isButton()) return;
+
+  const { customId, channelId, user } = interaction;
+
+  if (customId.startsWith('ct_join_') || customId.startsWith('ct_leave_') || customId.startsWith('ct_start_') || customId.startsWith('ct_cancel_')) {
+    const threadId = customId.split('_')[2];
+    const game = client.cheeseThiefManager.getGame(threadId);
+    return await handleLobbyButtons(interaction, client, game, threadId);
+  }
+
+  const game = client.cheeseThiefManager.getGame(channelId);
+
+  if (!game) {
+    return interaction.reply({ content: 'There is no active Cheese Thief game.', flags: MessageFlags.Ephemeral });
+  }
+
+  if (customId === 'ct_secret') {
+    const validPhases = ['playing', 'accomplice', 'discussion', 'voting'];
+    if (!validPhases.includes(game.phase)) {
+      return interaction.reply({ content: 'There is no active Cheese Thief round.', flags: MessageFlags.Ephemeral });
+    }
+    const player = game.players.get(user.id);
+    if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+
+    // Store fresh token so future REST patches can update this ephemeral
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    let payload;
+    if (game.phase === 'playing' && game.currentWakeNumber === 0) {
+      payload = buildPreNightPayload(player, game);
+    } else if (game.phase === 'playing') {
+      const awakeIds = getAwakePlayerIds(game, game.currentWakeNumber);
+      payload = awakeIds.includes(user.id)
+        ? buildWakePayload(game, player, awakeIds, game.currentWakeNumber)
+        : buildSleepPayload(player, game);
+    } else if (game.phase === 'accomplice') {
+      payload = (user.id === game.thiefId && !game.accompliceId)
+        ? buildAccomplicePickerPayload(game, player)
+        : buildSleepPayload(player, game);
+    } else if (game.phase === 'discussion') {
+      payload = buildDiscussionPayload(player, game);
+    } else {
+      payload = buildSleepPayload(player, game);
+    }
+
+    return interaction.reply({ content: payload.content, components: payload.components, flags: MessageFlags.Ephemeral });
+  }
+
+  if (customId === 'ct_ready') {
+    if (game.phase !== 'playing' || game.currentWakeNumber !== 0) {
+      return interaction.reply({ content: 'Readiness is only used before the wake sequence starts.', flags: MessageFlags.Ephemeral });
+    }
+    const player = game.players.get(user.id);
+    if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+    if (game.readyPlayers.has(user.id)) {
+      const payload = buildPreNightPayload(player, game);
+      return interaction.update({ content: payload.content, components: [] });
+    }
+
+    game.readyPlayers.add(user.id);
+    persistGame(client, game);
+
+    // Store token so future REST patches can update this ephemeral
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    const { content } = buildPreNightPayload(player, game);
+    await interaction.update({ content, components: [] }); // Remove the Ready button
+    await updateReadyEmbed(game, client);
+    await maybeStartWake(game, client);
+    return;
+  }
+
+  if (customId === 'ct_end_game') {
+    if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can end this game.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: '🛑 Host ended the game.', flags: MessageFlags.Ephemeral });
+    await endGame(game, client, 'thief_team_vote');
+    return;
+  }
+
+  if (customId.startsWith('ct_inspect_')) {
+    if (game.phase !== 'playing') return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
+    const awake = getAwakePlayerIds(game, game.currentWakeNumber);
+    if (awake.length !== 1 || awake[0] !== user.id) {
+      return interaction.reply({ content: 'Only the solo awake player can inspect right now.', flags: MessageFlags.Ephemeral });
+    }
+    const targetId = customId.split('ct_inspect_')[1];
+    const target = game.players.get(targetId);
+    if (!target || target.id === user.id) {
+      return interaction.reply({ content: 'Invalid inspect target.', flags: MessageFlags.Ephemeral });
+    }
+    const player = game.players.get(user.id);
+    if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+
+    // Add inspection result to this player's activity log
+    addToPlayerLog(game, user.id, `🔎 You inspected **${target.username}** — their die is **${target.dieValue ?? '?'}**.`);
+
+    // Store token so future REST patches can update this ephemeral
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    // Update the ephemeral in-place (log now includes the result, buttons remain)
+    const payload = buildWakePayload(game, player, awake, game.currentWakeNumber);
+    return interaction.update({ content: payload.content, components: payload.components });
+  }
+
+  if (customId === 'ct_steal_cheese') {
+    if (game.phase !== 'playing') return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
+    if (user.id !== game.thiefId) return interaction.reply({ content: 'Only the Cheese Thief can steal the cheese.', flags: MessageFlags.Ephemeral });
+    const awake = getAwakePlayerIds(game, game.currentWakeNumber);
+    if (!awake.includes(user.id)) return interaction.reply({ content: 'You can only steal while awake.', flags: MessageFlags.Ephemeral });
+    if (game.cheeseStolen) return interaction.reply({ content: 'The cheese has already been stolen.', flags: MessageFlags.Ephemeral });
+
+    game.cheeseStolen = true;
+    game.stolenAtWake = game.currentWakeNumber;
+    persistGame(client, game);
+
+    const player = game.players.get(user.id);
+    addToPlayerLog(game, user.id, `🧀 Wake ${game.currentWakeNumber}: You stole the cheese! You will choose your accomplice after all 6 nights.`);
+
+    // Store token
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    // Update ephemeral in-place (steal button disappears; log shows the theft)
+    const payload = buildWakePayload(game, player, awake, game.currentWakeNumber);
+    return interaction.update({ content: payload.content, components: payload.components });
+  }
+
+  if (customId.startsWith('ct_pick_accomplice_')) {
+    if (game.phase !== 'accomplice') return interaction.reply({ content: 'Accomplice selection is not active right now.', flags: MessageFlags.Ephemeral });
+    if (user.id !== game.thiefId) return interaction.reply({ content: 'Only the Cheese Thief can choose an accomplice.', flags: MessageFlags.Ephemeral });
+    if (game.accompliceId) return interaction.reply({ content: 'An accomplice has already been chosen.', flags: MessageFlags.Ephemeral });
+
+    const targetId = customId.split('ct_pick_accomplice_')[1];
+    const target = game.players.get(targetId);
+    if (!target || target.id === user.id) return interaction.reply({ content: 'Invalid accomplice choice.', flags: MessageFlags.Ephemeral });
+
+    target.isAccomplice = true;
+    game.accompliceId = target.id;
+    persistGame(client, game);
+
+    const thiefPlayer = game.players.get(user.id);
+    addToPlayerLog(game, user.id, `🤝 You chose **${target.username}** as your accomplice.`);
+
+    // Store token from this interaction
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    // Update thief's ephemeral in-place (remove picker buttons)
+    const thiefPayload = buildSleepPayload(thiefPlayer, game);
+    await interaction.update({ content: thiefPayload.content, components: [] });
+
+    // Notify accomplice via their ephemeral
+    addToPlayerLog(game, target.id, `🤝 You have been chosen as the **Cheese Thief's accomplice**! The Cheese Thief is <@${user.id}>. Work together!`);
+    const accomplicePayload = buildSleepPayload(target, game);
+    const ok = await tryUpdatePlayerEphemeral(client, game, target.id, accomplicePayload.content, accomplicePayload.components);
+    if (!ok) {
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (thread) await notifyReopenEphemeral(thread, [target.id]);
+    }
+
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) await startDiscussion(game, thread, client);
+    return;
+  }
+
+  if (customId === 'ct_discussion_ready') {
+    if (game.phase !== 'discussion') return interaction.reply({ content: 'Discussion is not active.', flags: MessageFlags.Ephemeral });
+    const player = game.players.get(user.id);
+    if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+    ensureDiscussionReady(game);
+    if (game.discussionReadyPlayers.has(user.id)) {
+      return interaction.reply({ content: '✅ You are already ready.', flags: MessageFlags.Ephemeral });
+    }
+    game.discussionReadyPlayers.add(user.id);
+    addToPlayerLog(game, user.id, '✅ You signalled ready for voting.');
+
+    // Store token
+    ensureEphemeralTokens(game);
+    game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
+
+    // Update ephemeral in-place (remove Ready button)
+    const payload = buildDiscussionPayload(player, game);
+    await interaction.update({ content: payload.content, components: payload.components });
+
+    await checkDiscussionReady(game, client);
+    return;
+  }
+
+  if (customId.startsWith('ct_vote_')) {
+    if (game.phase !== 'voting') return interaction.reply({ content: 'Voting is not active.', flags: MessageFlags.Ephemeral });
+    const voter = game.players.get(user.id);
+    if (!voter) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+
+    const targetId = customId.split('ct_vote_')[1];
+    if (!game.players.has(targetId)) {
+      return interaction.reply({ content: 'Invalid vote target.', flags: MessageFlags.Ephemeral });
+    }
+
+    game.votes.set(user.id, targetId);
+    persistGame(client, game);
+    return interaction.reply({ content: `🗳️ Vote recorded for <@${targetId}>.`, flags: MessageFlags.Ephemeral });
+  }
+
+  if (customId === 'ct_rematch_same' || customId === 'ct_rematch_open') {
+    if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
+    const openSignups = customId === 'ct_rematch_open';
+    const reset = client.cheeseThiefManager.resetForRematch(game.threadId, openSignups);
+    if (!reset) return interaction.reply({ content: 'Unable to reset game.', flags: MessageFlags.Ephemeral });
+
+    // Clear in-memory fields for the new round
+    game.ephemeralTokens = new Map();
+    game.playerLogs = new Map();
+    game.discussionReadyPlayers = new Set();
+
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (!thread) return interaction.reply({ content: 'Game thread no longer exists.', flags: MessageFlags.Ephemeral });
+
+    if (openSignups) {
+      const channel = await fetchChannel(client, game.channelId);
+      await editMessage(channel, game.messageId, { embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) });
+      return interaction.reply({ content: '📋 Open sign-ups enabled in the main channel lobby.', flags: MessageFlags.Ephemeral });
+    }
+
+    client.cheeseThiefManager.assignRoles(game.threadId);
+    assignDiceValues(game);
+    game.phase = 'playing';
+    persistGame(client, game);
+    const msg = await thread.send({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => null);
+    if (msg) {
+      game.readyMessageId = msg.id;
+      persistGame(client, game);
+    }
+    return interaction.reply({ content: '🔄 Rematch started. Check your secret info and ready up.', flags: MessageFlags.Ephemeral });
+  }
+
+  if (customId === 'ct_close_session') {
+    if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+    const acknowledged = await interaction.deferReply({ flags: MessageFlags.Ephemeral }).then(() => true).catch((err) => {
+      console.error('[CheeseThief] Failed to defer close-session reply:', err);
+      return false;
+    });
+    if (!acknowledged) return;
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) {
+      await thread.send({ content: '🔒 Session closed. Archiving thread.' }).catch(() => {});
+      await lockAndArchive(thread);
+    }
+    client.cheeseThiefManager.deleteGame(game.threadId);
+    return interaction.editReply({ content: '✅ Session closed.' }).catch((err) => {
+      console.error('[CheeseThief] Failed to edit close-session reply:', err);
+    });
+  }
+}
+
 module.exports = {
-  name: 'interactionCreate',
+  handleInteraction,
   resumeCheeseThiefGame,
-
-  async execute(interaction, client) {
-    if (!interaction.isButton()) return;
-
-    const { customId, channelId, user } = interaction;
-    if (!customId.startsWith('ct_')) return;
-
-    try {
-      if (customId.startsWith('ct_join_') || customId.startsWith('ct_leave_') || customId.startsWith('ct_start_') || customId.startsWith('ct_cancel_')) {
-        const threadId = customId.split('_')[2];
-        const game = client.cheeseThiefManager.getGame(threadId);
-        return await handleLobbyButtons(interaction, client, game, threadId);
-      }
-
-      const game = client.cheeseThiefManager.getGame(channelId);
-
-      if (!game) {
-        return interaction.reply({ content: 'There is no active Cheese Thief game.', flags: MessageFlags.Ephemeral });
-      }
-
-    if (customId === 'ct_secret') {
-      const validPhases = ['playing', 'accomplice', 'discussion', 'voting'];
-      if (!validPhases.includes(game.phase)) {
-        return interaction.reply({ content: 'There is no active Cheese Thief round.', flags: MessageFlags.Ephemeral });
-      }
-      const player = game.players.get(user.id);
-      if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
-
-      // Store fresh token so future REST patches can update this ephemeral
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      let payload;
-      if (game.phase === 'playing' && game.currentWakeNumber === 0) {
-        payload = buildPreNightPayload(player, game);
-      } else if (game.phase === 'playing') {
-        const awakeIds = getAwakePlayerIds(game, game.currentWakeNumber);
-        payload = awakeIds.includes(user.id)
-          ? buildWakePayload(game, player, awakeIds, game.currentWakeNumber)
-          : buildSleepPayload(player, game);
-      } else if (game.phase === 'accomplice') {
-        payload = (user.id === game.thiefId && !game.accompliceId)
-          ? buildAccomplicePickerPayload(game, player)
-          : buildSleepPayload(player, game);
-      } else if (game.phase === 'discussion') {
-        payload = buildDiscussionPayload(player, game);
-      } else {
-        payload = buildSleepPayload(player, game);
-      }
-
-      return interaction.reply({ content: payload.content, components: payload.components, flags: MessageFlags.Ephemeral });
-    }
-
-    if (customId === 'ct_ready') {
-      if (game.phase !== 'playing' || game.currentWakeNumber !== 0) {
-        return interaction.reply({ content: 'Readiness is only used before the wake sequence starts.', flags: MessageFlags.Ephemeral });
-      }
-      const player = game.players.get(user.id);
-      if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
-      if (game.readyPlayers.has(user.id)) {
-        const payload = buildPreNightPayload(player, game);
-        return interaction.update({ content: payload.content, components: [] });
-      }
-
-      game.readyPlayers.add(user.id);
-      persistGame(client, game);
-
-      // Store token so future REST patches can update this ephemeral
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      const { content } = buildPreNightPayload(player, game);
-      await interaction.update({ content, components: [] }); // Remove the Ready button
-      await updateReadyEmbed(game, client);
-      await maybeStartWake(game, client);
-      return;
-    }
-
-    if (customId === 'ct_end_game') {
-      if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can end this game.', flags: MessageFlags.Ephemeral });
-      await interaction.reply({ content: '🛑 Host ended the game.', flags: MessageFlags.Ephemeral });
-      await endGame(game, client, 'thief_team_vote');
-      return;
-    }
-
-    if (customId.startsWith('ct_inspect_')) {
-      if (game.phase !== 'playing') return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
-      const awake = getAwakePlayerIds(game, game.currentWakeNumber);
-      if (awake.length !== 1 || awake[0] !== user.id) {
-        return interaction.reply({ content: 'Only the solo awake player can inspect right now.', flags: MessageFlags.Ephemeral });
-      }
-      const targetId = customId.split('ct_inspect_')[1];
-      const target = game.players.get(targetId);
-      if (!target || target.id === user.id) {
-        return interaction.reply({ content: 'Invalid inspect target.', flags: MessageFlags.Ephemeral });
-      }
-      const player = game.players.get(user.id);
-      if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
-
-      // Add inspection result to this player's activity log
-      addToPlayerLog(game, user.id, `🔎 You inspected **${target.username}** — their die is **${target.dieValue ?? '?'}**.`);
-
-      // Store token so future REST patches can update this ephemeral
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      // Update the ephemeral in-place (log now includes the result, buttons remain)
-      const payload = buildWakePayload(game, player, awake, game.currentWakeNumber);
-      return interaction.update({ content: payload.content, components: payload.components });
-    }
-
-    if (customId === 'ct_steal_cheese') {
-      if (game.phase !== 'playing') return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
-      if (user.id !== game.thiefId) return interaction.reply({ content: 'Only the Cheese Thief can steal the cheese.', flags: MessageFlags.Ephemeral });
-      const awake = getAwakePlayerIds(game, game.currentWakeNumber);
-      if (!awake.includes(user.id)) return interaction.reply({ content: 'You can only steal while awake.', flags: MessageFlags.Ephemeral });
-      if (game.cheeseStolen) return interaction.reply({ content: 'The cheese has already been stolen.', flags: MessageFlags.Ephemeral });
-
-      game.cheeseStolen = true;
-      game.stolenAtWake = game.currentWakeNumber;
-      persistGame(client, game);
-
-      const player = game.players.get(user.id);
-      addToPlayerLog(game, user.id, `🧀 Wake ${game.currentWakeNumber}: You stole the cheese! You will choose your accomplice after all 6 nights.`);
-
-      // Store token
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      // Update ephemeral in-place (steal button disappears; log shows the theft)
-      const payload = buildWakePayload(game, player, awake, game.currentWakeNumber);
-      return interaction.update({ content: payload.content, components: payload.components });
-    }
-
-    if (customId.startsWith('ct_pick_accomplice_')) {
-      if (game.phase !== 'accomplice') return interaction.reply({ content: 'Accomplice selection is not active right now.', flags: MessageFlags.Ephemeral });
-      if (user.id !== game.thiefId) return interaction.reply({ content: 'Only the Cheese Thief can choose an accomplice.', flags: MessageFlags.Ephemeral });
-      if (game.accompliceId) return interaction.reply({ content: 'An accomplice has already been chosen.', flags: MessageFlags.Ephemeral });
-
-      const targetId = customId.split('ct_pick_accomplice_')[1];
-      const target = game.players.get(targetId);
-      if (!target || target.id === user.id) return interaction.reply({ content: 'Invalid accomplice choice.', flags: MessageFlags.Ephemeral });
-
-      target.isAccomplice = true;
-      game.accompliceId = target.id;
-      persistGame(client, game);
-
-      const thiefPlayer = game.players.get(user.id);
-      addToPlayerLog(game, user.id, `🤝 You chose **${target.username}** as your accomplice.`);
-
-      // Store token from this interaction
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      // Update thief's ephemeral in-place (remove picker buttons)
-      const thiefPayload = buildSleepPayload(thiefPlayer, game);
-      await interaction.update({ content: thiefPayload.content, components: [] });
-
-      // Notify accomplice via their ephemeral
-      addToPlayerLog(game, target.id, `🤝 You have been chosen as the **Cheese Thief's accomplice**! The Cheese Thief is <@${user.id}>. Work together!`);
-      const accomplicePayload = buildSleepPayload(target, game);
-      const ok = await tryUpdatePlayerEphemeral(client, game, target.id, accomplicePayload.content, accomplicePayload.components);
-      if (!ok) {
-        const thread = await client.channels.fetch(game.threadId).catch(() => null);
-        if (thread) await notifyReopenEphemeral(thread, [target.id]);
-      }
-
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (thread) await startDiscussion(game, thread, client);
-      return;
-    }
-
-    if (customId === 'ct_discussion_ready') {
-      if (game.phase !== 'discussion') return interaction.reply({ content: 'Discussion is not active.', flags: MessageFlags.Ephemeral });
-      const player = game.players.get(user.id);
-      if (!player) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
-      ensureDiscussionReady(game);
-      if (game.discussionReadyPlayers.has(user.id)) {
-        return interaction.reply({ content: '✅ You are already ready.', flags: MessageFlags.Ephemeral });
-      }
-      game.discussionReadyPlayers.add(user.id);
-      addToPlayerLog(game, user.id, '✅ You signalled ready for voting.');
-
-      // Store token
-      ensureEphemeralTokens(game);
-      game.ephemeralTokens.set(user.id, { token: interaction.token, applicationId: interaction.applicationId });
-
-      // Update ephemeral in-place (remove Ready button)
-      const payload = buildDiscussionPayload(player, game);
-      await interaction.update({ content: payload.content, components: payload.components });
-
-      await checkDiscussionReady(game, client);
-      return;
-    }
-
-    if (customId.startsWith('ct_vote_')) {
-      if (game.phase !== 'voting') return interaction.reply({ content: 'Voting is not active.', flags: MessageFlags.Ephemeral });
-      const voter = game.players.get(user.id);
-      if (!voter) return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
-
-      const targetId = customId.split('ct_vote_')[1];
-      if (!game.players.has(targetId)) {
-        return interaction.reply({ content: 'Invalid vote target.', flags: MessageFlags.Ephemeral });
-      }
-
-      game.votes.set(user.id, targetId);
-      persistGame(client, game);
-      return interaction.reply({ content: `🗳️ Vote recorded for <@${targetId}>.`, flags: MessageFlags.Ephemeral });
-    }
-
-    if (customId === 'ct_rematch_same' || customId === 'ct_rematch_open') {
-      if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
-      const openSignups = customId === 'ct_rematch_open';
-      const reset = client.cheeseThiefManager.resetForRematch(game.threadId, openSignups);
-      if (!reset) return interaction.reply({ content: 'Unable to reset game.', flags: MessageFlags.Ephemeral });
-
-      // Clear in-memory fields for the new round
-      game.ephemeralTokens = new Map();
-      game.playerLogs = new Map();
-      game.discussionReadyPlayers = new Set();
-
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (!thread) return interaction.reply({ content: 'Game thread no longer exists.', flags: MessageFlags.Ephemeral });
-
-      if (openSignups) {
-        const channel = await fetchChannel(client, game.channelId);
-        await editMessage(channel, game.messageId, { embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) });
-        return interaction.reply({ content: '📋 Open sign-ups enabled in the main channel lobby.', flags: MessageFlags.Ephemeral });
-      }
-
-      client.cheeseThiefManager.assignRoles(game.threadId);
-      assignDiceValues(game);
-      game.phase = 'playing';
-      persistGame(client, game);
-      const msg = await thread.send({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => null);
-      if (msg) {
-        game.readyMessageId = msg.id;
-        persistGame(client, game);
-      }
-      return interaction.reply({ content: '🔄 Rematch started. Check your secret info and ready up.', flags: MessageFlags.Ephemeral });
-    }
-
-    if (customId === 'ct_close_session') {
-      if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
-      const acknowledged = await interaction.deferReply({ flags: MessageFlags.Ephemeral }).then(() => true).catch((err) => {
-        console.error('[CheeseThief] Failed to defer close-session reply:', err);
-        return false;
-      });
-      if (!acknowledged) return;
-      const thread = await client.channels.fetch(game.threadId).catch(() => null);
-      if (thread) {
-        await thread.send({ content: '🔒 Session closed. Archiving thread.' }).catch(() => {});
-        await lockAndArchive(thread);
-      }
-      client.cheeseThiefManager.deleteGame(game.threadId);
-      return interaction.editReply({ content: '✅ Session closed.' }).catch((err) => {
-        console.error('[CheeseThief] Failed to edit close-session reply:', err);
-      });
-    }
-    } catch (error) {
-      console.error('[CheeseThief button error]', error);
-      await replyWithError(interaction);
-    }
-  },
 };

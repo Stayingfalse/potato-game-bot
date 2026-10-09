@@ -7,12 +7,11 @@ const {
   ActionRowBuilder,
   MessageFlags,
 } = require('discord.js');
-const { renderGameMessage, renderSpectatorHistory } = require('../game/nmj/render');
-const { findBestCategoryMatch } = require('../utils/fuzzyMatch');
-const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
-const { replyWithError } = require('../games/_core/errors');
-const { lockAndArchive } = require('../games/_core/threads');
-const { editOrSend } = require('../games/_core/messages');
+const { renderGameMessage, renderSpectatorHistory } = require('../../game/nmj/render');
+const { findBestCategoryMatch } = require('../../utils/fuzzyMatch');
+const { MIN_PLAYERS } = require('../../game/NoMoreJockeysManager');
+const { lockAndArchive } = require('../_core/threads');
+const { editOrSend } = require('../_core/messages');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -585,44 +584,21 @@ async function handleModal(interaction, client, game) {
   return interaction.reply({ content: 'Unknown submission.', flags: MessageFlags.Ephemeral });
 }
 
+/** Entry point for every interaction whose customId starts with `nmj_`. */
+async function handleInteraction(interaction, client) {
+  const isButton = interaction.isButton();
+  if (!isButton && !interaction.isModalSubmit()) return;
+
+  const game = client.nmjManager.getGame(interaction.channelId);
+  if (!game) {
+    return interaction.reply({ content: 'There is no active No More Jockeys game in this thread.', flags: MessageFlags.Ephemeral });
+  }
+  return isButton ? handleButton(interaction, client, game) : handleModal(interaction, client, game);
+}
+
 module.exports = {
-  name: 'interactionCreate',
+  handleInteraction,
   endGame,
   updateGameMessage,
   purgeThreadMessages,
-
-  async execute(interaction, client) {
-    const { channelId } = interaction;
-
-    if (interaction.isButton()) {
-      const { customId } = interaction;
-      if (!customId.startsWith('nmj_')) return;
-      const game = client.nmjManager.getGame(channelId);
-      if (!game) {
-        return interaction.reply({ content: 'There is no active No More Jockeys game in this thread.', flags: MessageFlags.Ephemeral });
-      }
-      try {
-        return await handleButton(interaction, client, game);
-      } catch (error) {
-        console.error('[NMJ button error]', error);
-        await replyWithError(interaction);
-      }
-      return;
-    }
-
-    if (interaction.isModalSubmit()) {
-      const { customId } = interaction;
-      if (!customId.startsWith('nmj_')) return;
-      const game = client.nmjManager.getGame(channelId);
-      if (!game) {
-        return interaction.reply({ content: 'There is no active No More Jockeys game in this thread.', flags: MessageFlags.Ephemeral });
-      }
-      try {
-        return await handleModal(interaction, client, game);
-      } catch (error) {
-        console.error('[NMJ modal error]', error);
-        await replyWithError(interaction);
-      }
-    }
-  },
 };

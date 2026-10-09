@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
-const { upsert: upsertGame } = require('../db/GameRepository');
+const { buildLobbyEmbed, buildLobbyComponents } = require('../../game/phases/lobby');
+const { upsert: upsertGame } = require('../../db/GameRepository');
 const {
   createGameThread,
   deleteThread,
   fetchChannel,
   missingThreadPermissionsMessage,
-} = require('../games/_core/threads');
+} = require('../_core/threads');
 
 module.exports = {
   data: new SlashCommandBuilder()

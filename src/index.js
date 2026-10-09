@@ -7,13 +7,10 @@ require('./db/database');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const GameManager = require('./game/GameManager');
-const { CheeseThiefManager } = require('./game/CheeseThiefManager');
-const WavelengthManager = require('./game/WavelengthManager');
-const HerdMentalityManager = require('./game/HerdMentalityManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
-const { NoMoreJockeysManager } = require('./game/NoMoreJockeysManager');
+const { getGames } = require('./games/_core/registry');
+const { loadCommands } = require('./utils/loadCommands');
 const contextRepo = require('./db/ContextRepository');
 const McpServer = require('./mcp/McpServer');
 
@@ -42,12 +39,18 @@ client.on('error', (err) => {
 });
 
 client.commands = new Collection();
-client.gameManager = new GameManager();
-client.cheeseThiefManager = new CheeseThiefManager();
-client.wavelengthManager = new WavelengthManager();
-client.herdMentalityManager = new HerdMentalityManager();
 client.birthdayManager = new BirthdayManager();
-client.nmjManager = new NoMoreJockeysManager();
+
+// ── Games ──────────────────────────────────────────────────────────────────────
+// Every folder in src/games/ is a game (see src/games/_core/registry.js). Each
+// game's manager is available as client.games.get(id).manager, and also under
+// the game's clientKey (e.g. client.nmjManager), which the game's code uses.
+client.games = new Collection();
+for (const game of getGames()) {
+  const manager = game.createManager();
+  client.games.set(game.id, { game, manager });
+  client[game.clientKey] = manager;
+}
 
 // Conditionally initialise SassyBot AI features.
 // Set SASSY_ENABLED=true and provide a GEMINI_API_KEY to activate.
@@ -91,12 +94,8 @@ if (process.env.DASHBOARD_ENABLED === 'true') {
 }
 
 // ── Load commands ──────────────────────────────────────────────────────────────
-const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
-  const command = require(path.join(commandsPath, file));
-  if (command.data && command.execute) {
-    client.commands.set(command.data.name, command);
-  }
+for (const command of loadCommands()) {
+  client.commands.set(command.data.name, command);
 }
 
 // ── Load events ────────────────────────────────────────────────────────────────

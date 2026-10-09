@@ -10,12 +10,11 @@ const {
   TextInputStyle,
   MessageFlags,
 } = require('discord.js');
-const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/herdmentality');
-const { replyWithError } = require('../games/_core/errors');
-const { fetchChannel, lockAndArchive } = require('../games/_core/threads');
-const { editMessage } = require('../games/_core/messages');
+const { buildLobbyEmbed, buildLobbyComponents } = require('./command');
+const { fetchChannel, lockAndArchive } = require('../_core/threads');
+const { editMessage } = require('../_core/messages');
 
-const questions = require('../data/herd_mentality_questions.json').questions;
+const questions = require('../../data/herd_mentality_questions.json').questions;
 
 const ANSWER_DURATION_MS = 60_000;
 
@@ -832,7 +831,8 @@ async function handleMergeModal(interaction, client, game) {
 
 // ── Interaction dispatch ───────────────────────────────────────────────────────
 
-async function dispatch(interaction, client) {
+/** Entry point for every interaction whose customId starts with `hm_`. */
+async function handleInteraction(interaction, client) {
   const { herdMentalityManager } = client;
 
   // ── Handle button interactions ─────────────────────────────────────────────
@@ -879,26 +879,11 @@ async function dispatch(interaction, client) {
   }
 }
 
-// ── Module export (interactionCreate event) ────────────────────────────────────
-
 module.exports = {
-  name: 'interactionCreate',
+  handleInteraction,
   startRound,
   buildPreviewEmbed,
   buildPreviewComponents,
   normalise,
   computeReviewGroups,
-
-  async execute(interaction, client) {
-    const isOurs = (interaction.isButton() || interaction.isModalSubmit())
-      && interaction.customId.startsWith('hm_');
-    if (!isOurs) return;
-
-    try {
-      return await dispatch(interaction, client);
-    } catch (error) {
-      console.error('[Herd Mentality interaction error]', error);
-      await replyWithError(interaction);
-    }
-  },
 };

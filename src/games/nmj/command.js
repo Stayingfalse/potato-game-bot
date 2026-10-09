@@ -1,9 +1,9 @@
 'use strict';
 
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { renderGameMessage } = require('../game/nmj/render');
-const { MIN_PLAYERS } = require('../game/NoMoreJockeysManager');
-const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../games/_core/threads');
+const { renderGameMessage } = require('../../game/nmj/render');
+const { MIN_PLAYERS } = require('../../game/NoMoreJockeysManager');
+const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -93,7 +93,7 @@ module.exports = {
       }
 
       await interaction.reply({ content: '🛑 Ending the game…', flags: MessageFlags.Ephemeral });
-      const { endGame } = require('../events/interactionCreateNMJ');
+      const { endGame } = require('./handlers');
       await endGame(game, client, `🛑 Game ended by <@${interaction.user.id}>.`);
       return;
     }

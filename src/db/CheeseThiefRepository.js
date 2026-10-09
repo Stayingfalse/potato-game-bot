@@ -1,46 +1,10 @@
 'use strict';
 
-const db = require('./database');
+const createRepository = require('../games/_core/createRepository');
 
-const stmtUpsert = db.prepare(`
-  INSERT INTO cheese_thief_games
-    (thread_id, guild_id, channel_id, host_id, host_username, message_id,
-     ready_message_id, phase, players, ready_players, votes,
-     current_wake_number, phase_ends_at, cheese_stolen, thief_id, accomplice_id,
-     stolen_at_wake, game_number, created_at)
-  VALUES
-    (@thread_id, @guild_id, @channel_id, @host_id, @host_username, @message_id,
-     @ready_message_id, @phase, @players, @ready_players, @votes,
-     @current_wake_number, @phase_ends_at, @cheese_stolen, @thief_id, @accomplice_id,
-     @stolen_at_wake, @game_number, @created_at)
-  ON CONFLICT(thread_id) DO UPDATE SET
-    guild_id            = excluded.guild_id,
-    channel_id          = excluded.channel_id,
-    host_id             = excluded.host_id,
-    host_username       = excluded.host_username,
-    message_id          = excluded.message_id,
-    ready_message_id    = excluded.ready_message_id,
-    phase               = excluded.phase,
-    players             = excluded.players,
-    ready_players       = excluded.ready_players,
-    votes               = excluded.votes,
-    current_wake_number = excluded.current_wake_number,
-    phase_ends_at       = excluded.phase_ends_at,
-    cheese_stolen       = excluded.cheese_stolen,
-    thief_id            = excluded.thief_id,
-    accomplice_id       = excluded.accomplice_id,
-    stolen_at_wake      = excluded.stolen_at_wake,
-    game_number         = excluded.game_number
-`);
-
-const stmtGetAll = db.prepare('SELECT * FROM cheese_thief_games');
-const stmtDelete = db.prepare('DELETE FROM cheese_thief_games WHERE thread_id = ?');
-
-/**
- * @param {import('../game/CheeseThiefManager').CheeseThiefGameState|object} game
- */
-function upsert(game) {
-  stmtUpsert.run({
+/** @param {import('../game/CheeseThiefManager').CheeseThiefGameState} game */
+function toRow(game) {
+  return {
     thread_id: game.threadId,
     guild_id: game.guildId,
     channel_id: game.channelId,
@@ -60,15 +24,9 @@ function upsert(game) {
     stolen_at_wake: game.stolenAtWake ?? null,
     game_number: game.gameNumber ?? 1,
     created_at: game._createdAt ?? Date.now(),
-  });
+  };
 }
 
-function getAll() {
-  return stmtGetAll.all();
-}
+const repository = createRepository({ table: 'cheese_thief_games', toRow });
 
-function remove(threadId) {
-  stmtDelete.run(threadId);
-}
-
-module.exports = { upsert, getAll, remove };
+module.exports = repository;

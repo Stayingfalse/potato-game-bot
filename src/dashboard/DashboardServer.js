@@ -32,6 +32,7 @@ const path   = require('path');
 
 const settingsRepo = require('./SettingsRepository');
 const { publishRoleMenuMessage } = require('../features/roleMenuFeature');
+const { getGames } = require('../games/_core/registry');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -52,13 +53,10 @@ const DEFAULT_SASSY_OVERRIDES = {
   activityWindowMs: parseIntWithFallback(process.env.ACTIVITY_WINDOW_MS, 60000, 1),
 };
 
-// Known bot features shown in the guild settings UI.
+// Known bot features shown in the guild settings UI: every registered game,
+// then the bot's other features.
 const FEATURES = [
-  { id: 'werewords',    label: 'Werewords',    hasChannels: true  },
-  { id: 'wavelength',   label: 'Wavelength',   hasChannels: true  },
-  { id: 'cheesethief',  label: 'Cheese Thief', hasChannels: true  },
-  { id: 'herdmentality',label: 'Herd Mentality',hasChannels: true },
-  { id: 'nmj',          label: 'No More Jockeys', hasChannels: true },
+  ...getGames().map(game => ({ id: game.id, label: game.name, hasChannels: true })),
   { id: 'birthday',     label: 'Birthdays',    hasChannels: true  },
   {
     id: 'rolemenu',

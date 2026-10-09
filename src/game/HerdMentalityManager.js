@@ -1,19 +1,16 @@
 'use strict';
 
 const HerdMentalityRepository = require('../db/HerdMentalityRepository');
+const BaseGameState = require('../games/_core/BaseGameState');
+const BaseGameManager = require('../games/_core/BaseGameManager');
 
-class HerdMentalityGameState {
+class HerdMentalityGameState extends BaseGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
-    this.guildId = guildId;
-    this.channelId = channelId;
-    this.threadId = threadId;
-    this.hostId = hostId;
-    this.hostUsername = hostUsername;
-    this.messageId = null;
+    super(guildId, channelId, threadId, hostId, hostUsername);
     this.questionMessageId = null;
 
-    this.phase = 'lobby'; // lobby | answering | reviewing | revealing | ended
-    this.players = new Map(); // userId -> { id, username, score, hasPinkCow }
+    // phase: lobby | answering | reviewing | revealing | ended
+    // players: userId -> { id, username, score, hasPinkCow }
     this.answers = new Map(); // userId -> string (raw answer)
     this.currentQuestion = null;
     this.roundNumber = 0;
@@ -23,7 +20,6 @@ class HerdMentalityGameState {
     this.phaseEndsAt = null;
 
     this.answerTimeout = null;
-    this.gameNumber = 1;
 
     // Populated during the 'reviewing' phase; null otherwise.
     // Array<{ key: string, playerIds: string[] }> where key is the normalised answer label.
@@ -33,65 +29,22 @@ class HerdMentalityGameState {
   }
 }
 
-class HerdMentalityManager {
+class HerdMentalityManager extends BaseGameManager {
   constructor() {
-    this.games = new Map();
+    super({ repository: HerdMentalityRepository, timerKeys: ['answerTimeout'], maxPlayers: 12 });
   }
 
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
-    const game = new HerdMentalityGameState(guildId, channelId, threadId, hostId, hostUsername);
-    game._createdAt = Date.now();
-    this.games.set(threadId, game);
-    HerdMentalityRepository.upsert(game);
-    return game;
+    return this.registerGame(new HerdMentalityGameState(guildId, channelId, threadId, hostId, hostUsername));
   }
 
-  getGame(threadId) {
-    return this.games.get(threadId) ?? null;
-  }
-
-  getGameByHost(guildId, hostId) {
-    for (const game of this.games.values()) {
-      if (game.guildId === guildId && game.hostId === hostId) return game;
-    }
-    return null;
-  }
-
-  deleteGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    if (game.answerTimeout) clearTimeout(game.answerTimeout);
-    HerdMentalityRepository.remove(threadId);
-    this.games.delete(threadId);
-    return true;
-  }
-
-  addPlayer(threadId, user) {
-    const game = this.games.get(threadId);
-    if (!game || game.players.has(user.id) || game.players.size >= 12) return false;
-    game.players.set(user.id, {
+  createPlayer(user) {
+    return {
       id: user.id,
       username: user.username,
       score: 0,
       hasPinkCow: false,
-    });
-    HerdMentalityRepository.upsert(game);
-    return true;
-  }
-
-  removePlayer(threadId, userId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    const removed = game.players.delete(userId);
-    if (removed) HerdMentalityRepository.upsert(game);
-    return removed;
-  }
-
-  saveGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    HerdMentalityRepository.upsert(game);
-    return true;
+    };
   }
 }
 

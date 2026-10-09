@@ -1,57 +1,10 @@
 'use strict';
 
-const db = require('./database');
+const createRepository = require('../games/_core/createRepository');
 
-// ── Prepared statements ────────────────────────────────────────────────────────
-
-const stmtUpsert = db.prepare(`
-  INSERT INTO wavelength_games
-    (thread_id, guild_id, channel_id, host_id, host_username,
-     message_id, round_message_id, phase, players, clue_giver_id,
-     spectrum_options, chosen_spectrum, target_position, clue,
-     guesses, session_mode, clue_order_state, game_number,
-     game_pace, auto_advance_rounds, session_history, created_at)
-  VALUES
-     (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
-     @message_id, @round_message_id, @phase, @players, @clue_giver_id,
-     @spectrum_options, @chosen_spectrum, @target_position, @clue,
-     @guesses, @session_mode, @clue_order_state, @game_number,
-     @game_pace, @auto_advance_rounds, @session_history, @created_at)
-  ON CONFLICT(thread_id) DO UPDATE SET
-    guild_id            = excluded.guild_id,
-    channel_id          = excluded.channel_id,
-    host_id             = excluded.host_id,
-    host_username       = excluded.host_username,
-    message_id          = excluded.message_id,
-    round_message_id    = excluded.round_message_id,
-    phase               = excluded.phase,
-    players             = excluded.players,
-    clue_giver_id       = excluded.clue_giver_id,
-    spectrum_options    = excluded.spectrum_options,
-    chosen_spectrum     = excluded.chosen_spectrum,
-    target_position     = excluded.target_position,
-    clue                = excluded.clue,
-    guesses             = excluded.guesses,
-    session_mode        = excluded.session_mode,
-    clue_order_state    = excluded.clue_order_state,
-    game_number         = excluded.game_number,
-    game_pace           = excluded.game_pace,
-    auto_advance_rounds = excluded.auto_advance_rounds,
-    session_history     = excluded.session_history
-`);
-
-const stmtGetAll = db.prepare(`SELECT * FROM wavelength_games`);
-
-const stmtDelete = db.prepare(`DELETE FROM wavelength_games WHERE thread_id = ?`);
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/**
- * Serialise a WavelengthGameState and upsert it into the DB.
- * @param {import('../game/WavelengthManager').WavelengthGameState} game
- */
-function upsert(game) {
-  stmtUpsert.run({
+/** @param {import('../game/WavelengthManager').WavelengthGameState} game */
+function toRow(game) {
+  return {
     thread_id:        game.threadId,
     guild_id:         game.guildId,
     channel_id:       game.channelId,
@@ -74,23 +27,9 @@ function upsert(game) {
     auto_advance_rounds:  game.autoAdvanceRounds ? 1 : 0,
     session_history:      JSON.stringify(game.sessionHistory ?? []),
     created_at:           game._createdAt ?? Date.now(),
-  });
+  };
 }
 
-/**
- * Return all rows (for crash recovery on startup).
- * @returns {object[]}
- */
-function getAll() {
-  return stmtGetAll.all();
-}
+const repository = createRepository({ table: 'wavelength_games', toRow });
 
-/**
- * Delete a game row by threadId.
- * @param {string} threadId
- */
-function remove(threadId) {
-  stmtDelete.run(threadId);
-}
-
-module.exports = { upsert, getAll, remove };
+module.exports = repository;

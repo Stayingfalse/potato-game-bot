@@ -1,56 +1,11 @@
 'use strict';
 
+const createRepository = require('../games/_core/createRepository');
 const db = require('./database');
 
-// ── Prepared statements ────────────────────────────────────────────────────────
-
-const stmtUpsert = db.prepare(`
-  INSERT INTO werewords_games
-    (thread_id, guild_id, channel_id, host_id, host_username,
-     message_id, board_message_id, phase, players, word, word_options,
-     tokens, time_left, votes, game_number, winner_guesser_user_id,
-     session_mode, voice_player_message_ids, created_at)
-  VALUES
-    (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
-     @message_id, @board_message_id, @phase, @players, @word, @word_options,
-     @tokens, @time_left, @votes, @game_number, @winner_guesser_user_id,
-     @session_mode, @voice_player_message_ids, @created_at)
-  ON CONFLICT(thread_id) DO UPDATE SET
-    guild_id                  = excluded.guild_id,
-    channel_id                = excluded.channel_id,
-    host_id                   = excluded.host_id,
-    host_username             = excluded.host_username,
-    message_id                = excluded.message_id,
-    board_message_id          = excluded.board_message_id,
-    phase                     = excluded.phase,
-    players                   = excluded.players,
-    word                      = excluded.word,
-    word_options              = excluded.word_options,
-    tokens                    = excluded.tokens,
-    time_left                 = excluded.time_left,
-    votes                     = excluded.votes,
-    game_number               = excluded.game_number,
-    winner_guesser_user_id    = excluded.winner_guesser_user_id,
-    session_mode              = excluded.session_mode,
-    voice_player_message_ids  = excluded.voice_player_message_ids
-`);
-
-const stmtUpdateTimeLeft = db.prepare(`
-  UPDATE werewords_games SET time_left = @time_left WHERE thread_id = @thread_id
-`);
-
-const stmtGetAll = db.prepare(`SELECT * FROM werewords_games`);
-
-const stmtDelete = db.prepare(`DELETE FROM werewords_games WHERE thread_id = ?`);
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/**
- * Serialise a GameState and upsert it into the DB.
- * @param {import('../game/GameManager').GameState} game
- */
-function upsert(game) {
-  stmtUpsert.run({
+/** @param {import('../game/GameManager').GameState} game */
+function toRow(game) {
+  return {
     thread_id:               game.threadId,
     guild_id:                game.guildId,
     channel_id:              game.channelId,
@@ -70,8 +25,14 @@ function upsert(game) {
     session_mode:            game.sessionMode ?? null,
     voice_player_message_ids: JSON.stringify(Object.fromEntries(game.voicePlayerMessageIds ?? new Map())),
     created_at:              game._createdAt ?? Date.now(),
-  });
+  };
 }
+
+const repository = createRepository({ table: 'werewords_games', toRow });
+
+const stmtUpdateTimeLeft = db.prepare(`
+  UPDATE werewords_games SET time_left = @time_left WHERE thread_id = @thread_id
+`);
 
 /**
  * Lightweight update for just the time_left column (called on every board refresh).
@@ -82,20 +43,4 @@ function updateTimeLeft(threadId, timeLeft) {
   stmtUpdateTimeLeft.run({ thread_id: threadId, time_left: timeLeft });
 }
 
-/**
- * Return all rows (for crash recovery on startup).
- * @returns {object[]}
- */
-function getAll() {
-  return stmtGetAll.all();
-}
-
-/**
- * Delete a game row by threadId.
- * @param {string} threadId
- */
-function remove(threadId) {
-  stmtDelete.run(threadId);
-}
-
-module.exports = { upsert, updateTimeLeft, getAll, remove };
+module.exports = { ...repository, updateTimeLeft };

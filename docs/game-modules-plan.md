@@ -188,16 +188,17 @@ Each step leaves the bot working. Do one game per PR from step 3 onwards.
 - Add `_core/random.js`, `errors.js`, `threads.js` and `messages.js`.
 - Replace the duplicated shuffle, error-reply and permission-message code in all 5 games.
 
-**Step 2: Base classes and registry.**
-- Add `BaseGameState` (fields, timers, `fromRow`/`toRow` helpers), `BaseGameManager` and `createRepository`.
-- Add the registry and router, then register the 5 existing games through **thin adapter manifests** that point at their current files.
-- Switch `index.js`, `restore.js`, `deploy-commands.js` and the dashboard to iterate the registry.
-- Keep the `client.xManager` aliases.
-- Collapse the 4 `interactionCreate` listeners into the router.
+**Step 2: Base classes and registry.** ✅ Done.
+- Added `BaseGameState`, `BaseGameManager` and `createRepository`. All five managers and repositories now use them. NMJ's state class keeps its own shape until Step 3.
+- Added the registry and router. Each game now has `src/games/<id>/` with `index.js` (manifest), `command.js`, `handlers.js` (Wavelength's handler is still in `game/wavelength/`) and `restore.js`.
+- `index.js`, `db/restore.js`, `deploy-commands.js` and the dashboard iterate the registry.
+- The `client.xManager` aliases are kept; managers are also at `client.games.get(id).manager`.
+- The 4 `interactionCreate` listeners are now one listener plus the router.
 
 **Step 3: NMJ to the reference shape.** It's already closest.
 - Rename `creatorId/status/players[]` → `hostId/phase/Map` with a DB migration.
-- Move its handler into `games/nmj/handlers.js`.
+- Make its state extend `BaseGameState` with `fromRow`/`toRow`.
+- Move `game/nmj/render.js` and the manager into `games/nmj/`.
 - This proves the template.
 
 **Step 4: WL.**

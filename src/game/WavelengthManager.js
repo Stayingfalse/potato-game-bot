@@ -2,26 +2,20 @@
 
 const WavelengthRepository = require('../db/WavelengthRepository');
 const { sampleN } = require('../games/_core/random');
+const BaseGameState = require('../games/_core/BaseGameState');
+const BaseGameManager = require('../games/_core/BaseGameManager');
 
-class WavelengthGameState {
+class WavelengthGameState extends BaseGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
-    this.guildId = guildId;
-    this.channelId = channelId;
-    this.threadId = threadId;
-    this.hostId = hostId;
-    this.hostUsername = hostUsername;
+    super(guildId, channelId, threadId, hostId, hostUsername);
 
-    this.messageId = null;
     // One message per round: this tracks the current round's message, which is
     // edited as the round advances (cluing → guessing → reveal) and then left
     // in place when the next round posts a fresh message.
     this.roundMessageId = null;
 
-    /** @type {'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'} */
-    this.phase = 'lobby';
-
-    /** @type {Map<string, {id:string, username:string, avatarURL:string}>} */
-    this.players = new Map();
+    // phase: 'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'
+    // players: userId → {id, username, avatarURL}
 
     this.clueGiverId = null;
     this.spectrumOptions = [];
@@ -31,7 +25,6 @@ class WavelengthGameState {
     this.guesses = new Map();
     this.guessTimeout = null;
     this.autoAdvanceTimeout = null;
-    this.gameNumber = 1;
     this.sessionHistory = [];
     this.sessionMode = null;
     this.gamePace = 'realtime';
@@ -69,57 +62,24 @@ class WavelengthGameState {
   }
 }
 
-class WavelengthManager {
+class WavelengthManager extends BaseGameManager {
   constructor() {
-    this.games = new Map();
+    super({
+      repository: WavelengthRepository,
+      timerKeys: ['guessTimeout', 'autoAdvanceTimeout'],
+      maxPlayers: 20,
+    });
   }
 
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
-    const game = new WavelengthGameState(guildId, channelId, threadId, hostId, hostUsername);
-    game._createdAt = Date.now();
-    this.games.set(threadId, game);
-    WavelengthRepository.upsert(game);
-    return game;
-  }
-
-  getGame(threadId) {
-    return this.games.get(threadId) ?? null;
-  }
-
-  getGameByHost(guildId, hostId) {
-    for (const game of this.games.values()) {
-      if (game.guildId === guildId && game.hostId === hostId) return game;
-    }
-    return null;
-  }
-
-  deleteGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return;
-    if (game.guessTimeout) {
-      clearTimeout(game.guessTimeout);
-      game.guessTimeout = null;
-    }
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
-    WavelengthRepository.remove(threadId);
-    this.games.delete(threadId);
+    return this.registerGame(new WavelengthGameState(guildId, channelId, threadId, hostId, hostUsername));
   }
 
   resetForRematch(threadId, openSignups) {
     const game = this.games.get(threadId);
     if (!game) return null;
 
-    if (game.guessTimeout) {
-      clearTimeout(game.guessTimeout);
-      game.guessTimeout = null;
-    }
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
+    this.clearTimers(game);
 
     game.gameNumber++;
     game.phase = openSignups ? 'lobby' : 'cluing';
@@ -138,14 +98,7 @@ class WavelengthManager {
     const game = this.games.get(threadId);
     if (!game) return null;
 
-    if (game.guessTimeout) {
-      clearTimeout(game.guessTimeout);
-      game.guessTimeout = null;
-    }
-    if (game.autoAdvanceTimeout) {
-      clearTimeout(game.autoAdvanceTimeout);
-      game.autoAdvanceTimeout = null;
-    }
+    this.clearTimers(game);
 
     game.gameNumber = 1;
     game.phase = openSignups ? 'lobby' : 'setup';
@@ -202,26 +155,12 @@ class WavelengthManager {
     return game;
   }
 
-  addPlayer(threadId, user) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    if (game.players.has(user.id)) return false;
-    if (game.players.size >= 20) return false;
-    game.players.set(user.id, {
+  createPlayer(user) {
+    return {
       id: user.id,
       username: user.username,
       avatarURL: user.displayAvatarURL({ extension: 'png', size: 128, forceStatic: true }),
-    });
-    WavelengthRepository.upsert(game);
-    return true;
-  }
-
-  removePlayer(threadId, userId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    const removed = game.players.delete(userId);
-    if (removed) WavelengthRepository.upsert(game);
-    return removed;
+    };
   }
 
   startGame(threadId, spectraPool) {

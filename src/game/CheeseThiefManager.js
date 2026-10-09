@@ -1,18 +1,14 @@
 const CheeseThiefRepository = require('../db/CheeseThiefRepository');
 const { shuffle } = require('../games/_core/random');
+const BaseGameState = require('../games/_core/BaseGameState');
+const BaseGameManager = require('../games/_core/BaseGameManager');
 
-class CheeseThiefGameState {
+class CheeseThiefGameState extends BaseGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
-    this.guildId = guildId;
-    this.channelId = channelId;
-    this.threadId = threadId;
-    this.hostId = hostId;
-    this.hostUsername = hostUsername;
-    this.messageId = null;
+    super(guildId, channelId, threadId, hostId, hostUsername);
     this.readyMessageId = null;
 
-    this.phase = 'lobby'; // lobby|playing|accomplice|discussion|voting|ended
-    this.players = new Map();
+    // phase: lobby|playing|accomplice|discussion|voting|ended
     this.readyPlayers = new Set();
     this.votes = new Map();
 
@@ -31,7 +27,6 @@ class CheeseThiefGameState {
     this.wakeTimeout = null;
     this.accompliceTimeout = null;
     this.revealTimeout = null;
-    this.gameNumber = 1;
   }
 }
 
@@ -50,61 +45,27 @@ function assignCheeseThiefRoles(players) {
   return result;
 }
 
-class CheeseThiefManager {
+class CheeseThiefManager extends BaseGameManager {
   constructor() {
-    this.games = new Map();
+    super({
+      repository: CheeseThiefRepository,
+      timerKeys: ['wakeTimeout', 'accompliceTimeout', 'revealTimeout'],
+      maxPlayers: 10,
+    });
   }
 
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
-    const game = new CheeseThiefGameState(guildId, channelId, threadId, hostId, hostUsername);
-    game._createdAt = Date.now();
-    this.games.set(threadId, game);
-    CheeseThiefRepository.upsert(game);
-    return game;
+    return this.registerGame(new CheeseThiefGameState(guildId, channelId, threadId, hostId, hostUsername));
   }
 
-  getGame(threadId) {
-    return this.games.get(threadId) ?? null;
-  }
-
-  getGameByHost(guildId, hostId) {
-    for (const game of this.games.values()) {
-      if (game.guildId === guildId && game.hostId === hostId) return game;
-    }
-    return null;
-  }
-
-  deleteGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    if (game.wakeTimeout)       clearTimeout(game.wakeTimeout);
-    if (game.accompliceTimeout) clearTimeout(game.accompliceTimeout);
-    if (game.revealTimeout)     clearTimeout(game.revealTimeout);
-    CheeseThiefRepository.remove(threadId);
-    this.games.delete(threadId);
-    return true;
-  }
-
-  addPlayer(threadId, user) {
-    const game = this.games.get(threadId);
-    if (!game || game.players.has(user.id) || game.players.size >= 10) return false;
-    game.players.set(user.id, {
+  createPlayer(user) {
+    return {
       id: user.id,
       username: user.username,
       role: null,
       dieValue: null,
       isAccomplice: false,
-    });
-    CheeseThiefRepository.upsert(game);
-    return true;
-  }
-
-  removePlayer(threadId, userId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    const removed = game.players.delete(userId);
-    if (removed) CheeseThiefRepository.upsert(game);
-    return removed;
+    };
   }
 
   assignRoles(threadId) {
@@ -123,9 +84,7 @@ class CheeseThiefManager {
     const game = this.games.get(threadId);
     if (!game) return null;
 
-    if (game.wakeTimeout)       { clearTimeout(game.wakeTimeout);       game.wakeTimeout       = null; }
-    if (game.accompliceTimeout) { clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
-    if (game.revealTimeout)     { clearTimeout(game.revealTimeout);     game.revealTimeout     = null; }
+    this.clearTimers(game);
 
     game.gameNumber += 1;
     game.phase = openSignups ? 'lobby' : 'playing';
@@ -152,13 +111,6 @@ class CheeseThiefManager {
 
     CheeseThiefRepository.upsert(game);
     return game;
-  }
-
-  saveGame(threadId) {
-    const game = this.games.get(threadId);
-    if (!game) return false;
-    CheeseThiefRepository.upsert(game);
-    return true;
   }
 }
 

@@ -1,46 +1,10 @@
 'use strict';
 
-const db = require('./database');
+const createRepository = require('../games/_core/createRepository');
 
-const stmtUpsert = db.prepare(`
-  INSERT INTO herd_mentality_games
-    (thread_id, guild_id, channel_id, host_id, host_username, message_id,
-     question_message_id, phase, players, answers, current_question, round_number,
-     pink_cow_holder_id, target_score, used_questions, phase_ends_at,
-     game_number, review_groups, created_at)
-  VALUES
-    (@thread_id, @guild_id, @channel_id, @host_id, @host_username, @message_id,
-     @question_message_id, @phase, @players, @answers, @current_question, @round_number,
-     @pink_cow_holder_id, @target_score, @used_questions, @phase_ends_at,
-     @game_number, @review_groups, @created_at)
-  ON CONFLICT(thread_id) DO UPDATE SET
-    guild_id             = excluded.guild_id,
-    channel_id           = excluded.channel_id,
-    host_id              = excluded.host_id,
-    host_username        = excluded.host_username,
-    message_id           = excluded.message_id,
-    question_message_id  = excluded.question_message_id,
-    phase                = excluded.phase,
-    players              = excluded.players,
-    answers              = excluded.answers,
-    current_question     = excluded.current_question,
-    round_number         = excluded.round_number,
-    pink_cow_holder_id   = excluded.pink_cow_holder_id,
-    target_score         = excluded.target_score,
-    used_questions       = excluded.used_questions,
-    phase_ends_at        = excluded.phase_ends_at,
-    game_number          = excluded.game_number,
-    review_groups        = excluded.review_groups
-`);
-
-const stmtGetAll = db.prepare('SELECT * FROM herd_mentality_games');
-const stmtDelete = db.prepare('DELETE FROM herd_mentality_games WHERE thread_id = ?');
-
-/**
- * @param {object} game  HerdMentalityGameState-shaped object
- */
-function upsert(game) {
-  stmtUpsert.run({
+/** @param {import('../game/HerdMentalityManager').HerdMentalityGameState} game */
+function toRow(game) {
+  return {
     thread_id:           game.threadId,
     guild_id:            game.guildId,
     channel_id:          game.channelId,
@@ -60,15 +24,9 @@ function upsert(game) {
     game_number:         game.gameNumber ?? 1,
     review_groups:       game.reviewGroups ? JSON.stringify(game.reviewGroups) : null,
     created_at:          game._createdAt ?? Date.now(),
-  });
+  };
 }
 
-function getAll() {
-  return stmtGetAll.all();
-}
+const repository = createRepository({ table: 'herd_mentality_games', toRow });
 
-function remove(threadId) {
-  stmtDelete.run(threadId);
-}
-
-module.exports = { upsert, getAll, remove };
+module.exports = repository;
