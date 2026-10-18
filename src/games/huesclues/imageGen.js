@@ -1,0 +1,352 @@
+'use strict';
+
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const https = require('https');
+const { ROWS, COLS, ROW_LABELS, cellColor, formatCell } = require('./board');
+
+const CELL = 30;
+const LABEL_W = 30;
+const LABEL_H = 24;
+const PAD = 14;
+const TITLE_H = 46;
+const BOARD_X = PAD + LABEL_W;
+const BOARD_W = COLS * CELL;
+const BOARD_H = ROWS * CELL;
+const W = BOARD_X + BOARD_W + PAD;
+const SCORE_ROW_H = 34;
+
+const BACKGROUND = '#14151f';
+const TEXT = '#FFFFFF';
+const MUTED = '#9AA0B4';
+/** Ring colours: first token, second token, and the square you're still lining up. */
+const RING = { 1: '#FFFFFF', 2: '#F1C40F', draft: '#FF4FD8' };
+
+// ── Avatars ────────────────────────────────────────────────────────────────────
+
+/** Avatars are fetched once per URL; failures are remembered too, so a bad URL isn't retried on every nudge. */
+const avatarCache = new Map();
+const AVATAR_CACHE_LIMIT = 200;
+
+function fetchBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, res => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    });
+    req.setTimeout(3_000, () => req.destroy(new Error(`Timed out fetching ${url}`)));
+    req.on('error', reject);
+  });
+}
+
+function loadAvatar(url) {
+  if (!url) return Promise.resolve(null);
+  if (!avatarCache.has(url)) {
+    if (avatarCache.size >= AVATAR_CACHE_LIMIT) avatarCache.delete(avatarCache.keys().next().value);
+    avatarCache.set(url, fetchBuffer(url).then(loadImage).catch(() => null));
+  }
+  return avatarCache.get(url);
+}
+
+/** A stable colour per name, for avatars that couldn't be loaded. */
+function fallbackColor(name) {
+  let hash = 0;
+  for (const ch of String(name)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 45%)`;
+}
+
+async function drawAvatar(ctx, { avatarURL, username }, x, y, radius, ringColor) {
+  const img = await loadAvatar(avatarURL);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  if (img) {
+    ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
+  } else {
+    ctx.fillStyle = fallbackColor(username);
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    ctx.fillStyle = TEXT;
+    ctx.font = `bold ${Math.round(radius * 1.1)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(username ?? '?').charAt(0).toUpperCase(), x, y + 1);
+  }
+  ctx.restore();
+
+  if (ringColor) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 1.5, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000000';
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ringColor;
+    ctx.stroke();
+  }
+}
+
+// ── Board ──────────────────────────────────────────────────────────────────────
+
+function cellOrigin({ row, col }, boardY) {
+  return { x: BOARD_X + col * CELL, y: boardY + row * CELL };
+}
+
+function drawBoard(ctx, boardY) {
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const { x, y } = cellOrigin({ row, col }, boardY);
+      ctx.fillStyle = cellColor({ row, col });
+      ctx.fillRect(x, y, CELL, CELL);
+    }
+  }
+
+  ctx.fillStyle = MUTED;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let col = 0; col < COLS; col++) {
+    ctx.fillText(String(col + 1), BOARD_X + col * CELL + CELL / 2, boardY - LABEL_H / 2);
+  }
+  for (let row = 0; row < ROWS; row++) {
+    ctx.fillText(ROW_LABELS[row], PAD + LABEL_W / 2, boardY + row * CELL + CELL / 2);
+  }
+}
+
+function drawTitle(ctx, title, legend) {
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(truncate(ctx, title ?? '', BOARD_W * 0.62), BOARD_X, PAD + TITLE_H / 2 - 4);
+
+  if (!legend) return;
+  ctx.font = '13px sans-serif';
+  let x = W - PAD;
+  for (const [label, color] of [...legend].reverse()) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = MUTED;
+    ctx.fillText(label, x, PAD + TITLE_H / 2 - 4);
+    x -= ctx.measureText(label).width + 16;
+    ctx.beginPath();
+    ctx.arc(x + 6, PAD + TITLE_H / 2 - 4, 6, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    x -= 18;
+  }
+}
+
+function truncate(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let cut = text;
+  while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) cut = cut.slice(0, -1);
+  return `${cut}…`;
+}
+
+/** Positions (relative to the cell centre) and radius for `count` tokens sharing a cell. */
+function tokenLayout(count) {
+  if (count === 1) return { radius: 12, offsets: [[0, 0]] };
+  if (count === 2) return { radius: 8, offsets: [[-7, 0], [7, 0]] };
+  return { radius: 7, offsets: [[-7, -7], [7, -7], [-7, 7], [7, 7]] };
+}
+
+/** Draws tokens, grouping any that share a cell. Each token: { cell, avatarURL, username, ring }. */
+async function drawTokens(ctx, tokens, boardY) {
+  const byCell = new Map();
+  for (const token of tokens) {
+    if (!token.cell) continue;
+    const key = formatCell(token.cell);
+    if (!byCell.has(key)) byCell.set(key, []);
+    byCell.get(key).push(token);
+  }
+
+  for (const group of byCell.values()) {
+    const { x, y } = cellOrigin(group[0].cell, boardY);
+    const cx = x + CELL / 2;
+    const cy = y + CELL / 2;
+    const { radius, offsets } = tokenLayout(group.length);
+    const shown = group.length > 4 ? group.slice(0, 3) : group;
+    for (const [i, token] of shown.entries()) {
+      await drawAvatar(ctx, token, cx + offsets[i][0], cy + offsets[i][1], radius, RING[token.ring]);
+    }
+    if (group.length > 4) {
+      const [ox, oy] = offsets[3];
+      ctx.beginPath();
+      ctx.arc(cx + ox, cy + oy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+      ctx.fillStyle = TEXT;
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`+${group.length - 3}`, cx + ox, cy + oy);
+    }
+  }
+}
+
+function strokeCells(ctx, target, reach, boardY, style) {
+  const top = Math.max(0, target.row - reach);
+  const left = Math.max(0, target.col - reach);
+  const bottom = Math.min(ROWS - 1, target.row + reach);
+  const right = Math.min(COLS - 1, target.col + reach);
+  const { x, y } = cellOrigin({ row: top, col: left }, boardY);
+  ctx.save();
+  ctx.lineWidth = style.width;
+  ctx.strokeStyle = style.color;
+  ctx.setLineDash(style.dash ?? []);
+  ctx.strokeRect(x, y, (right - left + 1) * CELL, (bottom - top + 1) * CELL);
+  ctx.restore();
+}
+
+/** The official scoring frame: the target, the 3×3 frame and the ring touching it. */
+function drawScoringFrame(ctx, target, boardY) {
+  strokeCells(ctx, target, 2, boardY, { width: 2, color: '#FFFFFF', dash: [5, 4] });
+  strokeCells(ctx, target, 1, boardY, { width: 4, color: '#000000' });
+  strokeCells(ctx, target, 1, boardY, { width: 2, color: '#FFFFFF' });
+  strokeCells(ctx, target, 0, boardY, { width: 3, color: '#F1C40F' });
+}
+
+function newCanvas(extraHeight = 0) {
+  const height = PAD + TITLE_H + LABEL_H + BOARD_H + PAD + extraHeight;
+  const canvas = createCanvas(W, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = BACKGROUND;
+  ctx.fillRect(0, 0, W, height);
+  return { canvas, ctx, boardY: PAD + TITLE_H + LABEL_H };
+}
+
+const TOKEN_LEGEND = [['1st token', RING[1]], ['2nd token', RING[2]]];
+
+/**
+ * The board with tokens on it: a guesser's preview, or everyone's first tokens.
+ * @param {object} options
+ * @param {string} options.title
+ * @param {Array<{cell, avatarURL, username, ring: 1|2|'draft'}>} options.tokens
+ */
+async function generateBoardImage({ title, tokens }) {
+  const { canvas, ctx, boardY } = newCanvas();
+  drawTitle(ctx, title, tokens.some(t => t.ring === 'draft') ? [...TOKEN_LEGEND, ['yours', RING.draft]] : TOKEN_LEGEND);
+  drawBoard(ctx, boardY);
+  await drawTokens(ctx, tokens, boardY);
+  return canvas.toBuffer('image/png');
+}
+
+/**
+ * The reveal: every token, the scoring frame around the target, and the score box.
+ * @param {object} options
+ * @param {string} options.title
+ * @param {{row, col}} options.target
+ * @param {Array<{cell, avatarURL, username, ring: 1|2}>} options.tokens
+ * @param {Array<{avatarURL, username, turnPoints: number, total: number, isCueGiver: boolean}>} options.scoreRows
+ *   in standings order
+ */
+async function generateRevealImage({ title, target, tokens, scoreRows }) {
+  const scoreBoxH = 44 + scoreRows.length * SCORE_ROW_H + PAD;
+  const { canvas, ctx, boardY } = newCanvas(scoreBoxH);
+  drawTitle(ctx, title, TOKEN_LEGEND);
+  drawBoard(ctx, boardY);
+  drawScoringFrame(ctx, target, boardY);
+  await drawTokens(ctx, tokens, boardY);
+  await drawScoreBox(ctx, boardY + BOARD_H + PAD, scoreRows);
+  return canvas.toBuffer('image/png');
+}
+
+async function drawScoreBox(ctx, top, rows) {
+  const x = BOARD_X;
+  const width = BOARD_W;
+  ctx.fillStyle = '#1f2133';
+  roundRect(ctx, x, top, width, 36 + rows.length * SCORE_ROW_H, 10);
+  ctx.fill();
+
+  const colTurn = x + width - 150;
+  const colTotal = x + width - 24;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = MUTED;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORES', x + 16, top + 18);
+  ctx.textAlign = 'right';
+  ctx.fillText('THIS TURN', colTurn, top + 18);
+  ctx.fillText('TOTAL', colTotal, top + 18);
+
+  for (const [i, row] of rows.entries()) {
+    const cy = top + 36 + i * SCORE_ROW_H + SCORE_ROW_H / 2;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillStyle = MUTED;
+    ctx.textAlign = 'left';
+    ctx.fillText(`${i + 1}.`, x + 16, cy);
+    await drawAvatar(ctx, row, x + 58, cy, 12, null);
+    ctx.fillStyle = TEXT;
+    ctx.textAlign = 'left';
+    const name = row.isCueGiver ? `${row.username}  (cue giver)` : row.username;
+    ctx.fillText(truncate(ctx, name, colTurn - x - 220), x + 80, cy);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = row.turnPoints > 0 ? '#2ECC71' : MUTED;
+    ctx.fillText(`+${row.turnPoints}`, colTurn, cy);
+    ctx.fillStyle = TEXT;
+    ctx.font = 'bold 17px sans-serif';
+    ctx.fillText(String(row.total), colTotal, cy);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ── The cue giver's card ───────────────────────────────────────────────────────
+
+const SWATCH_W = 170;
+const SWATCH_H = 170;
+const SWATCH_GAP = 18;
+
+/** The cue giver's four colours with their grid refs; the chosen one (if any) is highlighted. */
+async function generateCardImage(card, targetIndex = null) {
+  const width = PAD * 2 + card.length * SWATCH_W + (card.length - 1) * SWATCH_GAP;
+  const height = PAD * 2 + SWATCH_H + 64;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = BACKGROUND;
+  ctx.fillRect(0, 0, width, height);
+
+  for (const [i, cell] of card.entries()) {
+    const x = PAD + i * (SWATCH_W + SWATCH_GAP);
+    const y = PAD + 8;
+    const chosen = i === targetIndex;
+    ctx.globalAlpha = targetIndex === null || chosen ? 1 : 0.35;
+    ctx.fillStyle = cellColor(cell);
+    roundRect(ctx, x, y, SWATCH_W, SWATCH_H, 14);
+    ctx.fill();
+    if (chosen) {
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#F1C40F';
+      ctx.stroke();
+    }
+    ctx.fillStyle = TEXT;
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${i + 1} · ${formatCell(cell)}`, x + SWATCH_W / 2, y + SWATCH_H + 24);
+    if (chosen) {
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = '#F1C40F';
+      ctx.fillText('YOUR COLOUR', x + SWATCH_W / 2, y + SWATCH_H + 46);
+    }
+    ctx.globalAlpha = 1;
+  }
+  return canvas.toBuffer('image/png');
+}
+
+module.exports = { generateBoardImage, generateRevealImage, generateCardImage };
