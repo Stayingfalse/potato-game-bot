@@ -8,6 +8,9 @@ services:
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       CLIENT_ID: ${CLIENT_ID}
+      # Slash commands deploy automatically on start when they've changed.
+      # Set to "false" to deploy only with `npm run deploy`.
+      # AUTO_DEPLOY_COMMANDS: "true"
       # ── Admin Dashboard (optional) ────────────────────────────────────────
       # Uncomment and configure to enable the web admin dashboard.
       # See .env.example for full documentation.
