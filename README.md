@@ -65,6 +65,27 @@ A party game of celebrities and ever-growing rules: each turn bans a new categor
 - 📊 Stats: wins, knock-outs and challenges
 - 👥 3 or more players
 
+### Hues & Clues 🎨
+
+A colour-guessing party game played on a 480-colour board (rows A–P, columns 1–30). One player describes a colour; everyone else tries to find it.
+
+**How to Play:**
+- Use `/huesclues start` in any channel to open a public game thread, and `/huesclues end` inside that thread to end it early
+- When the game starts the cue giver order is shuffled, and the host chooses how the session ends
+- The **cue giver** draws a card of four colours, picks one, and gives a **one-word** clue (no basic colour names or grid refs)
+- Everyone else places a token: type a grid ref (like `F12`) and fine-tune it with the arrow buttons on a preview of the board, then lock in
+- Once every token is in, the board is shown to everyone and the cue giver can add a **second clue** of up to two words, or say nothing more. Everyone then places a second token, which can't go on a square that already has a first token
+- Each token scores **3** on the colour, **2** inside the 3×3 frame around it and **1** touching the frame. The cue giver scores **1** for every token inside the frame
+- The results image shows every token, the scoring frame and the running totals, then the next cue giver takes a turn
+
+**Features:**
+- 🖼️ Generated board, card and results images, with players' profile pictures as tokens
+- 🏆 Session modes: Everyone gives X clues, First to X points, and Endless
+- 🔄 Auto-advance to the next turn (on by default, can be switched off)
+- ⏩ The host can lock in the remaining tokens if someone is away
+- 📊 Stats: total score, bullseyes and turns as cue giver
+- 👥 Supports 2-10 players
+
 ## 🎉 Additional Features
 
 ### Birthday Announcements 🎂

@@ -29,7 +29,7 @@ before(() => {
 describe('stats across games', () => {
   it('every current game provides the stats hook', () => {
     const withStats = getGames().filter(game => game.stats);
-    assert.deepEqual(withStats.map(g => g.id), ['werewords', 'wavelength', 'nmj']);
+    assert.deepEqual(withStats.map(g => g.id), ['werewords', 'wavelength', 'nmj', 'huesclues']);
     for (const game of withStats) {
       assert.equal(typeof game.stats.getPlayer, 'function', game.id);
       assert.equal(typeof game.stats.scoreboard, 'function', game.id);
@@ -38,7 +38,7 @@ describe('stats across games', () => {
 
   it('a fresh database gets each game\'s stats table', () => {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%player_stats'").all().map(t => t.name).sort();
-    assert.deepEqual(tables, ['nmj_player_stats', 'wavelength_player_stats', 'werewords_player_stats']);
+    assert.deepEqual(tables, ['huesclues_player_stats', 'nmj_player_stats', 'wavelength_player_stats', 'werewords_player_stats']);
   });
 
   it('reads a player\'s row from each game, or null', () => {
