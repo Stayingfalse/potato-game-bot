@@ -16,6 +16,7 @@ const BOARD_W = COLS * CELL;
 const BOARD_H = ROWS * CELL;
 const W = BOARD_X + BOARD_W + PAD;
 const SCORE_ROW_H = 34;
+const SWATCH = { w: 58, h: 24, gap: 10 };
 
 const BACKGROUND = '#14151f';
 const TEXT = '#FFFFFF';
@@ -257,7 +258,8 @@ async function generateBoardImage({ heading, subtitle, tokens }) {
  * @param {string} options.subtitle
  * @param {{row, col}} options.target
  * @param {Array<{cell, avatarURL, username, ring: 1|2}>} options.tokens
- * @param {Array<{avatarURL, username, turnPoints: number, total: number, isCueGiver: boolean}>} options.scoreRows
+ * @param {Array<{avatarURL, username, cells: Array<{row, col}|null>, turnPoints: number, total: number, isCueGiver: boolean}>} options.scoreRows
+ *   `cells` are the player's 1st and 2nd tokens this turn (empty for the cue giver)
  *   in standings order
  */
 async function generateRevealImage({ heading, subtitle, target, tokens, scoreRows }) {
@@ -267,11 +269,36 @@ async function generateRevealImage({ heading, subtitle, target, tokens, scoreRow
   drawBoard(ctx, boardY);
   drawScoringFrame(ctx, target, boardY);
   await drawTokens(ctx, tokens, boardY);
-  await drawScoreBox(ctx, boardY + BOARD_H + PAD, scoreRows);
+  await drawScoreBox(ctx, boardY + BOARD_H + PAD, scoreRows, target);
   return canvas.toBuffer('image/png');
 }
 
-async function drawScoreBox(ctx, top, rows) {
+/** A small square filled with a board colour and labelled with its grid ref; a dash if there's no token. */
+function drawCellSwatch(ctx, cell, x, cy) {
+  const y = cy - SWATCH.h / 2;
+  roundRect(ctx, x, y, SWATCH.w, SWATCH.h, 5);
+  if (!cell) {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#3a3d55';
+    ctx.stroke();
+  } else {
+    const color = cellColor(cell);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = cell ? (isLight(cellColor(cell)) ? '#000000' : '#FFFFFF') : MUTED;
+  ctx.fillText(cell ? formatCell(cell) : '—', x + SWATCH.w / 2, cy + 1);
+}
+
+/** Whether dark text reads better than white on this colour. */
+function isLight(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+}
+
+async function drawScoreBox(ctx, top, rows, target) {
   const x = BOARD_X;
   const width = BOARD_W;
   ctx.fillStyle = '#1f2133';
@@ -288,6 +315,10 @@ async function drawScoreBox(ctx, top, rows) {
   ctx.textAlign = 'right';
   ctx.fillText('THIS TURN', colTurn, top + 18);
   ctx.fillText('TOTAL', colTotal, top + 18);
+  const swatchX = colTurn - 110 - 3 * SWATCH.w - 2 * SWATCH.gap;
+  const swatchCol = n => swatchX + n * (SWATCH.w + SWATCH.gap);
+  ctx.textAlign = 'center';
+  for (const [n, label] of ['1ST', '2ND', 'ACTUAL'].entries()) ctx.fillText(label, swatchCol(n) + SWATCH.w / 2, top + 18);
 
   for (const [i, row] of rows.entries()) {
     const cy = top + 36 + i * SCORE_ROW_H + SCORE_ROW_H / 2;
@@ -299,7 +330,12 @@ async function drawScoreBox(ctx, top, rows) {
     ctx.fillStyle = TEXT;
     ctx.textAlign = 'left';
     const name = row.isCueGiver ? `${row.username}  (cue giver)` : row.username;
-    ctx.fillText(truncate(ctx, name, colTurn - x - 220), x + 80, cy);
+    ctx.fillText(truncate(ctx, name, swatchX - x - 96), x + 80, cy);
+    for (const [n, cell] of [row.cells[0] ?? null, row.cells[1] ?? null, target].entries()) {
+      if (row.isCueGiver && n < 2) continue; // the cue giver places no tokens
+      drawCellSwatch(ctx, cell, swatchCol(n), cy);
+    }
+    ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'right';
     ctx.fillStyle = row.turnPoints > 0 ? '#2ECC71' : MUTED;
     ctx.fillText(`+${row.turnPoints}`, colTurn, cy);

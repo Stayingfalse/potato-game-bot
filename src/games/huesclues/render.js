@@ -234,6 +234,7 @@ function revealImage(game, turn) {
   const thisTurn = turnPoints(turn);
   const scoreRows = sessionTotals(game).map(({ userId, total }) => ({
     ...tokenArt(game, userId, null, null),
+    cells: turn.tokens[userId] ?? [],
     turnPoints: thisTurn[userId] ?? 0,
     total,
     isCueGiver: userId === turn.cueGiverId,
