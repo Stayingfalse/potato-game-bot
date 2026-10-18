@@ -265,8 +265,8 @@ describe('a game through the real command and buttons', () => {
     const results = text(turnMessage());
     assert.ok(results.includes('Turn 1 Results'));
     assert.ok(results.includes('attachment://huesclues_reveal.png'));
-    assert.ok(results.includes(`<@${g1.id}> — **5 pts**`));
-    assert.ok(results.includes('Auto-advance is ON'));
+    assert.ok(!results.includes('pts**'), 'scores live in the image, not the text');
+    assert.match(results, /Next turn <t:\d+:R>/);
     assert.ok(game.advanceAt > Date.now() && game.autoAdvanceTimeout, 'the next turn is scheduled');
   });
 
@@ -277,7 +277,8 @@ describe('a game through the real command and buttons', () => {
   });
 
   it('auto-advance can be switched off, and the host starts the next turn instead', async () => {
-    assert.deepEqual((await press(guessers[0], 'hc_toggle_auto')).replies(), ['Only the host can change auto-advance.']);
+    const notHost = users[game.turnOrder.find(id => id !== 'host')];
+    assert.deepEqual((await press(notHost, 'hc_toggle_auto')).replies(), ['Only the host can change auto-advance.']);
     await press(HOST, 'hc_toggle_auto');
     assert.equal(game.autoAdvanceRounds, false);
     assert.equal(game.advanceAt, null);
@@ -327,7 +328,7 @@ describe('a game through the real command and buttons', () => {
 
     assert.equal(game.phase, 'ended');
     assert.equal(rules.evaluateSessionGoal(game).complete, true);
-    assert.ok(text(turnMessage()).includes('Session Over'));
+    assert.ok(text(turnMessage()).includes('Session over'));
     assert.match((await press(HOST, 'hc_next')).replies()[0], /session is over/);
   });
 

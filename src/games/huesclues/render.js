@@ -14,7 +14,7 @@ const {
   AttachmentBuilder,
 } = require('discord.js');
 const { MIN_PLAYERS, MAX_PLAYERS } = require('./manager');
-const { CENTRE, formatCell, sameCell } = require('./board');
+const { CENTRE, formatCell } = require('./board');
 const {
   CLUE_TURN_CHOICES,
   POINT_CHOICES,
@@ -213,20 +213,39 @@ function firstTokensImage(game) {
 
 // ── Results ────────────────────────────────────────────────────────────────────
 
+/**
+ * The results: one compact block. The image already carries the clues, every
+ * token, the target and the score table with running totals, so the text is
+ * just a title and one status line.
+ */
 async function renderEnded(game, { includeControls = true } = {}) {
   const turn = game.sessionHistory.at(-1);
   if (!turn) return message([container(COLOR.ended, `## ${TITLE}`, '*No turn has been scored yet.*')]);
 
   const goal = evaluateSessionGoal(game);
   const files = [];
-  const parts = [container(COLOR.ended, `## ${TITLE} — Turn ${turn.turnNumber} Results\n${clueHeadline(turn.cueGiverId, turn.clues)}`)];
-  await addImage(parts, files, await revealImage(game, turn), 'huesclues_reveal.png', COLOR.ended);
-  parts.push(container(COLOR.ended, breakdownText(turn)));
+  const box = new ContainerBuilder().setAccentColor(goal.complete ? COLOR.lobby : COLOR.ended)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${TITLE} — Turn ${turn.turnNumber} Results`));
 
-  const summary = container(COLOR.lobby, summaryText(game, goal));
-  if (includeControls) summary.addActionRowComponents(endedControls(game, goal));
-  parts.push(summary);
-  return message(parts, files);
+  const image = await revealImage(game, turn);
+  if (image) {
+    files.push(new AttachmentBuilder(image, { name: 'huesclues_reveal.png' }));
+    box.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://huesclues_reveal.png')));
+  } else {
+    // Without the image, fall back to the scores in text so nothing is lost.
+    box.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${clueHeadline(turn.cueGiverId, turn.clues)}\n🎯 Target: \`${formatCell(turn.target)}\`\n\n${standingsText(game)}`));
+  }
+
+  box.addTextDisplayComponents(new TextDisplayBuilder().setContent(statusText(game, goal)));
+  if (includeControls) box.addActionRowComponents(endedControls(game, goal));
+  return message([box], files);
+}
+
+/** One line under the results: the winner, the auto-advance countdown, or the mode. */
+function statusText(game, goal) {
+  if (goal.complete) return `🏁 **Session over** — ${goal.message}`;
+  if (game.advanceAt) return `-# 🔄 Next turn <t:${Math.ceil(game.advanceAt / 1000)}:R> · ${describeSessionMode(game.sessionMode)}`;
+  return `-# ${describeSessionMode(game.sessionMode)}`;
 }
 
 function revealImage(game, turn) {
@@ -248,40 +267,11 @@ function revealImage(game, turn) {
   }));
 }
 
-function breakdownText(turn) {
-  const guesserLines = Object.entries(turn.scores.guessers).map(([id, { points, total }]) => {
-    const cells = turn.tokens[id].map((cell, i) => (cell ? `${sameCell(cell, turn.target) ? '🎯 ' : ''}\`${formatCell(cell)}\` +${points[i]}` : '*no token*'));
-    return `<@${id}> — ${cells.join(' · ')} = **${total}**`;
-  });
-  const cue = turn.scores.cueGiver;
-  return [
-    `🎯 **Target:** \`${formatCell(turn.target)}\``,
-    '',
-    '**📊 Guessers**',
-    guesserLines.join('\n') || '*No guessers.*',
-    '',
-    '**🎨 Cue giver**',
-    `<@${cue.id}> — ${cue.inFrame} token${cue.inFrame === 1 ? '' : 's'} inside the frame = **${cue.total}**`,
-  ].join('\n');
-}
-
 function standingsText(game) {
   const totals = sessionTotals(game);
   return totals.length > 0
     ? totals.map((entry, i) => `**${i + 1}.** <@${entry.userId}> — **${entry.total} pts**`).join('\n')
     : '*No scores yet.*';
-}
-
-function summaryText(game, goal) {
-  const autoAdvancing = game.advanceAt && !goal.complete;
-  return [
-    `**Mode:** ${describeSessionMode(game.sessionMode)}`,
-    '',
-    '**📈 Running Totals**',
-    standingsText(game),
-    goal.message ? `\n**${goal.complete ? '🏁 Session Over' : '📌 Goal'}**\n${goal.message}` : null,
-    autoAdvancing ? `\n🔄 **Auto-advance is ON** — the next turn starts <t:${Math.ceil(game.advanceAt / 1000)}:R>.` : null,
-  ].filter(line => line !== null).join('\n');
 }
 
 function endedControls(game, goal) {
