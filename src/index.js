@@ -10,6 +10,7 @@ const path = require('path');
 const BirthdayManager = require('./game/BirthdayManager');
 const { getGames } = require('./games/_core/registry');
 const { loadCommands } = require('./utils/loadCommands');
+const { syncCommands } = require('./utils/commandSync');
 
 // ── Process-level crash guards ─────────────────────────────────────────────
 // Prevent Node from exiting on unhandled async errors or synchronous throws.
@@ -26,6 +27,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // Privileged — enable in Discord Dev Portal → Bot → Privileged Gateway Intents
     GatewayIntentBits.GuildMembers,   // Privileged — needed for welcome automation (guildMemberAdd / role grants)
+    GatewayIntentBits.GuildVoiceStates, // Articulate: who is in the game's voice channel (not privileged)
   ],
 });
 
@@ -82,6 +84,17 @@ for (const file of fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))) {
   } else {
     client.on(event.name, handler);
   }
+}
+
+// ── Deploy slash commands if they changed ──────────────────────────────────────
+// Compares the commands with the last deploy and only sends them to Discord when
+// something changed (a new game, say), so a restart is all it takes. Runs
+// alongside login; if it fails, the next start tries again. Set
+// AUTO_DEPLOY_COMMANDS=false to deploy only with `npm run deploy`.
+if (process.env.AUTO_DEPLOY_COMMANDS !== 'false' && process.env.DISCORD_TOKEN && process.env.CLIENT_ID) {
+  syncCommands({ token: process.env.DISCORD_TOKEN, clientId: process.env.CLIENT_ID }).catch((err) => {
+    console.error('[Commands] Automatic deploy failed (the next start will retry, or run `npm run deploy`):', err);
+  });
 }
 
 client.login(process.env.DISCORD_TOKEN);

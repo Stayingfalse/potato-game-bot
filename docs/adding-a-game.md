@@ -28,7 +28,9 @@ are skipped, so the template itself is never loaded into the bot.
 
 3. Run `npm test`. At this point your copy is a working High Roll under a new
    name; change it into your game from here, keeping the tests passing.
-4. Deploy, then run `npm run deploy` so Discord learns the new slash command.
+4. Deploy and restart the bot. On startup it sees the slash commands have changed and
+   sends them to Discord itself (`src/utils/commandSync.js`); `npm run deploy` does the
+   same by hand.
 
 ## What each file does
 

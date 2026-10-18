@@ -11,18 +11,33 @@ const { user, componentInteraction, slashCommand, quietly } = require('./helpers
 
 process.env.DASHBOARD_ENABLED = 'false';
 
-/** Starts src/index.js without logging in to Discord and returns the client it built. */
+/** Command deploys sent to Discord while booting: [route, body] pairs. */
+const bootDeploys = [];
+
+/**
+ * Starts src/index.js without logging in to Discord and returns the client it
+ * built. Discord's REST API is faked, so the startup command deploy is recorded
+ * in `bootDeploys` instead of sent.
+ */
 async function bootBot() {
   const created = [];
   const OriginalClient = discord.Client;
+  const originalPut = discord.REST.prototype.put;
   discord.Client = class extends OriginalClient {
     constructor(...args) { super(...args); created.push(this); }
     async login() { return 'not logged in (test)'; }
   };
+  discord.REST.prototype.put = async function (route, options) { bootDeploys.push([route, options.body]); };
+  process.env.DISCORD_TOKEN = 'test-token';
+  process.env.CLIENT_ID = 'test-app';
   try {
-    await quietly(async () => require(path.join(SRC, 'index.js')));
+    await quietly(async () => {
+      require(path.join(SRC, 'index.js'));
+      await new Promise(resolve => setTimeout(resolve, 20)); // the deploy runs alongside login
+    });
   } finally {
     discord.Client = OriginalClient;
+    discord.REST.prototype.put = originalPut;
   }
   return created[0];
 }
@@ -32,14 +47,21 @@ describe('startup', () => {
   before(async () => { client = await bootBot(); });
 
   it('creates a manager per game, reachable by id and by the game\'s client key', () => {
-    assert.deepEqual([...client.games.keys()], ['werewords', 'wavelength', 'nmj', 'huesclues']);
+    assert.deepEqual([...client.games.keys()], ['werewords', 'wavelength', 'nmj', 'huesclues', 'articulate']);
     for (const [, { game, manager }] of client.games) assert.equal(client[game.clientKey], manager);
     assert.equal(client.cheeseThiefManager, undefined);
     assert.equal(client.herdMentalityManager, undefined);
   });
 
+  it('deploys the slash commands on startup when they changed', () => {
+    assert.equal(bootDeploys.length, 1);
+    const [route, body] = bootDeploys[0];
+    assert.equal(route, '/applications/test-app/commands');
+    assert.ok(body.some(command => command.name === 'articulate'));
+  });
+
   it('serves each game\'s command plus the non-game commands', () => {
-    assert.deepEqual([...client.commands.keys()].sort(), ['birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual([...client.commands.keys()].sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
   });
 
   it('registers one interactionCreate listener', () => {
@@ -125,7 +147,7 @@ describe('restore', () => {
       for (const [game] of originals) game.restore = async () => { ran.push(game.id); };
       nmj.restore = async () => { throw new Error('broken'); };
       const { logs } = await quietly(() => restoreGames({}));
-      assert.deepEqual(ran.sort(), ['huesclues', 'wavelength', 'werewords']);
+      assert.deepEqual(ran.sort(), ['articulate', 'huesclues', 'wavelength', 'werewords']);
       assert.ok(logs.some(line => line.includes('[Restore] No More Jockeys failed')));
     } finally {
       for (const [game, restore] of originals) game.restore = restore;
@@ -156,8 +178,47 @@ describe('deploy-commands', () => {
     } finally {
       discord.REST.prototype.put = originalPut;
     }
-    assert.deepEqual(body.map(c => c.name).sort(), ['birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual(body.map(c => c.name).sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
     const werewords = body.find(c => c.name === 'werewords');
     assert.deepEqual(werewords.options.map(o => o.name), ['start', 'end']);
+  });
+});
+
+describe('automatic command deploys', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const { syncCommands, STATE_FILE } = src('utils/commandSync');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'potato-commands-'));
+  const sent = [];
+  const rest = { put: async (route, options) => { sent.push(options.body); } };
+  const sync = (options = {}) => quietly(() => syncCommands({ token: 't', clientId: 'app-1', dataDir, rest, ...options })).then(({ result }) => result);
+
+  it('deploys the first time and records what it sent', async () => {
+    assert.equal(await sync(), 'deployed');
+    assert.equal(sent.length, 1);
+    const state = JSON.parse(fs.readFileSync(path.join(dataDir, STATE_FILE), 'utf8'));
+    assert.equal(state.clientId, 'app-1');
+    assert.ok(state.commands.includes('articulate'));
+  });
+
+  it('skips the deploy when nothing changed', async () => {
+    assert.equal(await sync(), 'unchanged');
+    assert.equal(sent.length, 1);
+  });
+
+  it('deploys again when a command changes, the app changes, or it is forced', async () => {
+    const state = JSON.parse(fs.readFileSync(path.join(dataDir, STATE_FILE), 'utf8'));
+    fs.writeFileSync(path.join(dataDir, STATE_FILE), JSON.stringify({ ...state, hash: 'from an older version' }));
+    assert.equal(await sync(), 'deployed');
+    assert.equal(await sync({ clientId: 'another-app' }), 'deployed');
+    assert.equal(await sync({ clientId: 'another-app', force: true }), 'deployed');
+    assert.equal(sent.length, 4);
+  });
+
+  it('records nothing when the deploy fails, so the next start retries', async () => {
+    const failing = { put: async () => { throw new Error('Discord is down'); } };
+    const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), 'potato-commands-'));
+    await assert.rejects(quietly(() => syncCommands({ token: 't', clientId: 'app-1', dataDir: freshDir, rest: failing })));
+    assert.equal(fs.existsSync(path.join(freshDir, STATE_FILE)), false);
   });
 });

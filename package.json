@@ -1,7 +1,7 @@
 {
   "name": "werewords-bot",
   "version": "1.0.0",
-  "description": "Discord bot for party games including Werewords, Wavelength, No More Jockeys, and Hues & Clues",
+  "description": "Discord bot for party games including Werewords, Wavelength, No More Jockeys, Hues & Clues, and Articulate",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
