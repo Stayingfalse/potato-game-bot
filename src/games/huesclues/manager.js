@@ -5,7 +5,7 @@ const { shuffle } = require('../_core/random');
 const HuesCluesRepository = require('./repository');
 const HuesCluesGameState = require('./state');
 const { CENTRE, CARD_SIZE, clampCell, drawCard } = require('./board');
-const { scoreTurn } = require('./rules');
+const { scoreTurn, firstTokenOwnerAt } = require('./rules');
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
@@ -141,10 +141,11 @@ class HuesCluesManager extends BaseGameManager {
     return true;
   }
 
-  /** Locks in the guesser's token for this round. */
+  /** Locks in the guesser's token for this round. A second token can't go on a first token's square. */
   lockIn(game, userId) {
     const token = game.tokens.get(userId);
     if (game.phase !== 'guessing' || !token || token.cells.length >= game.guessRound) return false;
+    if (firstTokenOwnerAt(game, this.draftOf(game, userId))) return false;
     token.cells.push(this.draftOf(game, userId));
     token.draft = null;
     this.save(game);

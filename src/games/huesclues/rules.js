@@ -5,7 +5,7 @@
  * totals and the end-of-session goal.
  */
 
-const { distance } = require('./board');
+const { distance, sameCell } = require('./board');
 
 // ── Clues ──────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,17 @@ function validateClue(raw, clueNumber) {
   if (parts.some(part => GRID_REF.test(part))) return { ok: false, error: 'No grid references in your clue.' };
 
   return { ok: true, clue };
+}
+
+// ── Placing tokens ─────────────────────────────────────────────────────────────
+
+/**
+ * Whose first token is on `cell` during the second guess round, or null.
+ * Second tokens can't share a square with any first token, the player's own included.
+ */
+function firstTokenOwnerAt(game, cell) {
+  if (game.guessRound !== 2) return null;
+  return [...game.tokens].find(([, token]) => sameCell(token.cells[0], cell))?.[0] ?? null;
 }
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
@@ -164,6 +175,7 @@ module.exports = {
   CLUE_TURN_CHOICES,
   POINT_CHOICES,
   validateClue,
+  firstTokenOwnerAt,
   tokenPoints,
   scoreTurn,
   turnPoints,

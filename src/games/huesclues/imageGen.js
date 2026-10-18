@@ -8,7 +8,9 @@ const CELL = 30;
 const LABEL_W = 30;
 const LABEL_H = 24;
 const PAD = 14;
-const TITLE_H = 46;
+const TITLE_H = 70;
+/** Background showing between squares, so neighbouring colours are easy to tell apart. */
+const CELL_GAP = 2;
 const BOARD_X = PAD + LABEL_W;
 const BOARD_W = COLS * CELL;
 const BOARD_H = ROWS * CELL;
@@ -103,7 +105,7 @@ function drawBoard(ctx, boardY) {
     for (let col = 0; col < COLS; col++) {
       const { x, y } = cellOrigin({ row, col }, boardY);
       ctx.fillStyle = cellColor({ row, col });
-      ctx.fillRect(x, y, CELL, CELL);
+      ctx.fillRect(x + CELL_GAP / 2, y + CELL_GAP / 2, CELL - CELL_GAP, CELL - CELL_GAP);
     }
   }
 
@@ -119,12 +121,21 @@ function drawBoard(ctx, boardY) {
   }
 }
 
-function drawTitle(ctx, title, legend) {
-  ctx.fillStyle = TEXT;
-  ctx.font = 'bold 20px sans-serif';
+/**
+ * The header: who's giving the clues and what they are, big, with the turn
+ * details and the token legend on a smaller line underneath.
+ */
+function drawTitle(ctx, { heading, subtitle }, legend) {
+  const headingY = PAD + 16;
+  const subtitleY = PAD + 50;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(truncate(ctx, title ?? '', BOARD_W * 0.62), BOARD_X, PAD + TITLE_H / 2 - 4);
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText(truncate(ctx, heading ?? '', W - BOARD_X - PAD), BOARD_X, headingY);
+  ctx.fillStyle = MUTED;
+  ctx.font = '15px sans-serif';
+  ctx.fillText(truncate(ctx, subtitle ?? '', BOARD_W * 0.55), BOARD_X, subtitleY);
 
   if (!legend) return;
   ctx.font = '13px sans-serif';
@@ -132,10 +143,10 @@ function drawTitle(ctx, title, legend) {
   for (const [label, color] of [...legend].reverse()) {
     ctx.textAlign = 'right';
     ctx.fillStyle = MUTED;
-    ctx.fillText(label, x, PAD + TITLE_H / 2 - 4);
+    ctx.fillText(label, x, subtitleY);
     x -= ctx.measureText(label).width + 16;
     ctx.beginPath();
-    ctx.arc(x + 6, PAD + TITLE_H / 2 - 4, 6, 0, Math.PI * 2);
+    ctx.arc(x + 6, subtitleY, 6, 0, Math.PI * 2);
     ctx.lineWidth = 2;
     ctx.strokeStyle = color;
     ctx.stroke();
@@ -227,12 +238,13 @@ const TOKEN_LEGEND = [['1st token', RING[1]], ['2nd token', RING[2]]];
 /**
  * The board with tokens on it: a guesser's preview, or everyone's first tokens.
  * @param {object} options
- * @param {string} options.title
+ * @param {string} options.heading   the cue giver and their clues
+ * @param {string} options.subtitle
  * @param {Array<{cell, avatarURL, username, ring: 1|2|'draft'}>} options.tokens
  */
-async function generateBoardImage({ title, tokens }) {
+async function generateBoardImage({ heading, subtitle, tokens }) {
   const { canvas, ctx, boardY } = newCanvas();
-  drawTitle(ctx, title, tokens.some(t => t.ring === 'draft') ? [...TOKEN_LEGEND, ['yours', RING.draft]] : TOKEN_LEGEND);
+  drawTitle(ctx, { heading, subtitle }, tokens.some(t => t.ring === 'draft') ? [...TOKEN_LEGEND, ['yours', RING.draft]] : TOKEN_LEGEND);
   drawBoard(ctx, boardY);
   await drawTokens(ctx, tokens, boardY);
   return canvas.toBuffer('image/png');
@@ -241,16 +253,17 @@ async function generateBoardImage({ title, tokens }) {
 /**
  * The reveal: every token, the scoring frame around the target, and the score box.
  * @param {object} options
- * @param {string} options.title
+ * @param {string} options.heading   the cue giver and their clues
+ * @param {string} options.subtitle
  * @param {{row, col}} options.target
  * @param {Array<{cell, avatarURL, username, ring: 1|2}>} options.tokens
  * @param {Array<{avatarURL, username, turnPoints: number, total: number, isCueGiver: boolean}>} options.scoreRows
  *   in standings order
  */
-async function generateRevealImage({ title, target, tokens, scoreRows }) {
+async function generateRevealImage({ heading, subtitle, target, tokens, scoreRows }) {
   const scoreBoxH = 44 + scoreRows.length * SCORE_ROW_H + PAD;
   const { canvas, ctx, boardY } = newCanvas(scoreBoxH);
-  drawTitle(ctx, title, TOKEN_LEGEND);
+  drawTitle(ctx, { heading, subtitle }, TOKEN_LEGEND);
   drawBoard(ctx, boardY);
   drawScoringFrame(ctx, target, boardY);
   await drawTokens(ctx, tokens, boardY);

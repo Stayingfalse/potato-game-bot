@@ -8,9 +8,11 @@ const {
   ActionRowBuilder,
 } = require('discord.js');
 const { MIN_PLAYERS } = require('./manager');
-const { renderGameMessage, renderSessionStarted, renderCuePanel, renderGuessPanel } = require('./render');
-const { CLUE_TURN_CHOICES, POINT_CHOICES, CLUE_WORD_LIMITS, validateClue, isModeComplete, evaluateSessionGoal } = require('./rules');
-const { parseCell } = require('./board');
+const { renderGameMessage, renderSessionStarted, renderCuePanel, renderGuessPanel, occupantName } = require('./render');
+const {
+  CLUE_TURN_CHOICES, POINT_CHOICES, CLUE_WORD_LIMITS, validateClue, isModeComplete, evaluateSessionGoal, firstTokenOwnerAt,
+} = require('./rules');
+const { parseCell, formatCell } = require('./board');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
 
@@ -189,6 +191,13 @@ function lockedError(game, userId) {
   return game.tokens.get(userId).cells.length >= game.guessRound ? 'Your token is already locked in for this round.' : null;
 }
 
+/** Second tokens can't go on a square that already has a first token. */
+function occupiedError(game, userId, cell) {
+  const occupant = firstTokenOwnerAt(game, cell);
+  if (!occupant) return null;
+  return `❌ **${formatCell(cell)}** already has ${occupantName(game, occupant, userId)} first token. Second tokens must go on a free square — pick another.`;
+}
+
 async function handleGuessPanel(interaction, client, game) {
   const error = guesserError(interaction, game);
   if (error) return reply(interaction, error);
@@ -233,6 +242,8 @@ async function handleRefModal(interaction, client, game) {
   if (error) return reply(interaction, error);
   const cell = parseCell(interaction.fields.getTextInputValue('hc_ref_input'));
   if (!cell) return reply(interaction, '❌ That isn\'t a square on the board. Use a row **A–P** and a column **1–30**, like `F12`.');
+  const occupied = occupiedError(game, userId, cell);
+  if (occupied) return reply(interaction, occupied);
   client.huesCluesManager.setDraft(game, userId, cell);
   await interaction.deferUpdate();
   return interaction.editReply(await renderGuessPanel(game, userId));
@@ -240,7 +251,8 @@ async function handleRefModal(interaction, client, game) {
 
 async function handleLock(interaction, client, game) {
   const userId = interaction.user.id;
-  const error = guesserError(interaction, game) ?? lockedError(game, userId);
+  const error = guesserError(interaction, game) ?? lockedError(game, userId)
+    ?? occupiedError(game, userId, client.huesCluesManager.draftOf(game, userId));
   if (error) return reply(interaction, error);
   client.huesCluesManager.lockIn(game, userId);
   await interaction.deferUpdate();

@@ -24,6 +24,7 @@ const {
   evaluateSessionGoal,
   sessionTotals,
   turnPoints,
+  firstTokenOwnerAt,
 } = require('./rules');
 const { generateBoardImage, generateRevealImage, generateCardImage } = require('./imageGen');
 
@@ -60,7 +61,7 @@ function renderLobby(game) {
         `**Host:** <@${game.hostId}>`,
         '',
         'Each turn one player is the **cue giver**: they draw a card of four colours, pick one, and describe it in **one word**.',
-        'Everyone else places a token on the 480-colour board. Then the cue giver can add a **second clue** (up to two words) and everyone places a second token.',
+        'Everyone else places a token on the 480-colour board. Then the cue giver can add a **second clue** (up to two words) and everyone places a second token, which can\'t go on a square that already has a first token.',
         'Tokens score **3** on the colour, **2** inside the 3×3 frame around it and **1** touching the frame. The cue giver scores **1** for every token inside the frame.',
       ].join('\n'),
       `**Players (${game.players.size}/${MAX_PLAYERS})**\n${players}\n\n*At least ${MIN_PLAYERS} players needed.*`,
@@ -130,8 +131,26 @@ function renderSessionStarted(game) {
 
 // ── A turn ─────────────────────────────────────────────────────────────────────
 
+/** The top of every turn message: the turn, then who's giving the clues and what they are. */
 function turnHeader(game) {
-  return `## ${TITLE} — Turn ${game.gameNumber}\n**Cue giver:** <@${game.cueGiverId}>`;
+  return `## ${TITLE} — Turn ${game.gameNumber}\n${clueHeadline(game.cueGiverId, game.clues)}`;
+}
+
+function quotedClues(clues) {
+  return clues.map(clue => (clue === null ? 'nothing more to say' : `"${clue}"`)).join(' · ');
+}
+
+function clueHeadline(cueGiverId, clues) {
+  if (clues.length === 0) return `### 🎨 <@${cueGiverId}> is the cue giver`;
+  const given = clues.filter(clue => clue !== null).length;
+  return `### 🗣️ <@${cueGiverId}>'s clue${given === 1 ? '' : 's'}: ${quotedClues(clues)}`;
+}
+
+/** The same headline for images, which can't show mentions. */
+function imageHeading(game, cueGiverId, clues) {
+  const name = game.players.get(cueGiverId)?.username ?? 'The cue giver';
+  const given = clues.filter(clue => clue !== null).length;
+  return `${name}'s clue${given === 1 ? '' : 's'}: ${quotedClues(clues)}`;
 }
 
 function renderPicking(game) {
@@ -154,7 +173,7 @@ async function renderGuessing(game) {
     : 'Everyone\'s first tokens are on the board below. Place your **second** token!';
   const files = [];
   const parts = [container(COLOR.guessing,
-    `${turnHeader(game)}\n\n${cluesText(game.clues)}`,
+    turnHeader(game),
     `${intro}\n\n${submissionsText(game)}`,
     buttons(
       button('hc_guess_panel', round === 1 ? 'Place Your Token' : 'Place Your Second Token', '📍', ButtonStyle.Primary),
@@ -167,7 +186,7 @@ async function renderGuessing(game) {
 async function renderFollowup(game) {
   const files = [];
   const parts = [container(COLOR.picking,
-    `${turnHeader(game)}\n\n${cluesText(game.clues)}`,
+    turnHeader(game),
     `Everyone has placed their first token. <@${game.cueGiverId}>, give a **second clue** (up to two words) — or say nothing more. Either way, everyone then places a second token.`,
     buttons(
       button('hc_clue2', 'Give Second Clue', '💬', ButtonStyle.Primary),
@@ -185,7 +204,11 @@ function tokenArt(game, userId, cell, ring) {
 
 function firstTokensImage(game) {
   const tokens = [...game.tokens].map(([id, t]) => tokenArt(game, id, t.cells[0], 1));
-  return tryImage(() => generateBoardImage({ title: `Turn ${game.gameNumber} · first tokens`, tokens }));
+  return tryImage(() => generateBoardImage({
+    heading: imageHeading(game, game.cueGiverId, game.clues),
+    subtitle: `Turn ${game.gameNumber} · first tokens`,
+    tokens,
+  }));
 }
 
 // ── Results ────────────────────────────────────────────────────────────────────
@@ -196,7 +219,7 @@ async function renderEnded(game, { includeControls = true } = {}) {
 
   const goal = evaluateSessionGoal(game);
   const files = [];
-  const parts = [container(COLOR.ended, `## ${TITLE} — Turn ${turn.turnNumber} Results\n${cluesText(turn.clues)}`)];
+  const parts = [container(COLOR.ended, `## ${TITLE} — Turn ${turn.turnNumber} Results\n${clueHeadline(turn.cueGiverId, turn.clues)}`)];
   await addImage(parts, files, await revealImage(game, turn), 'huesclues_reveal.png', COLOR.ended);
   parts.push(container(COLOR.ended, breakdownText(turn)));
 
@@ -204,10 +227,6 @@ async function renderEnded(game, { includeControls = true } = {}) {
   if (includeControls) summary.addActionRowComponents(endedControls(game, goal));
   parts.push(summary);
   return message(parts, files);
-}
-
-function cluesText(clues) {
-  return clues.map((clue, i) => (clue === null ? '> 🤐 *Nothing more to say*' : `> 💬 **Clue ${i + 1}:** "${clue}"`)).join('\n');
 }
 
 function revealImage(game, turn) {
@@ -219,8 +238,13 @@ function revealImage(game, turn) {
     total,
     isCueGiver: userId === turn.cueGiverId,
   }));
-  const title = `Turn ${turn.turnNumber} · target ${formatCell(turn.target)}`;
-  return tryImage(() => generateRevealImage({ title, target: turn.target, tokens, scoreRows }));
+  return tryImage(() => generateRevealImage({
+    heading: imageHeading(game, turn.cueGiverId, turn.clues),
+    subtitle: `Turn ${turn.turnNumber} · target ${formatCell(turn.target)}`,
+    target: turn.target,
+    tokens,
+    scoreRows,
+  }));
 }
 
 function breakdownText(turn) {
@@ -319,6 +343,11 @@ async function renderCuePanel(game) {
   };
 }
 
+/** "your" or "Ann's", for messages about whose first token is on a square. */
+function occupantName(game, occupantId, userId) {
+  return occupantId === userId ? 'your' : `**${game.players.get(occupantId)?.username ?? 'someone'}'s**`;
+}
+
 /** A guesser's token: a preview on the board, with buttons to move it and lock it in. */
 async function renderGuessPanel(game, userId) {
   const token = game.tokens.get(userId);
@@ -332,14 +361,23 @@ async function renderGuessPanel(game, userId) {
     ...(game.guessRound === 2 ? [tokenArt(game, userId, token.cells[0], 1)] : []),
     ...(cell ? [tokenArt(game, userId, cell, locked ? game.guessRound : 'draft')] : []),
   ];
-  const clues = game.clues.filter(clue => clue !== null).map(clue => `"${clue}"`).join(' · ');
-  const image = await tryImage(() => generateBoardImage({ title: `Clue: ${clues}`, tokens: [...others, ...own] }));
+  const ordinal = game.guessRound === 1 ? 'first' : 'second';
+  const image = await tryImage(() => generateBoardImage({
+    heading: imageHeading(game, game.cueGiverId, game.clues),
+    subtitle: `Turn ${game.gameNumber} · placing your ${ordinal} token`,
+    tokens: [...others, ...own],
+  }));
   const files = image ? [new AttachmentBuilder(image, { name: 'huesclues_token.png' })] : [];
 
-  const ordinal = game.guessRound === 1 ? 'first' : 'second';
-  const content = locked
-    ? (cell ? `✅ Your ${ordinal} token is locked in at **${formatCell(cell)}**. Waiting for the others…` : `⏩ The ${ordinal} round was closed before you placed a token.`)
-    : `📍 Your ${ordinal} token is on **${formatCell(cell)}**. Move it with the arrows or type a grid ref (like \`F12\`), then **Lock In**.`;
+  const blockedBy = locked ? null : firstTokenOwnerAt(game, cell);
+  let content;
+  if (locked) {
+    content = cell ? `✅ Your ${ordinal} token is locked in at **${formatCell(cell)}**. Waiting for the others…` : `⏩ The ${ordinal} round was closed before you placed a token.`;
+  } else if (blockedBy) {
+    content = `⚠️ **${formatCell(cell)}** already has ${occupantName(game, blockedBy, userId)} first token. Second tokens must go on a free square — move it, then **Lock In**.`;
+  } else {
+    content = `📍 Your ${ordinal} token is on **${formatCell(cell)}**. Move it with the arrows or type a grid ref (like \`F12\`), then **Lock In**.`;
+  }
 
   return {
     content,
@@ -352,7 +390,7 @@ async function renderGuessPanel(game, userId) {
       ),
       buttons(
         button('hc_type_ref', 'Type Grid Ref', '✏️', ButtonStyle.Secondary).setDisabled(locked),
-        button('hc_lock', locked ? 'Locked In' : 'Lock In', '✅', locked ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(locked),
+        button('hc_lock', locked ? 'Locked In' : 'Lock In', '✅', locked || blockedBy ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(locked || !!blockedBy),
       ),
     ],
     files,
@@ -415,6 +453,7 @@ function autoAdvanceButton(game) {
 }
 
 module.exports = {
+  occupantName,
   renderGameMessage,
   renderSessionStarted,
   renderClosed,

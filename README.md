@@ -74,7 +74,7 @@ A colour-guessing party game played on a 480-colour board (rows A–P, columns 1
 - When the game starts the cue giver order is shuffled, and the host chooses how the session ends
 - The **cue giver** draws a card of four colours, picks one, and gives a **one-word** clue (no basic colour names or grid refs)
 - Everyone else places a token: type a grid ref (like `F12`) and fine-tune it with the arrow buttons on a preview of the board, then lock in
-- Once every token is in, the board is shown to everyone and the cue giver can add a **second clue** of up to two words, or say nothing more. Everyone then places a second token
+- Once every token is in, the board is shown to everyone and the cue giver can add a **second clue** of up to two words, or say nothing more. Everyone then places a second token, which can't go on a square that already has a first token
 - Each token scores **3** on the colour, **2** inside the 3×3 frame around it and **1** touching the frame. The cue giver scores **1** for every token inside the frame
 - The results image shows every token, the scoring frame and the running totals, then the next cue giver takes a turn
 

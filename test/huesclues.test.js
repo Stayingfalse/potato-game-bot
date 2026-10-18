@@ -220,11 +220,33 @@ describe('a game through the real command and buttons', () => {
     assert.deepEqual(game.clues, ['Lime', 'fresh grass']);
   });
 
-  it('second tokens start from the first; the turn is scored when they\'re all in', async () => {
+  it('second tokens can\'t go on a square with a first token', async () => {
     const [g1, g2] = guessers;
+    // Second tokens start on your own first token, which is off limits.
     const opened = await press(g1, 'hc_guess_panel');
-    assert.match(panel(opened).content, /second token is on \*\*F12\*\*/);
-    await interact(g1, 'hc_move_left');
+    assert.match(panel(opened).content, /\*\*F12\*\* already has your first token/);
+    const lockButton = panel(opened).components.flatMap(row => row.toJSON().components).find(c => c.custom_id === 'hc_lock');
+    assert.equal(lockButton.disabled, true);
+    assert.match((await interact(g1, 'hc_lock')).replies()[0], /^❌ \*\*F12\*\* already has your first token/);
+
+    // Typing someone else's first square is refused, naming them; the token stays put.
+    const typed = await interact(g2, 'hc_ref_modal', { kind: 'modal', fields: { hc_ref_input: 'F12' } });
+    assert.match(typed.replies()[0], new RegExp(`^❌ \\*\\*F12\\*\\* already has \\*\\*${g1.username}'s\\*\\* first token`));
+    assert.deepEqual(game.tokens.get(g2.id).draft, cell('A1'));
+
+    // The arrows can pass over a first token, but the panel says so and won't lock.
+    await interact(g1, 'hc_ref_modal', { kind: 'modal', fields: { hc_ref_input: 'A2' } });
+    const onA1 = await interact(g1, 'hc_move_left');
+    assert.match(panel(onA1).content, new RegExp(`\\*\\*A1\\*\\* already has \\*\\*${g2.username}'s\\*\\* first token`));
+    assert.equal(game.tokens.get(g1.id).cells.length, 1, 'not locked');
+  });
+
+  it('the turn is scored when every second token is in', async () => {
+    const [g1, g2] = guessers;
+    await interact(g1, 'hc_ref_modal', { kind: 'modal', fields: { hc_ref_input: 'F11' } });
+    const ready = await interact(g1, 'hc_move_down');
+    await interact(g1, 'hc_move_up');
+    assert.match(panel(ready).content, /token is on \*\*G11\*\*/);
     await interact(g1, 'hc_lock');
     await interact(g2, 'hc_ref_modal', { kind: 'modal', fields: { hc_ref_input: 'H14' } });
     const resultsBefore = game.turnMessageId;
