@@ -26,6 +26,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // Privileged — enable in Discord Dev Portal → Bot → Privileged Gateway Intents
     GatewayIntentBits.GuildMembers,   // Privileged — needed for welcome automation (guildMemberAdd / role grants)
+    GatewayIntentBits.GuildVoiceStates, // Articulate: who is in the game's voice channel (not privileged)
   ],
 });
 

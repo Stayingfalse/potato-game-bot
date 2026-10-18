@@ -86,6 +86,27 @@ A colour-guessing party game played on a 480-colour board (rows A–P, columns 1
 - 📊 Stats: total score, bullseyes and turns as cue giver
 - 👥 Supports 2-10 players
 
+### Articulate 🗣️
+
+The fast-talking team describing game, played over **voice chat**: describe as many words as you can before the timer runs out, and race your team around the board.
+
+**How to Play:**
+- Use `/articulate start` in any channel to open a public game thread, and `/articulate end` inside that thread to end it early
+- The host picks the number of teams (2–4) and how they're made: **random**, **pick your team**, a **captains' draft**, or **keep** the last game's teams. The host also sets the voice channel, timer (30s official, or 45/60s) and the single-describer variation
+- On your turn, your describer opens their private panel, presses **Start**, and describes words from your square's category (Object, Nature, Action, World, Person, Random) while your team shouts guesses in voice. They press **Got it** for each correct guess, and may pass once per turn
+- Each correct guess moves your team one square. Teams of three or more have two describers, who see the same card
+- No saying the word or any part of it, no "sounds like" or "rhymes with", and no letter clues. Any player on another team can call a **Foul**, which forfeits the turn
+- Land on a **Spin** square (Action or Random) to spin for a bonus: move forward, or send another team back
+- Land on a **♠ Control** square and your describer describes a ♠ word to **every** team; the first team to shout it takes the next turn
+- Reach the finish and win a ♠ Control round to win the game. Lose it, and you try again on your next turn
+
+**Features:**
+- 🎡 Generated board image with every team's piece, plus the spinner
+- 🔊 Shows who isn't in the voice channel when their team's turn starts
+- 📚 Over 1,000 original words, written with UK players in mind
+- 📊 Stats: games won, cards described and fouls
+- 👥 4-20 players
+
 ## 🎉 Additional Features
 
 ### Birthday Announcements 🎂

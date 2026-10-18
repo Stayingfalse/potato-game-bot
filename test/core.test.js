@@ -215,7 +215,7 @@ describe('BaseGameManager', () => {
 
 describe('registry and router', () => {
   it('discovers every game folder, in order', () => {
-    assert.deepEqual(getGames().map(g => g.id), ['werewords', 'wavelength', 'nmj', 'huesclues']);
+    assert.deepEqual(getGames().map(g => g.id), ['werewords', 'wavelength', 'nmj', 'huesclues', 'articulate']);
     for (const game of getGames()) {
       assert.equal(typeof game.handleInteraction, 'function', game.id);
       assert.equal(game.command.data.name, game.id);
@@ -227,6 +227,7 @@ describe('registry and router', () => {
     assert.equal(findGameByCustomId('wl_clue_modal').id, 'wavelength');
     assert.equal(findGameByCustomId('nmj_join').id, 'nmj');
     assert.equal(findGameByCustomId('hc_ref_modal').id, 'huesclues');
+    assert.equal(findGameByCustomId('ar_got_3').id, 'articulate');
     assert.equal(findGameByCustomId('ct_join_1'), null, 'removed game');
     assert.equal(findGameByCustomId('rmr:abc'), null);
   });

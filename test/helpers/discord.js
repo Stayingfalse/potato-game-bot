@@ -83,10 +83,12 @@ function createClient(channels, extra = {}) {
 }
 
 /**
- * A button or modal interaction. `message` is the fake message the button sits
- * on (if any): `update` edits it, as Discord does.
+ * A button, select menu or modal interaction. `kind` is 'button', 'select'
+ * (string select), 'channelSelect' or 'modal'; `values` are a select's choices.
+ * `message` is the fake message the component sits on (if any): `update` edits
+ * it, as Discord does.
  */
-function componentInteraction({ customId, user: from, channelId, kind = 'button', fields = {}, message = null }) {
+function componentInteraction({ customId, user: from, channelId, kind = 'button', fields = {}, values = [], message = null }) {
   const interaction = {
     customId,
     user: from,
@@ -95,9 +97,12 @@ function componentInteraction({ customId, user: from, channelId, kind = 'button'
     deferred: false,
     calls: [],
     message: message ?? { content: '' },
+    values,
     isButton: () => kind === 'button',
+    isStringSelectMenu: () => kind === 'select',
+    isChannelSelectMenu: () => kind === 'channelSelect',
     isModalSubmit: () => kind === 'modal',
-    isMessageComponent: () => kind === 'button',
+    isMessageComponent: () => kind !== 'modal',
     isChatInputCommand: () => false,
     fields: { getTextInputValue: key => fields[key] },
     reply: async payload => { interaction.calls.push(['reply', payload]); interaction.replied = true; },

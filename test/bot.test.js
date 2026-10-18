@@ -32,14 +32,14 @@ describe('startup', () => {
   before(async () => { client = await bootBot(); });
 
   it('creates a manager per game, reachable by id and by the game\'s client key', () => {
-    assert.deepEqual([...client.games.keys()], ['werewords', 'wavelength', 'nmj', 'huesclues']);
+    assert.deepEqual([...client.games.keys()], ['werewords', 'wavelength', 'nmj', 'huesclues', 'articulate']);
     for (const [, { game, manager }] of client.games) assert.equal(client[game.clientKey], manager);
     assert.equal(client.cheeseThiefManager, undefined);
     assert.equal(client.herdMentalityManager, undefined);
   });
 
   it('serves each game\'s command plus the non-game commands', () => {
-    assert.deepEqual([...client.commands.keys()].sort(), ['birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual([...client.commands.keys()].sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
   });
 
   it('registers one interactionCreate listener', () => {
@@ -125,7 +125,7 @@ describe('restore', () => {
       for (const [game] of originals) game.restore = async () => { ran.push(game.id); };
       nmj.restore = async () => { throw new Error('broken'); };
       const { logs } = await quietly(() => restoreGames({}));
-      assert.deepEqual(ran.sort(), ['huesclues', 'wavelength', 'werewords']);
+      assert.deepEqual(ran.sort(), ['articulate', 'huesclues', 'wavelength', 'werewords']);
       assert.ok(logs.some(line => line.includes('[Restore] No More Jockeys failed')));
     } finally {
       for (const [game, restore] of originals) game.restore = restore;
@@ -156,7 +156,7 @@ describe('deploy-commands', () => {
     } finally {
       discord.REST.prototype.put = originalPut;
     }
-    assert.deepEqual(body.map(c => c.name).sort(), ['birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual(body.map(c => c.name).sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
     const werewords = body.find(c => c.name === 'werewords');
     assert.deepEqual(werewords.options.map(o => o.name), ['start', 'end']);
   });
