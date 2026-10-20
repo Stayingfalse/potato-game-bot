@@ -357,41 +357,73 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── The cue giver's card ───────────────────────────────────────────────────────
 
-const SWATCH_W = 170;
-const SWATCH_H = 170;
-const SWATCH_GAP = 18;
+const CARD_SWATCH_H = 120;
+const CARD_SWATCH_GAP = 18;
+const CARD_LABEL_H = 56;
+const CHOSEN = '#F1C40F';
 
-/** The cue giver's four colours with their grid refs; the chosen one (if any) is highlighted. */
+/** A numbered box around one of the card's squares on the board. */
+function drawCardBox(ctx, cell, number, boardY, chosen) {
+  strokeCells(ctx, cell, 0, boardY, { width: chosen ? 6 : 5, color: '#000000' });
+  strokeCells(ctx, cell, 0, boardY, { width: chosen ? 4 : 3, color: chosen ? CHOSEN : '#FFFFFF' });
+
+  // The number sits in a badge at the box's top-left corner.
+  const { x, y } = cellOrigin(cell, boardY);
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.fillStyle = chosen ? CHOSEN : '#FFFFFF';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(number), x, y + 1);
+}
+
+/**
+ * The cue giver's card: the board with a numbered box around each of the four
+ * colours, and the four colours large underneath with their grid refs. The
+ * chosen one (if any) is gold and the others fade.
+ */
 async function generateCardImage(card, targetIndex = null) {
-  const width = PAD * 2 + card.length * SWATCH_W + (card.length - 1) * SWATCH_GAP;
-  const height = PAD * 2 + SWATCH_H + 64;
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = BACKGROUND;
-  ctx.fillRect(0, 0, width, height);
-
+  const { canvas, ctx, boardY } = newCanvas(CARD_SWATCH_H + CARD_LABEL_H + PAD);
+  const chosen = targetIndex === null ? null : card[targetIndex];
+  drawTitle(ctx, {
+    heading: 'Your card',
+    subtitle: chosen ? `You're describing colour ${targetIndex + 1} · ${formatCell(chosen)}` : 'Pick one of these four colours to describe',
+  });
+  drawBoard(ctx, boardY);
   for (const [i, cell] of card.entries()) {
-    const x = PAD + i * (SWATCH_W + SWATCH_GAP);
-    const y = PAD + 8;
-    const chosen = i === targetIndex;
-    ctx.globalAlpha = targetIndex === null || chosen ? 1 : 0.35;
+    if (i !== targetIndex) drawCardBox(ctx, cell, i + 1, boardY, false);
+  }
+  if (chosen) drawCardBox(ctx, chosen, targetIndex + 1, boardY, true); // on top of the others
+
+  const swatchW = (BOARD_W - (card.length - 1) * CARD_SWATCH_GAP) / card.length;
+  const y = boardY + BOARD_H + PAD + 8;
+  for (const [i, cell] of card.entries()) {
+    const x = BOARD_X + i * (swatchW + CARD_SWATCH_GAP);
+    const isChosen = i === targetIndex;
+    ctx.globalAlpha = targetIndex === null || isChosen ? 1 : 0.35;
     ctx.fillStyle = cellColor(cell);
-    roundRect(ctx, x, y, SWATCH_W, SWATCH_H, 14);
+    roundRect(ctx, x, y, swatchW, CARD_SWATCH_H, 14);
     ctx.fill();
-    if (chosen) {
+    if (isChosen) {
       ctx.lineWidth = 5;
-      ctx.strokeStyle = '#F1C40F';
+      ctx.strokeStyle = CHOSEN;
       ctx.stroke();
     }
     ctx.fillStyle = TEXT;
     ctx.font = 'bold 22px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${i + 1} · ${formatCell(cell)}`, x + SWATCH_W / 2, y + SWATCH_H + 24);
-    if (chosen) {
+    ctx.fillText(`${i + 1} · ${formatCell(cell)}`, x + swatchW / 2, y + CARD_SWATCH_H + 22);
+    if (isChosen) {
       ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = '#F1C40F';
-      ctx.fillText('YOUR COLOUR', x + SWATCH_W / 2, y + SWATCH_H + 46);
+      ctx.fillStyle = CHOSEN;
+      ctx.fillText('YOUR COLOUR', x + swatchW / 2, y + CARD_SWATCH_H + 44);
     }
     ctx.globalAlpha = 1;
   }
