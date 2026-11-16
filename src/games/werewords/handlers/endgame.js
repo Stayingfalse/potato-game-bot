@@ -16,6 +16,7 @@ const { getGuildStats } = require('../stats');
 const { isDemon, isLibrarian } = require('../roles');
 const { sampleN } = require('../../_core/random');
 const { fetchChannel, lockAndArchive } = require('../../_core/threads');
+const { replyWithLeaderboard } = require('../../_core/statsDisplay');
 const WerewordsRepository = require('../repository');
 const { renderGameMessage } = require('../render');
 const { updateGameMessage } = require('../gameMessage');
@@ -270,6 +271,7 @@ const buttons = [
   { match: id => id === 'ww_rematch_same', handle: handleRematchSame },
   { match: id => id === 'ww_rematch_open', handle: handleRematchOpen },
   { match: id => id === 'ww_close_session', handle: handleCloseSession },
+  { match: id => id === 'ww_leaderboard', handle: interaction => replyWithLeaderboard(interaction, 'werewords') },
 ];
 
 module.exports = { buttons, closeSession };

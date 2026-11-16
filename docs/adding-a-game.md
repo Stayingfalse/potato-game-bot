@@ -45,7 +45,7 @@ are skipped, so the template itself is never loaded into the bot.
 | `flow.js` | Phase changes (start, finish, close) and timers, shared by the handlers, the command and restore. |
 | `handlers.js` | One function per button, looked up by customId. The game is found from the thread the button was pressed in. |
 | `restore.js` | Reloads saved games on startup, redraws their message in place and re-arms timers with the time left. |
-| `stats.js` | Optional. Player stats, plus the standard `getPlayer` and `scoreboard` readers. Leave `stats` out of the manifest if the game has none. |
+| `stats.js` | Optional. Player stats, plus the standard `getPlayer` and `scoreboard` readers and the `describePlayer` and `leaderboard` functions that `/stats` and `/leaderboard` show (see [Stats](#stats)). Leave `stats` out of the manifest if the game has none. |
 
 ## Conventions
 
@@ -62,6 +62,22 @@ for anyone reading the code.
 - **Restore:** redraw the message in place; don't post "bot restarted" messages.
 - **Changing what's saved:** add new columns to both `SCHEMA` and `ADDED_COLUMNS`. For bigger changes, write a `migrate` that converts saved games, as `src/games/nmj/repository.js` does, so games in progress survive the upgrade.
 - **Shared helpers** live in `src/games/_core/`: `threads.js` (create, archive, permission messages), `messages.js` (edit or send), `errors.js`, `random.js`.
+
+## Stats
+
+A game whose manifest has `stats` appears in `/stats` and `/leaderboard` by
+itself; the commands know nothing about individual games. `stats.js` exports:
+
+| Function | Returns |
+|---|---|
+| `getPlayer(guildId, userId)` | The player's stats row, or `null`. |
+| `scoreboard(guildId)` | The top 10 rows, best first. |
+| `describePlayer(row)` | What `/stats` shows for a row from `getPlayer`: `[{ label, value }]`. |
+| `leaderboard(guildId)` | What `/leaderboard` shows: every player, best first, as `{ user_id, username, headline, detail }`. `headline` is the number the ranking is about (`"3 wins"`); `detail` is a short extra (`"best roll 90"`). |
+
+To put a "🏆 Leaderboard" button on the game's results screen, add a button
+with the customId `<prefix>leaderboard` and route it to
+`replyWithLeaderboard(interaction, '<id>')` from `src/games/_core/statsDisplay.js`.
 
 ## Testing
 

@@ -6,6 +6,7 @@ const { renderGameMessage, renderSessionStarted, renderDescriberPanel } = requir
 const { TIMER_GRACE_MS, teamOf } = require('./rules');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { replyWithLeaderboard } = require('../_core/statsDisplay');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -270,6 +271,7 @@ const BUTTONS = {
   ar_rematch: hostEnded(flow.rematch),
   ar_new_game: hostEnded(flow.newGame),
   ar_close: handleClose,
+  ar_leaderboard: interaction => replyWithLeaderboard(interaction, 'articulate'),
 };
 
 /** Buttons that carry a value in their customId: prefix → handler(…, value). Longer prefixes first. */

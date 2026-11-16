@@ -25,6 +25,7 @@ const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
 const { editOrSend } = require('../_core/messages');
+const { replyWithLeaderboard } = require('../_core/statsDisplay');
 
 const { MIN_PLAYERS } = require('./manager');
 
@@ -723,6 +724,8 @@ async function handleInteraction(interaction, client) {
     await closeSession(game, client, `🔒 Session closed by <@${user.id}>. Thanks for playing Wavelength!`);
     return;
   }
+
+  if (customId === 'wl_leaderboard') return replyWithLeaderboard(interaction, 'wavelength');
 
   return interaction.reply({ content: 'Unknown action.', flags: MessageFlags.Ephemeral });
 }

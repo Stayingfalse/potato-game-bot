@@ -31,14 +31,16 @@ const stmtRecordPlayer = db.prepare(`
 
 const stmtGetPlayer = db.prepare('SELECT * FROM huesclues_player_stats WHERE guild_id = ? AND user_id = ?');
 
-const stmtScoreboard = db.prepare(`
+const RANKING_SQL = `
   SELECT user_id, username, turns_played, total_score, bullseyes,
          CASE WHEN turns_played > 0 THEN ROUND(1.0 * total_score / turns_played, 1) ELSE 0 END AS avg_score
   FROM huesclues_player_stats
   WHERE guild_id = ? AND turns_played > 0
   ORDER BY total_score DESC, avg_score DESC
-  LIMIT 10
-`);
+`;
+
+const stmtScoreboard = db.prepare(`${RANKING_SQL} LIMIT 10`);
+const stmtRanking = db.prepare(RANKING_SQL);
 
 /** Records a scored turn for the cue giver and every guesser. Bullseyes are tokens right on the target. */
 const recordTurn = db.transaction((game, turn) => {
@@ -66,4 +68,27 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-module.exports = { recordTurn, getPlayer, scoreboard };
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** What /stats shows for a player's row: label/value pairs. */
+function describePlayer(row) {
+  const average = row.turns_played > 0 ? Math.round(10 * row.total_score / row.turns_played) / 10 : 0;
+  return [
+    { label: 'Turns', value: row.turns_played },
+    { label: 'Total score', value: `${row.total_score} pts` },
+    { label: 'Average', value: `${average} pts a turn` },
+    { label: 'Bullseyes', value: row.bullseyes },
+    { label: 'Turns as cue giver', value: row.turns_as_cue_giver },
+  ];
+}
+
+/** What /leaderboard shows: every player in a guild, best first, by total score. */
+function leaderboard(guildId) {
+  return stmtRanking.all(guildId).map(row => ({
+    user_id: row.user_id,
+    username: row.username,
+    headline: `${row.total_score} pts`,
+    detail: `${plural(row.turns_played, 'turn')}, ${plural(row.bullseyes, 'bullseye')}`,
+  }));
+}
+module.exports = { recordTurn, getPlayer, scoreboard, describePlayer, leaderboard };

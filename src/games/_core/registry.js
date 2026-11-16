@@ -19,8 +19,9 @@ const GAMES_DIR = path.join(__dirname, '..');
  *   handleInteraction(interaction, client),  // buttons/modals whose customId has `prefix`
  *   handleMessage(message, client),          // optional; called for every guild message
  *   restore(client),    // optional; reloads the game's saved games on startup
- *   stats,              // optional; { getPlayer(guildId, userId), scoreboard(guildId) }
- *                       //   the standard way to read a game's player stats
+ *   stats,              // optional; { getPlayer(guildId, userId), scoreboard(guildId),
+ *                       //   describePlayer(row), leaderboard(guildId) }
+ *                       //   the standard way to read and show a game's player stats
  * }
  *
  * Folders starting with "_" (such as _core) are not games.

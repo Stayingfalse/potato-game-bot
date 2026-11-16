@@ -27,6 +27,11 @@ function buildRematchComponents(disableNextRound = false, game = null) {
         .setEmoji('📋'),
       buildAutoAdvanceToggleButton(game),
       new ButtonBuilder()
+        .setCustomId('wl_leaderboard')
+        .setLabel('Leaderboard')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🏆'),
+      new ButtonBuilder()
         .setCustomId('wl_close_session')
         .setLabel('End Game & Close Session')
         .setStyle(ButtonStyle.Danger)
