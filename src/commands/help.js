@@ -44,6 +44,7 @@ function buildOverviewEmbed(games = getGames()) {
     )
     .addFields(
       ...games.map(gameField),
+      { name: '🏆 Stats', value: '`/stats` — your stats for each game\n`/leaderboard game:<name>` — this server\'s top 10 for a game' },
       { name: '🎂 Birthdays', value: BIRTHDAY_COMMANDS },
     )
     .setColor(HELP_COLOR)

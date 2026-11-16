@@ -116,6 +116,37 @@ class WavelengthManager extends BaseGameManager {
     if (!game.sessionMode) return;
     game.clueGiverId = this.pickClueGiver(game, playerIds);
     if (!game.clueGiverId) return;
+    this.dealRound(game, playerIds, spectraPool);
+  }
+
+  /**
+   * The clue giver isn't giving a clue: hands the round to the next clue giver
+   * in the session's order, with a fresh target and spectra. Nothing is scored,
+   * and the skipped turn still counts as that player's clue turn.
+   * @returns {string|null} the new clue giver's ID, or null if the round can't be skipped
+   */
+  skipClueGiver(threadId, spectraPool) {
+    const game = this.games.get(threadId);
+    if (!game || game.phase !== 'cluing' || !game.sessionMode || game.players.size < 2) return null;
+
+    const skippedId = game.clueGiverId;
+    const playerIds = [...game.players.keys()];
+    // Snake order (at its turn-around) and random order can pick the same player again.
+    let nextId = skippedId;
+    for (let attempt = 0; attempt < 20 && nextId === skippedId; attempt++) {
+      nextId = this.pickClueGiver(game, playerIds);
+    }
+    if (nextId === skippedId) nextId = playerIds.find(id => id !== skippedId);
+
+    game.clueGiverId = nextId;
+    game.chosenSpectrum = null;
+    game.clue = null;
+    this.dealRound(game, playerIds, spectraPool);
+    return nextId;
+  }
+
+  /** Deals the round for `game.clueGiverId`: a target, two spectra to choose from and a blank guess for everyone else. */
+  dealRound(game, playerIds, spectraPool) {
     game.targetPosition = Math.floor(Math.random() * 101);
 
     game.spectrumOptions = sampleN(spectraPool, 2);

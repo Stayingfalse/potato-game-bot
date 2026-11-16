@@ -14,6 +14,7 @@ const { ROLES, ROLE_DESCRIPTIONS } = require('../roles');
 const { sampleN } = require('../../_core/random');
 const WerewordsRepository = require('../repository');
 const { updateGameMessage } = require('../gameMessage');
+const { isHost, replyNotHost } = require('../../_core/host');
 
 const {
   wordPool,
@@ -30,8 +31,8 @@ async function handleModeSelect(interaction, client, game) {
   if (!game || game.phase !== 'mode_select') {
     return interaction.reply({ content: 'No mode selection is in progress.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can choose the game mode.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can choose the game mode.');
   }
 
   game.sessionMode = customId === 'ww_mode_text' ? 'text' : 'voice';

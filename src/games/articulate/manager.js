@@ -209,6 +209,15 @@ class ArticulateManager extends BaseGameManager {
     return true;
   }
 
+  /** The describers haven't started the timer: the turn ends with no cards and nobody moves. */
+  skipTurn(game, byUserId) {
+    if (game.phase !== 'ready') return false;
+    game.turn.skippedBy = byUserId;
+    game.phase = 'turnover';
+    this.save(game);
+    return true;
+  }
+
   /** A describer starts the timer. */
   beginDescribing(game) {
     if (game.phase !== 'ready') return false;

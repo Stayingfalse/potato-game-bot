@@ -155,6 +155,7 @@ function buildDeclareMessage(game, displayNames) {
         .setLabel(currentName ? `${currentName}, Take Your Turn` : 'Take Your Turn')
         .setEmoji('🎤')
         .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('nmj_skip_turn').setLabel('Skip Turn (host)').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
     ),
   );
   return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };
@@ -205,6 +206,7 @@ function buildNameAnotherMessage(game) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('nmj_na_provide').setLabel('Name Another Celeb').setEmoji('🎤').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('nmj_na_cant').setLabel("Can't — New Category").setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('nmj_skip_turn').setLabel('Skip Turn (host)').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
     ),
   );
   return { components: [fixedContainer(game), turn], flags: MessageFlags.IsComponentsV2 };

@@ -153,7 +153,10 @@ function renderPicking(game) {
   return message([container(COLOR.picking,
     turnHeader(game),
     `<@${game.cueGiverId}> is studying their card and choosing a colour to describe…\n\n*The clue will appear here when it's ready.*`,
-    buttons(button('hc_cue_panel', 'Open Cue Giver Panel', '🎨', ButtonStyle.Primary)))]);
+    buttons(
+      button('hc_cue_panel', 'Open Cue Giver Panel', '🎨', ButtonStyle.Primary),
+      button('hc_skip_cue', 'Skip Cue Giver (host)', '⏭️', ButtonStyle.Secondary),
+    ))]);
 }
 
 function submissionsText(game) {
@@ -188,6 +191,7 @@ async function renderFollowup(game) {
       button('hc_clue2', 'Give Second Clue', '💬', ButtonStyle.Primary),
       button('hc_no_more', 'Nothing More to Say', '🤐', ButtonStyle.Secondary),
       button('hc_cue_panel', 'View My Card', '🎨', ButtonStyle.Secondary),
+      button('hc_skip_cue', 'Skip Second Clue (host)', '⏭️', ButtonStyle.Secondary),
     ))];
   await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.picking);
   return message(parts, files);

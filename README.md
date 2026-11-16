@@ -136,6 +136,12 @@ Every game keeps player stats per server.
 
 The results screens of Werewords, Wavelength, Hues & Clues and Articulate also have a **🏆 Leaderboard** button.
 
+### Hosts & Stalled Games 👑
+
+- Moderators with **Manage Threads** can use any game's host controls.
+- If the host has been inactive for two minutes (or has left), any player who presses a host-only button is offered **Take over as host**.
+- The host can skip a player who has gone quiet: the Clue Giver in Wavelength, the current turn in No More Jockeys and Articulate, and the cue giver in Hues & Clues.
+
 ## 🎮 Getting Started
 
 1. **Invite the bot** to your Discord server

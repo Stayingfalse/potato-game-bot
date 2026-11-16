@@ -182,6 +182,7 @@ async function renderTurn(game, { voiceMissing = [] } = {}) {
     buttons(
       button('ar_panel', 'Describer Panel', '🎴', ButtonStyle.Primary),
       button('ar_foul', 'Foul', '🚩', ButtonStyle.Danger).setDisabled(!live),
+      ...(live ? [] : [button('ar_skip_turn', 'Skip Turn (host)', '⏭️', ButtonStyle.Secondary)]),
     ))];
   await addBoard(parts, files, game, `Turn ${game.turnNumber} · ${game.team.name} to play`);
   return message(parts, files);
@@ -241,6 +242,7 @@ function renderTurnSummary(game) {
   const { turn, spinResult, control } = game;
   const lines = [];
   if (turn.endsAt) lines.push(turnResultText(game, turn.foulBy ? 0 : turn.correct.length));
+  if (turn.skippedBy) lines.push(`⏭️ Turn skipped by ${mention(turn.skippedBy)} — the timer was never started.`);
   if (spinResult) {
     const target = spinResult.target !== undefined ? game.teams[spinResult.target] : null;
     lines.push(spinResult.steps === 0
