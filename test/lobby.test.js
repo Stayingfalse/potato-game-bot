@@ -190,11 +190,11 @@ describe('/help', () => {
     assert.ok(src('utils/loadCommands').loadCommands().includes(help));
   });
 
-  it('lists every game with its description, player count and start command, plus birthdays', async () => {
+  it('lists every game with its description, player count and start command, plus stats and birthdays', async () => {
     const reply = await run(null);
     assert.equal(reply.flags, MessageFlags.Ephemeral);
     const embed = reply.embeds[0].toJSON();
-    assert.deepEqual(embed.fields.map(f => f.name), [...getGames().map(g => `${g.howToPlay.emoji} ${g.name}`), '🎂 Birthdays']);
+    assert.deepEqual(embed.fields.map(f => f.name), [...getGames().map(g => `${g.howToPlay.emoji} ${g.name}`), '🏆 Stats', '🎂 Birthdays']);
     for (const [i, game] of getGames().entries()) {
       const { value } = embed.fields[i];
       assert.ok(value.startsWith(game.howToPlay.summary), game.id);
