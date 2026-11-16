@@ -39,14 +39,16 @@ const stmtPlayed = db.prepare(`
 
 const stmtGetPlayer = db.prepare('SELECT * FROM articulate_player_stats WHERE guild_id = ? AND user_id = ?');
 
-const stmtScoreboard = db.prepare(`
+const RANKING_SQL = `
   SELECT user_id, username, games_played, games_won, turns_described, cards_described, fouls,
          CASE WHEN turns_described > 0 THEN ROUND(1.0 * cards_described / turns_described, 1) ELSE 0 END AS avg_cards
   FROM articulate_player_stats
   WHERE guild_id = ? AND (games_played > 0 OR turns_described > 0)
   ORDER BY games_won DESC, cards_described DESC
-  LIMIT 10
-`);
+`;
+
+const stmtScoreboard = db.prepare(`${RANKING_SQL} LIMIT 10`);
+const stmtRanking = db.prepare(RANKING_SQL);
 
 /** Records the describers' timed turn: cards their team got, and whether a foul was called. */
 const recordTurn = db.transaction(game => {
@@ -86,4 +88,27 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
-module.exports = { recordTurn, recordGame, getPlayer, scoreboard };
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** What /stats shows for a player's row: label/value pairs. */
+function describePlayer(row) {
+  const average = row.turns_described > 0 ? Math.round(10 * row.cards_described / row.turns_described) / 10 : 0;
+  return [
+    { label: 'Games', value: row.games_played },
+    { label: 'Wins', value: row.games_won },
+    { label: 'Turns describing', value: row.turns_described },
+    { label: 'Cards described', value: `${row.cards_described} (${average} a turn)` },
+    { label: 'Fouls', value: row.fouls },
+  ];
+}
+
+/** What /leaderboard shows: every player in a guild, best first, by games won. */
+function leaderboard(guildId) {
+  return stmtRanking.all(guildId).map(row => ({
+    user_id: row.user_id,
+    username: row.username,
+    headline: plural(row.games_won, 'win'),
+    detail: `${plural(row.games_played, 'game')}, ${plural(row.cards_described, 'card')} described`,
+  }));
+}
+module.exports = { recordTurn, recordGame, getPlayer, scoreboard, describePlayer, leaderboard };

@@ -88,6 +88,11 @@ function buildRematchComponents() {
         .setEmoji('📋')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
+        .setCustomId('ww_leaderboard')
+        .setLabel('Leaderboard')
+        .setEmoji('🏆')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId('ww_close_session')
         .setLabel('Close Session')
         .setEmoji('🔒')

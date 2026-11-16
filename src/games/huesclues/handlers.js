@@ -15,6 +15,7 @@ const {
 const { parseCell, formatCell } = require('./board');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { replyWithLeaderboard } = require('../_core/statsDisplay');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -317,6 +318,7 @@ const BUTTONS = {
   hc_next: handleNext,
   hc_new_game: handleNewGame,
   hc_close: handleClose,
+  hc_leaderboard: interaction => replyWithLeaderboard(interaction, 'huesclues'),
 };
 
 /** Buttons that carry a value in their customId: prefix → handler(…, value). */

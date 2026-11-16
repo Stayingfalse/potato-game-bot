@@ -282,6 +282,7 @@ function endedControls(game, goal) {
     button('hc_next', 'Next Turn', '🔄', ButtonStyle.Primary).setDisabled(goal.complete),
     button('hc_new_game', 'New Game (Open Signups)', '📋', ButtonStyle.Secondary),
     autoAdvanceButton(game),
+    button('hc_leaderboard', 'Leaderboard', '🏆', ButtonStyle.Secondary),
     button('hc_close', 'End Game & Close Session', '🔒', ButtonStyle.Danger),
   );
 }

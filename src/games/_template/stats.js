@@ -3,7 +3,8 @@
 /**
  * High Roll player stats, per guild. Optional: a game without stats just leaves
  * `stats` out of its manifest. With it, the game offers the standard
- * getPlayer/scoreboard pair that a leaderboard can read for any game.
+ * getPlayer/scoreboard pair, plus describePlayer/leaderboard, which are what
+ * /stats and /leaderboard show (src/games/_core/statsDisplay.js).
  */
 
 const db = require('../../db/database');
@@ -32,13 +33,15 @@ const stmtRecordPlayer = db.prepare(`
 
 const stmtGetPlayer = db.prepare('SELECT * FROM highroll_player_stats WHERE guild_id = ? AND user_id = ?');
 
-const stmtScoreboard = db.prepare(`
+const RANKING_SQL = `
   SELECT user_id, username, games_played, wins, best_roll
   FROM highroll_player_stats
   WHERE guild_id = ? AND games_played > 0
   ORDER BY wins DESC, best_roll DESC
-  LIMIT 10
-`);
+`;
+
+const stmtScoreboard = db.prepare(`${RANKING_SQL} LIMIT 10`);
+const stmtRanking = db.prepare(RANKING_SQL);
 
 /** Records a finished round for everyone who rolled. */
 const recordGame = db.transaction(game => {
@@ -54,7 +57,7 @@ const recordGame = db.transaction(game => {
   }
 });
 
-// The two functions the stats hook needs:
+// The functions the stats hook needs:
 
 /** A player's stats row, or null. */
 function getPlayer(guildId, userId) {
@@ -66,5 +69,31 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
+// What players see. The wording lives here, so the commands need no per-game knowledge.
 
-module.exports = { recordGame, getPlayer, scoreboard };
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** What /stats shows for a player's row: label/value pairs. */
+function describePlayer(row) {
+  return [
+    { label: 'Games', value: row.games_played },
+    { label: 'Wins', value: row.wins },
+    { label: 'Best roll', value: row.best_roll },
+  ];
+}
+
+/**
+ * What /leaderboard shows: every player in a guild, best first (not just the
+ * top 10, so a player further down can be told their rank). `headline` is the
+ * number the ranking is about; `detail` is a short extra.
+ */
+function leaderboard(guildId) {
+  return stmtRanking.all(guildId).map(row => ({
+    user_id: row.user_id,
+    username: row.username,
+    headline: plural(row.wins, 'win'),
+    detail: `best roll ${row.best_roll}`,
+  }));
+}
+
+module.exports = { recordGame, getPlayer, scoreboard, describePlayer, leaderboard };

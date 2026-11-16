@@ -274,6 +274,7 @@ async function renderWinner(game, { includeControls = true } = {}) {
     includeControls ? buttons(
       button('ar_rematch', 'Rematch (same teams)', '🔄', ButtonStyle.Primary),
       button('ar_new_game', 'New Game (Open Signups)', '📋', ButtonStyle.Secondary),
+      button('ar_leaderboard', 'Leaderboard', '🏆', ButtonStyle.Secondary),
       button('ar_close', 'Close Session', '🔒', ButtonStyle.Danger),
     ) : null)];
   await addBoard(parts, files, game, `${winner.name} win!`);

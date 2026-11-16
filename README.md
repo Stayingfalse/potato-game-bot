@@ -125,6 +125,17 @@ Never forget a friend's birthday again! The bot can automatically announce birth
 - `/birthday setchannel <channel>` - Choose where announcements appear
 - `/birthday resend` - Re-send today's birthday messages
 
+### Stats & Leaderboards 🏆
+
+Every game keeps player stats per server.
+
+**Commands:**
+- `/stats` - Your stats for every game you've played (only you see the reply)
+- `/stats game:<game> user:<user>` - One game's stats, or another player's
+- `/leaderboard game:<game>` - The server's top 10 for a game, plus your own rank if you're further down
+
+The results screens of Werewords, Wavelength, Hues & Clues and Articulate also have a **🏆 Leaderboard** button.
+
 ## 🎮 Getting Started
 
 1. **Invite the bot** to your Discord server
