@@ -1,5 +1,6 @@
 const { handleRoleMenuButton } = require('../features/roleMenuFeature');
 const { replyWithError } = require('../games/_core/errors');
+const { blockIfGated } = require('../games/_core/featureGate');
 const { routeGameInteraction } = require('../games/_core/router');
 
 /**
@@ -16,6 +17,8 @@ module.exports = {
       if (!command) return;
 
       try {
+        // Dashboard settings: the feature is off, or not allowed in this channel.
+        if (await blockIfGated(interaction)) return;
         await command.execute(interaction, client);
       } catch (error) {
         console.error('[Command error]', error);

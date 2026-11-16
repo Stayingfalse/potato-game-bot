@@ -10,6 +10,7 @@
  */
 
 const repo = require('../db/BirthdayRepository');
+const { isFeatureEnabled, BIRTHDAY_FEATURE_ID } = require('../games/_core/featureGate');
 
 /** Fun birthday messages.  `{mentions}` is replaced with user ping(s). */
 const BIRTHDAY_MESSAGES = [
@@ -119,6 +120,8 @@ class BirthdayManager {
     repo.pruneAnnouncements(todayKey(pruneBeforeDate));
 
     for (const [, guild] of this._client.guilds.cache) {
+      // Birthdays switched off in the dashboard: no automatic announcements.
+      if (!isFeatureEnabled(guild.id, BIRTHDAY_FEATURE_ID)) continue;
       await this.runForGuild(guild).catch(err =>
         console.error(`[BirthdayManager] Error processing guild ${guild.id}:`, err),
       );
