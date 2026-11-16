@@ -162,6 +162,16 @@ function allCustomIds(payload) {
   return ids;
 }
 
+/** The JSON of the component with this custom_id anywhere in a payload (action rows or Components V2), or null. */
+function findComponent(payload, customId) {
+  let found = null;
+  JSON.stringify(payload?.components ?? [], (key, value) => {
+    if (value && typeof value === 'object' && value.custom_id === customId) found ??= value;
+    return value;
+  });
+  return found;
+}
+
 /** Runs `fn` with console output captured; returns { result, logs }. */
 async function quietly(fn) {
   const original = { log: console.log, warn: console.warn, error: console.error };
@@ -185,5 +195,6 @@ module.exports = {
   embedTitles,
   buttonIds,
   allCustomIds,
+  findComponent,
   quietly,
 };

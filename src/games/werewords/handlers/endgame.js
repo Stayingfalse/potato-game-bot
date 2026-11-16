@@ -206,7 +206,7 @@ async function handleRematchOpen(interaction, client, game) {
   const lobbyMsg = await thread?.send({
     content: `📋 **Game ${resetGame.gameNumber} sign-ups open!** Click **Join** below to play.`,
     embeds: [buildLobbyEmbed(resetGame)],
-    components: buildLobbyComponents(),
+    components: buildLobbyComponents(resetGame),
   }).catch(() => null);
   if (lobbyMsg) {
     resetGame.messageId = lobbyMsg.id;

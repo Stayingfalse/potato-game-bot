@@ -6,6 +6,8 @@ const { renderGameMessage, renderSessionStarted, renderDescriberPanel } = requir
 const { TIMER_GRACE_MS, teamOf } = require('./rules');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -301,6 +303,9 @@ function findHandler(interaction) {
 
 /** Entry point for every interaction whose customId starts with the manifest's prefix. */
 async function handleInteraction(interaction, client) {
+  // Anyone can read the rules, with or without a game in the thread.
+  if (interaction.customId === 'ar_howto') return interaction.reply(howToPlayReply({ name: 'Articulate', howToPlay }));
+
   const found = findHandler(interaction);
   if (!found) return;
 

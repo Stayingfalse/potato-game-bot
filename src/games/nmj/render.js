@@ -10,7 +10,8 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require('discord.js');
-const { CHALLENGE_TOKENS_PER_PLAYER } = require('./manager');
+const { CHALLENGE_TOKENS_PER_PLAYER, MIN_PLAYERS } = require('./manager');
+const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 
 // ── Shared content helpers ───────────────────────────────────────────────────
 
@@ -110,17 +111,11 @@ function buildRecruitingMessage(game) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(baseHeader(game)))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `Join the game below! A minimum of **3 players** is required.\n\n**Players (${game.players.size})**\n${
-        game.players.size ? game.turnOrder().map(id => `<@${id}>`).join('\n') : '*No players yet — be the first to join!*'
+      `Join the game below! A minimum of **${MIN_PLAYERS} players** is required. New here? Press **How to play**.\n\n**Players (${game.players.size})**\n${
+        formatPlayerList(game.turnOrder())
       }`,
     ))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nmj_join').setLabel('Join Game').setEmoji('✋').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('nmj_leave').setLabel('Leave Game').setEmoji('🚪').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('nmj_start').setLabel('Start Game').setEmoji('▶️').setStyle(ButtonStyle.Primary),
-      ),
-    );
+    .addActionRowComponents(buildLobbyRow({ prefix: 'nmj_', playerCount: game.players.size, minPlayers: MIN_PLAYERS }));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 

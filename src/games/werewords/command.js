@@ -61,7 +61,7 @@ module.exports = {
 
       const msg = await thread.send({
         embeds: [buildLobbyEmbed(game)],
-        components: buildLobbyComponents(),
+        components: buildLobbyComponents(game),
       }).catch(() => null);
       if (msg) {
         game.messageId = msg.id;

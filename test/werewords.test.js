@@ -103,7 +103,7 @@ describe('a session through the real command and handlers', () => {
     assert.equal(channel.createdThreads[0].type, 11);
     assert.equal(channel.createdThreads[0].autoArchiveDuration, 1440);
     assert.match(start.replies()[0], /game created by <@host>/);
-    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel']);
+    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel', 'ww_howto']);
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });
     await werewords.command.execute(again, client);
@@ -266,7 +266,7 @@ describe('a session through the real command and handlers', () => {
     assert.equal(game.gameNumber, 4);
     assert.notEqual(game.messageId, oldLobby);
     assert.match(message(game.messageId).content, /Game 4 sign-ups open/);
-    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel']);
+    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel', 'ww_howto']);
   });
 
   it('/werewords end: refused for players, allowed for moderators, closes everything', async () => {

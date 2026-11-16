@@ -6,6 +6,8 @@ const HighRollRepository = require('./repository');
 const { renderGameMessage } = require('./render');
 const { startRound, finishRound, closeSession } = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -92,6 +94,9 @@ const BUTTONS = {
 
 /** Entry point for every interaction whose customId starts with the manifest's prefix. */
 async function handleInteraction(interaction, client) {
+  // The lobby's "How to play" button: anyone can read the rules, with or without a game in the thread.
+  if (interaction.customId === 'hr_howto') return interaction.reply(howToPlayReply({ name: 'High Roll', howToPlay }));
+
   const handler = interaction.isButton() ? BUTTONS[interaction.customId] : null;
   if (!handler) return;
 

@@ -61,7 +61,7 @@ describe('startup', () => {
   });
 
   it('serves each game\'s command plus the non-game commands', () => {
-    assert.deepEqual([...client.commands.keys()].sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual([...client.commands.keys()].sort(), ['articulate', 'birthday', 'help', 'huesclues', 'nmj', 'wavelength', 'werewords']);
   });
 
   it('registers one interactionCreate listener', () => {
@@ -178,7 +178,7 @@ describe('deploy-commands', () => {
     } finally {
       discord.REST.prototype.put = originalPut;
     }
-    assert.deepEqual(body.map(c => c.name).sort(), ['articulate', 'birthday', 'huesclues', 'nmj', 'wavelength', 'werewords']);
+    assert.deepEqual(body.map(c => c.name).sort(), ['articulate', 'birthday', 'help', 'huesclues', 'nmj', 'wavelength', 'werewords']);
     const werewords = body.find(c => c.name === 'werewords');
     assert.deepEqual(werewords.options.map(o => o.name), ['start', 'end']);
   });

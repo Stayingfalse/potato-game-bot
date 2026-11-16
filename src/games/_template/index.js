@@ -22,4 +22,5 @@ module.exports = {
   handleInteraction,
   restore: require('./restore'),
   stats: require('./stats'),
+  howToPlay: require('./howToPlay'),   // optional: rules for the lobby's "How to play" button and /help
 };

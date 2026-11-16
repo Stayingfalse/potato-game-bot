@@ -11,6 +11,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { MIN_PLAYERS } = require('./manager');
+const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 
 /**
  * Builds the game's one message from its state. Pure: no Discord calls, so the
@@ -28,16 +29,12 @@ function renderGameMessage(game, { closedReason } = {}) {
 }
 
 function renderLobby(game) {
-  const players = [...game.players.keys()].map(id => `• <@${id}>`).join('\n') || '*No players yet — be the first to join!*';
+  const players = formatPlayerList(game.players.keys());
   return message(
     `## 🎲 High Roll — Game ${game.gameNumber}\nEveryone rolls once; the highest roll wins. At least **${MIN_PLAYERS} players** needed.`,
     `**Players (${game.players.size})**\n${players}`,
-    buttons(
-      button('hr_join', 'Join', '✋', ButtonStyle.Success),
-      button('hr_leave', 'Leave', '🚪', ButtonStyle.Secondary),
-      button('hr_start', 'Start', '▶️', ButtonStyle.Primary),
-      button('hr_cancel', 'Cancel', '✖️', ButtonStyle.Danger),
-    ),
+    // The standard lobby row: Join, Leave, Start (disabled until there are enough players), Cancel, How to play.
+    buildLobbyRow({ prefix: 'hr_', playerCount: game.players.size, minPlayers: MIN_PLAYERS }),
   );
 }
 
