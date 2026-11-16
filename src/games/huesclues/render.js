@@ -14,6 +14,7 @@ const {
   AttachmentBuilder,
 } = require('discord.js');
 const { MIN_PLAYERS, MAX_PLAYERS } = require('./manager');
+const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 const { CENTRE, formatCell } = require('./board');
 const {
   CLUE_TURN_CHOICES,
@@ -53,7 +54,7 @@ async function renderGameMessage(game, options = {}) {
 // ── Lobby and setup ────────────────────────────────────────────────────────────
 
 function renderLobby(game) {
-  const players = [...game.players.keys()].map(id => `• <@${id}>`).join('\n') || '*No players yet — be the first to join!*';
+  const players = formatPlayerList(game.players.keys());
   return message([
     container(COLOR.lobby,
       [
@@ -65,12 +66,7 @@ function renderLobby(game) {
         'Tokens score **3** on the colour, **2** inside the 3×3 frame around it and **1** touching the frame. The cue giver scores **1** for every token inside the frame.',
       ].join('\n'),
       `**Players (${game.players.size}/${MAX_PLAYERS})**\n${players}\n\n*At least ${MIN_PLAYERS} players needed.*`,
-      buttons(
-        button('hc_join', 'Join', '✋', ButtonStyle.Success),
-        button('hc_leave', 'Leave', '🚪', ButtonStyle.Secondary),
-        button('hc_start', 'Start Game', '▶️', ButtonStyle.Primary),
-        button('hc_cancel', 'Cancel', '✖️', ButtonStyle.Danger),
-      )),
+      buildLobbyRow({ prefix: 'hc_', playerCount: game.players.size, minPlayers: MIN_PLAYERS })),
   ]);
 }
 

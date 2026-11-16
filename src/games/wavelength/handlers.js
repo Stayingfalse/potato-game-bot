@@ -26,6 +26,8 @@ const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
 const { editOrSend } = require('../_core/messages');
 const { replyWithLeaderboard } = require('../_core/statsDisplay');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
 
 const { MIN_PLAYERS } = require('./manager');
 
@@ -239,6 +241,10 @@ async function handleInteraction(interaction, client) {
 
   const { customId, user } = interaction;
   const game = wavelengthManager.getGame(interaction.channelId);
+
+  if (customId === 'wl_howto') {
+    return interaction.reply(howToPlayReply({ name: 'Wavelength', howToPlay }));
+  }
 
   if (customId === 'wl_join') {
     if (!game || game.phase !== 'lobby') {

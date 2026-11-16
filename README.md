@@ -143,7 +143,8 @@ The results screens of Werewords, Wavelength, Hues & Clues and Articulate also h
    - Create Public Threads
    - Send Messages in Threads
    - Manage Threads
-3. **Start playing!** Use `/werewords start`, `/wavelength start` or `/nmj start` in any channel to begin
+3. **Start playing!** Use `/werewords start`, `/wavelength start`, `/nmj start`, `/huesclues start` or `/articulate start` in any channel to begin
+4. **New to a game?** Use `/help` for the list of games and commands, `/help game:<name>` for a game's rules, or press **📖 How to play** in any game lobby
 
 ## 🧪 Running the Tests
 
@@ -193,4 +194,4 @@ Each game runs in its own thread to keep your channels clean and conversations o
 
 ---
 
-Ready to play? Start with `/werewords start`, `/wavelength start` or `/nmj start` and let the games begin! 🎉
+Ready to play? Start with `/werewords start`, `/wavelength start`, `/nmj start`, `/huesclues start` or `/articulate start` and let the games begin, or use `/help` to see what each game is about! 🎉

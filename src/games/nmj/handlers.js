@@ -13,6 +13,8 @@ const { MIN_PLAYERS } = require('./manager');
 const { recordGame } = require('./stats');
 const { lockAndArchive } = require('../_core/threads');
 const { editOrSend } = require('../_core/messages');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -276,6 +278,17 @@ async function handleButton(interaction, client, game) {
     persistGame(client, game);
     const { components, flags } = renderGameMessage(game);
     return interaction.update({ components, flags });
+  }
+
+  if (customId === 'nmj_cancel') {
+    if (game.phase !== 'lobby') {
+      return interaction.reply({ content: 'This game has already started — use `/nmj end` to end it.', flags: MessageFlags.Ephemeral });
+    }
+    if (user.id !== game.hostId) {
+      return interaction.reply({ content: 'Only the game creator can cancel the game.', flags: MessageFlags.Ephemeral });
+    }
+    await interaction.deferUpdate();
+    return endGame(game, client, `✖️ Game cancelled by <@${user.id}> before it started.`);
   }
 
   // ── Ordering ─────────────────────────────────────────────────────────────
@@ -594,6 +607,11 @@ async function handleModal(interaction, client, game) {
 async function handleInteraction(interaction, client) {
   const isButton = interaction.isButton();
   if (!isButton && !interaction.isModalSubmit()) return;
+
+  // Anyone can read the rules, with or without a game in the thread.
+  if (interaction.customId === 'nmj_howto') {
+    return interaction.reply(howToPlayReply({ name: 'No More Jockeys', howToPlay }));
+  }
 
   const game = client.nmjManager.getGame(interaction.channelId);
   if (!game) {

@@ -15,4 +15,5 @@ module.exports = {
   handleInteraction,
   restore: require('./restore'),
   stats: require('./stats'),
+  howToPlay: require('./howToPlay'),
 };
