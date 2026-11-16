@@ -6,6 +6,10 @@ const { renderGameMessage, renderSessionStarted, renderDescriberPanel } = requir
 const { TIMER_GRACE_MS, teamOf } = require('./rules');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { replyWithLeaderboard } = require('../_core/statsDisplay');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
+const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -38,7 +42,7 @@ async function handleLeave(interaction, client, game) {
 }
 
 async function handleStart(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the game.');
   if (game.phase !== 'lobby') return reply(interaction, 'This game has already started.');
   if (game.players.size < MIN_PLAYERS) {
     return reply(interaction, `Need at least **${MIN_PLAYERS} players** to start (two teams of two). Currently: **${game.players.size}**.`);
@@ -48,7 +52,7 @@ async function handleStart(interaction, client, game) {
 }
 
 async function handleCancel(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can cancel the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can cancel the game.');
   if (game.phase !== 'lobby' && game.phase !== 'setup') return reply(interaction, 'The game has already started — use **Close Session** or `/articulate end`.');
   await interaction.deferUpdate();
   return flow.closeSession(game, client, `✖️ Cancelled by <@${interaction.user.id}> before the game started.`);
@@ -59,7 +63,7 @@ async function handleCancel(interaction, client, game) {
 /** Wraps a host-only setup action, then redraws the setup message. */
 function hostSetup(action) {
   return async (interaction, client, game, value) => {
-    if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can set up the game.');
+    if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can set up the game.');
     if (game.phase !== 'setup') return reply(interaction, 'The game has already started.');
     const error = action(client.articulateManager, game, value, interaction);
     if (error) return reply(interaction, error);
@@ -99,7 +103,7 @@ async function handleDraft(interaction, client, game) {
 }
 
 async function handleBegin(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the game.');
   if (!client.articulateManager.canStart(game)) return reply(interaction, 'Every player needs a team, and every team needs at least two players.');
   client.articulateManager.startGame(game);
   await interaction.update(renderSessionStarted(game));
@@ -181,6 +185,14 @@ async function handleControlTie(interaction, client, game, cardNumber) {
   return refreshPanels(interaction, game);
 }
 
+/** The describers haven't pressed Start: the host passes the turn to the next team. */
+async function handleSkipTurn(interaction, client, game) {
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can skip a turn.');
+  if (!client.articulateManager.skipTurn(game, interaction.user.id)) return reply(interaction, 'There is no turn waiting to start.');
+  await interaction.deferUpdate();
+  return flow.endTurn(game, client);
+}
+
 // ── Opponents: calling a foul ──────────────────────────────────────────────────
 
 function foulError(interaction, game) {
@@ -238,7 +250,7 @@ async function handleBonus(interaction, client, game, teamIndex) {
 
 function hostEnded(action) {
   return async (interaction, client, game) => {
-    if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can do that.');
+    if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can do that.');
     if (game.phase !== 'ended') return reply(interaction, 'The game is still going.');
     await interaction.update(await renderGameMessage(game, { includeControls: false }));
     return action(game, client);
@@ -246,9 +258,17 @@ function hostEnded(action) {
 }
 
 async function handleClose(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can close the session.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can close the session.');
   await interaction.deferUpdate();
   return flow.closeSession(game, client, `🔒 Session closed by <@${interaction.user.id}>. Thanks for playing Articulate!`);
+}
+
+function handleTakeHostButton(interaction, client, game) {
+  return handleTakeHost(interaction, client, game, {
+    manager: client.articulateManager,
+    // The lobby and setup messages name the host.
+    rerender: () => (['lobby', 'setup'].includes(game.phase) ? flow.updateGameMessage(game, client) : null),
+  });
 }
 
 /** customId → handler. Add a line here for every new button. */
@@ -270,6 +290,9 @@ const BUTTONS = {
   ar_rematch: hostEnded(flow.rematch),
   ar_new_game: hostEnded(flow.newGame),
   ar_close: handleClose,
+  ar_leaderboard: interaction => replyWithLeaderboard(interaction, 'articulate'),
+  ar_skip_turn: handleSkipTurn,
+  ar_take_host: handleTakeHostButton,
 };
 
 /** Buttons that carry a value in their customId: prefix → handler(…, value). Longer prefixes first. */
@@ -301,11 +324,15 @@ function findHandler(interaction) {
 
 /** Entry point for every interaction whose customId starts with the manifest's prefix. */
 async function handleInteraction(interaction, client) {
+  // Anyone can read the rules, with or without a game in the thread.
+  if (interaction.customId === 'ar_howto') return interaction.reply(howToPlayReply({ name: 'Articulate', howToPlay }));
+
   const found = findHandler(interaction);
   if (!found) return;
 
   const game = client.articulateManager.getGame(interaction.channelId);
   if (!game) return reply(interaction, 'There is no active Articulate game in this thread.');
+  trackHostActivity(interaction, game);
   const [handler, value] = found;
   return handler(interaction, client, game, value);
 }

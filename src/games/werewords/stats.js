@@ -136,14 +136,16 @@ function getGuildStats(guildId) {
 
 const stmtGetPlayer = db.prepare('SELECT * FROM werewords_player_stats WHERE guild_id = ? AND user_id = ?');
 
-const stmtScoreboard = db.prepare(`
+const RANKING_SQL = `
   SELECT user_id, username, games_played, wins, losses,
          CASE WHEN games_played > 0 THEN ROUND(100.0 * wins / games_played, 1) ELSE 0 END AS win_pct
   FROM werewords_player_stats
   WHERE guild_id = ? AND games_played > 0
   ORDER BY wins DESC, win_pct DESC
-  LIMIT 10
-`);
+`;
+
+const stmtScoreboard = db.prepare(`${RANKING_SQL} LIMIT 10`);
+const stmtRanking = db.prepare(RANKING_SQL);
 
 /** A player's stats row, or null. */
 function getPlayer(guildId, userId) {
@@ -155,5 +157,28 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-module.exports = { recordGame, getGuildStats, getPlayer, scoreboard };
+/** What /stats shows for a player's row: label/value pairs. */
+function describePlayer(row) {
+  const winPct = row.games_played > 0 ? Math.round(100 * row.wins / row.games_played) : 0;
+  return [
+    { label: 'Games', value: row.games_played },
+    { label: 'Wins', value: `${row.wins} (${winPct}%)` },
+    { label: 'Losses', value: row.losses },
+    { label: 'Words guessed', value: row.correct_guesses },
+    { label: 'Roles', value: `Wordsmith ${row.role_wordsmith}, Demon ${row.role_demon}, Librarian ${row.role_librarian}, Townsfolk ${row.role_townsfolk}` },
+  ];
+}
+
+/** What /leaderboard shows: every player in a guild, best first, by wins. */
+function leaderboard(guildId) {
+  return stmtRanking.all(guildId).map(row => ({
+    user_id: row.user_id,
+    username: row.username,
+    headline: plural(row.wins, 'win'),
+    detail: `${row.win_pct}% of ${plural(row.games_played, 'game')}`,
+  }));
+}
+
+module.exports = { recordGame, getGuildStats, getPlayer, scoreboard, describePlayer, leaderboard };

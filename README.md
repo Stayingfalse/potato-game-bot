@@ -125,6 +125,23 @@ Never forget a friend's birthday again! The bot can automatically announce birth
 - `/birthday setchannel <channel>` - Choose where announcements appear
 - `/birthday resend` - Re-send today's birthday messages
 
+### Stats & Leaderboards 🏆
+
+Every game keeps player stats per server.
+
+**Commands:**
+- `/stats` - Your stats for every game you've played (only you see the reply)
+- `/stats game:<game> user:<user>` - One game's stats, or another player's
+- `/leaderboard game:<game>` - The server's top 10 for a game, plus your own rank if you're further down
+
+The results screens of Werewords, Wavelength, Hues & Clues and Articulate also have a **🏆 Leaderboard** button.
+
+### Hosts & Stalled Games 👑
+
+- Moderators with **Manage Threads** can use any game's host controls.
+- If the host has been inactive for two minutes (or has left), any player who presses a host-only button is offered **Take over as host**.
+- The host can skip a player who has gone quiet: the Clue Giver in Wavelength, the current turn in No More Jockeys and Articulate, and the cue giver in Hues & Clues.
+
 ## 🎮 Getting Started
 
 1. **Invite the bot** to your Discord server
@@ -132,7 +149,8 @@ Never forget a friend's birthday again! The bot can automatically announce birth
    - Create Public Threads
    - Send Messages in Threads
    - Manage Threads
-3. **Start playing!** Use `/werewords start`, `/wavelength start` or `/nmj start` in any channel to begin
+3. **Start playing!** Use `/werewords start`, `/wavelength start`, `/nmj start`, `/huesclues start` or `/articulate start` in any channel to begin
+4. **New to a game?** Use `/help` for the list of games and commands, `/help game:<name>` for a game's rules, or press **📖 How to play** in any game lobby
 
 ## 🧪 Running the Tests
 
@@ -182,4 +200,4 @@ Each game runs in its own thread to keep your channels clean and conversations o
 
 ---
 
-Ready to play? Start with `/werewords start`, `/wavelength start` or `/nmj start` and let the games begin! 🎉
+Ready to play? Start with `/werewords start`, `/wavelength start`, `/nmj start`, `/huesclues start` or `/articulate start` and let the games begin, or use `/help` to see what each game is about! 🎉

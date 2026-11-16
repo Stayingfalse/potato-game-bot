@@ -14,6 +14,7 @@ const {
   AttachmentBuilder,
 } = require('discord.js');
 const { MIN_PLAYERS, MAX_PLAYERS } = require('./manager');
+const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 const { CENTRE, formatCell } = require('./board');
 const {
   CLUE_TURN_CHOICES,
@@ -53,7 +54,7 @@ async function renderGameMessage(game, options = {}) {
 // ── Lobby and setup ────────────────────────────────────────────────────────────
 
 function renderLobby(game) {
-  const players = [...game.players.keys()].map(id => `• <@${id}>`).join('\n') || '*No players yet — be the first to join!*';
+  const players = formatPlayerList(game.players.keys());
   return message([
     container(COLOR.lobby,
       [
@@ -65,12 +66,7 @@ function renderLobby(game) {
         'Tokens score **3** on the colour, **2** inside the 3×3 frame around it and **1** touching the frame. The cue giver scores **1** for every token inside the frame.',
       ].join('\n'),
       `**Players (${game.players.size}/${MAX_PLAYERS})**\n${players}\n\n*At least ${MIN_PLAYERS} players needed.*`,
-      buttons(
-        button('hc_join', 'Join', '✋', ButtonStyle.Success),
-        button('hc_leave', 'Leave', '🚪', ButtonStyle.Secondary),
-        button('hc_start', 'Start Game', '▶️', ButtonStyle.Primary),
-        button('hc_cancel', 'Cancel', '✖️', ButtonStyle.Danger),
-      )),
+      buildLobbyRow({ prefix: 'hc_', playerCount: game.players.size, minPlayers: MIN_PLAYERS })),
   ]);
 }
 
@@ -157,7 +153,10 @@ function renderPicking(game) {
   return message([container(COLOR.picking,
     turnHeader(game),
     `<@${game.cueGiverId}> is studying their card and choosing a colour to describe…\n\n*The clue will appear here when it's ready.*`,
-    buttons(button('hc_cue_panel', 'Open Cue Giver Panel', '🎨', ButtonStyle.Primary)))]);
+    buttons(
+      button('hc_cue_panel', 'Open Cue Giver Panel', '🎨', ButtonStyle.Primary),
+      button('hc_skip_cue', 'Skip Cue Giver (host)', '⏭️', ButtonStyle.Secondary),
+    ))]);
 }
 
 function submissionsText(game) {
@@ -192,6 +191,7 @@ async function renderFollowup(game) {
       button('hc_clue2', 'Give Second Clue', '💬', ButtonStyle.Primary),
       button('hc_no_more', 'Nothing More to Say', '🤐', ButtonStyle.Secondary),
       button('hc_cue_panel', 'View My Card', '🎨', ButtonStyle.Secondary),
+      button('hc_skip_cue', 'Skip Second Clue (host)', '⏭️', ButtonStyle.Secondary),
     ))];
   await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.picking);
   return message(parts, files);
@@ -282,6 +282,7 @@ function endedControls(game, goal) {
     button('hc_next', 'Next Turn', '🔄', ButtonStyle.Primary).setDisabled(goal.complete),
     button('hc_new_game', 'New Game (Open Signups)', '📋', ButtonStyle.Secondary),
     autoAdvanceButton(game),
+    button('hc_leaderboard', 'Leaderboard', '🏆', ButtonStyle.Secondary),
     button('hc_close', 'End Game & Close Session', '🔒', ButtonStyle.Danger),
   );
 }

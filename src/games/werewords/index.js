@@ -16,4 +16,5 @@ module.exports = {
   handleMessage,
   restore: require('./restore'),
   stats: require('./stats'),
+  howToPlay: require('./howToPlay'),
 };

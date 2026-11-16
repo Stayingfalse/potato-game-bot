@@ -81,8 +81,11 @@ describe('a game through the real command and buttons', () => {
   });
 
   it('lobby: join and leave; only the host starts, with enough players', async () => {
+    assert.ok(text().includes('"label":"Need 1 more player"'), 'Start is disabled until there are enough players');
     assert.deepEqual((await press(HOST, 'hr_start')).replies(), ['Need at least **2 players** to start. Currently: **1**.']);
+    assert.match((await press(A, 'hr_howto')).replies()[0], /^## 🎲 How to play High Roll\n/);
     await press(A, 'hr_join');
+    assert.ok(text().includes('"label":"Start Game"'));
     assert.deepEqual((await press(A, 'hr_join')).replies(), ['You are already in the game.']);
     await press(B, 'hr_join');
     await press(B, 'hr_leave');

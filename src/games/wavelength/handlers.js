@@ -25,6 +25,10 @@ const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
 const { editOrSend } = require('../_core/messages');
+const { replyWithLeaderboard } = require('../_core/statsDisplay');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
+const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 const { MIN_PLAYERS } = require('./manager');
 
@@ -178,13 +182,16 @@ async function startConfiguredRound(game, client) {
 async function handleInteraction(interaction, client) {
   const { wavelengthManager } = client;
 
+  const activeGame = wavelengthManager.getGame(interaction.channelId);
+  if (activeGame) trackHostActivity(interaction, activeGame);
+
   if (interaction.isModalSubmit() && interaction.customId === 'wl_rr_times_modal') {
     const game = wavelengthManager.getGame(interaction.channelId);
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No session setup is active.', flags: MessageFlags.Ephemeral });
     }
-    if (interaction.user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
 
     const raw = interaction.fields.getTextInputValue('wl_rr_times_input').trim();
@@ -239,6 +246,41 @@ async function handleInteraction(interaction, client) {
   const { customId, user } = interaction;
   const game = wavelengthManager.getGame(interaction.channelId);
 
+  if (customId === 'wl_howto') {
+    return interaction.reply(howToPlayReply({ name: 'Wavelength', howToPlay }));
+  }
+
+  if (customId === 'wl_take_host') {
+    return handleTakeHost(interaction, client, game, {
+      manager: wavelengthManager,
+      // The lobby and setup messages name the host.
+      rerender: () => (['lobby', 'setup'].includes(game.phase) ? updateGameMessage(game, client, { createIfMissing: false }) : null),
+    });
+  }
+
+  if (customId === 'wl_skip_clue_giver') {
+    if (!game || game.phase !== 'cluing') {
+      return interaction.reply({ content: 'No active cluing phase.', flags: MessageFlags.Ephemeral });
+    }
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can skip the Clue Giver.');
+    }
+
+    const skippedId = game.clueGiverId;
+    if (!wavelengthManager.skipClueGiver(game.threadId, spectra.spectra)) {
+      return interaction.reply({ content: 'There is nobody else to give the clue.', flags: MessageFlags.Ephemeral });
+    }
+    await interaction.deferUpdate();
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    await updateGameMessage(game, client, {}, thread);
+    await thread?.send({
+      content: `⏭️ <@${skippedId}>'s clue turn was skipped by <@${user.id}> — no points this time. <@${game.clueGiverId}> is the Clue Giver now.`,
+      allowedMentions: { users: [] },
+    }).catch(() => {});
+    await sendTurnPing(game, client, thread);
+    return;
+  }
+
   if (customId === 'wl_join') {
     if (!game || game.phase !== 'lobby') {
       return interaction.reply({ content: 'No active lobby to join.', flags: MessageFlags.Ephemeral });
@@ -270,8 +312,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'lobby') {
       return interaction.reply({ content: 'No active lobby.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can start the game.');
     }
     if (game.players.size < MIN_PLAYERS) {
       return interaction.reply({
@@ -289,8 +331,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'lobby') {
       return interaction.reply({ content: 'No active lobby to cancel.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can cancel.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can cancel.');
     }
 
     await interaction.deferUpdate();
@@ -303,8 +345,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
 
     const modal = new ModalBuilder()
@@ -328,8 +370,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
     return interaction.reply({
       content: '🎯 Select the point target for **Snake Draft**:',
@@ -342,8 +384,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
 
     const targetPoints = parseInt(customId.split('wl_snake_points_')[1], 10);
@@ -361,8 +403,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
     return interaction.reply({
       content: '♾️ Choose clue-giver order for **Endless Mode**:',
@@ -375,8 +417,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure session mode.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure session mode.');
     }
 
     const clueOrder = customId.split('wl_endless_order_')[1];
@@ -400,8 +442,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can configure game options.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can configure game options.');
     }
     client.wavelengthManager.setGameOptions(game.threadId, customId === 'wl_pace_turnbased' ? 'turnbased' : 'realtime', game.autoAdvanceRounds ?? false);
     return replaceCurrentInteractionMessage(interaction, game);
@@ -411,8 +453,8 @@ async function handleInteraction(interaction, client) {
     if (!game) {
       return interaction.reply({ content: 'No active game found.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can toggle auto-advance.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can toggle auto-advance.');
     }
 
     const newVal = client.wavelengthManager.toggleAutoAdvance(game.threadId);
@@ -443,8 +485,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'setup') {
       return interaction.reply({ content: 'No active session setup.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can start the round.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can start the round.');
     }
 
     await interaction.deferUpdate();
@@ -662,8 +704,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'ended') {
       return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can start the next round.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can start the next round.');
     }
     const goal = evaluateSessionGoal(game);
     if (goal.complete) {
@@ -694,8 +736,8 @@ async function handleInteraction(interaction, client) {
     if (!game || game.phase !== 'ended') {
       return interaction.reply({ content: 'No ended round in this thread.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can open sign-ups for a new game.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can open sign-ups for a new game.');
     }
 
     await interaction.update({
@@ -714,8 +756,8 @@ async function handleInteraction(interaction, client) {
     if (!game) {
       return interaction.reply({ content: 'No active game in this thread.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can close the session.');
     }
 
     await interaction.deferUpdate();
@@ -723,6 +765,8 @@ async function handleInteraction(interaction, client) {
     await closeSession(game, client, `🔒 Session closed by <@${user.id}>. Thanks for playing Wavelength!`);
     return;
   }
+
+  if (customId === 'wl_leaderboard') return replyWithLeaderboard(interaction, 'wavelength');
 
   return interaction.reply({ content: 'Unknown action.', flags: MessageFlags.Ephemeral });
 }

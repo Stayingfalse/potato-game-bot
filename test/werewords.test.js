@@ -103,7 +103,7 @@ describe('a session through the real command and handlers', () => {
     assert.equal(channel.createdThreads[0].type, 11);
     assert.equal(channel.createdThreads[0].autoArchiveDuration, 1440);
     assert.match(start.replies()[0], /game created by <@host>/);
-    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel']);
+    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel', 'ww_howto']);
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });
     await werewords.command.execute(again, client);
@@ -207,7 +207,7 @@ describe('a session through the real command and handlers', () => {
 
     const summary = lastSent();
     assert.match(summary.embeds[0].data.title, /^📊  Session Summary — 1 game played/);
-    assert.deepEqual(buttonIds({ payload: summary }), ['ww_rematch_same', 'ww_rematch_open', 'ww_close_session']);
+    assert.deepEqual(buttonIds({ payload: summary }), ['ww_rematch_same', 'ww_rematch_open', 'ww_leaderboard', 'ww_close_session']);
     assert.match(embedTitles(message(game.messageId))[0], /Game 1 Complete/, 'the lobby message shows the result');
   });
 
@@ -222,7 +222,7 @@ describe('a session through the real command and handlers', () => {
     assert.deepEqual(embedTitles(message(game.boardMessageId)), ['🛑  Game Cancelled']);
     assert.equal(statsCount(), statsBefore);
     assert.equal(game.sessionHistory.length, 1);
-    assert.deepEqual(buttonIds({ payload: lastSent() }), ['ww_rematch_same', 'ww_rematch_open', 'ww_close_session']);
+    assert.deepEqual(buttonIds({ payload: lastSent() }), ['ww_rematch_same', 'ww_rematch_open', 'ww_leaderboard', 'ww_close_session']);
   });
 
   it('when the Yes/No tokens run out, the game message moves to the vote', async () => {
@@ -266,7 +266,7 @@ describe('a session through the real command and handlers', () => {
     assert.equal(game.gameNumber, 4);
     assert.notEqual(game.messageId, oldLobby);
     assert.match(message(game.messageId).content, /Game 4 sign-ups open/);
-    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel']);
+    assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel', 'ww_howto']);
   });
 
   it('/werewords end: refused for players, allowed for moderators, closes everything', async () => {

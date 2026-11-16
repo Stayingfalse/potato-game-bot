@@ -13,6 +13,9 @@ const { MIN_PLAYERS } = require('../manager');
 const WerewordsRepository = require('../repository');
 const { fetchChannel } = require('../../_core/threads');
 const { closeSession } = require('./endgame');
+const { howToPlayReply } = require('../../_core/lobby');
+const howToPlay = require('../howToPlay');
+const { isHost, replyNotHost } = require('../../_core/host');
 
 /** A player joins the lobby. */
 async function handleJoin(interaction, client, game) {
@@ -32,7 +35,7 @@ async function handleJoin(interaction, client, game) {
   const thread = await fetchChannel(client, game.threadId);
   if (thread) await thread.members.add(user.id).catch(() => {});
 
-  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents() });
+  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
 }
 
 /** A player leaves the lobby. */
@@ -51,7 +54,7 @@ async function handleLeave(interaction, client, game) {
   const thread = await fetchChannel(client, game.threadId);
   if (thread) await thread.members.remove(user.id).catch(() => {});
 
-  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents() });
+  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
 }
 
 /** The host starts the game: the lobby message turns into the text-or-voice mode choice. */
@@ -60,8 +63,8 @@ async function handleStart(interaction, client, game) {
   if (!game || game.phase !== 'lobby') {
     return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can start the game.');
   }
   if (game.players.size < MIN_PLAYERS) {
     return interaction.reply({
@@ -81,12 +84,17 @@ async function handleCancel(interaction, client, game) {
   if (!game || game.phase !== 'lobby') {
     return interaction.reply({ content: 'There is no active lobby to cancel.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can cancel the session.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can cancel the session.');
   }
 
   await interaction.deferUpdate();
   await closeSession(game, client, '✖️ The host cancelled the session. This thread will be archived shortly.');
+}
+
+/** Anyone can read the rules, with or without a game in the thread. */
+async function handleHowTo(interaction) {
+  return interaction.reply(howToPlayReply({ name: 'Werewords', howToPlay }));
 }
 
 /** Matches a lobby button, including the `ww_join_<threadId>` form used before the lobby moved into the thread. */
@@ -100,6 +108,7 @@ const buttons = [
   { match: lobbyButton('leave'), handle: handleLeave },
   { match: lobbyButton('start'), handle: handleStart },
   { match: lobbyButton('cancel'), handle: handleCancel },
+  { match: id => id === 'ww_howto', handle: handleHowTo },
 ];
 
 module.exports = { buttons };

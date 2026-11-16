@@ -4,6 +4,8 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const { MIN_PLAYERS } = require('../manager');
+const { buildLobbyRow, formatPlayerList } = require('../../_core/lobby');
 
 const LOBBY_COLOR   = 0x5865F2; // Discord blurple
 const PLAYING_COLOR = 0xED4245; // Red
@@ -15,51 +17,29 @@ const PLAYING_COLOR = 0xED4245; // Red
  * @param {import('../state').GameState} game
  */
 function buildLobbyEmbed(game) {
-  const playerLines =
-    [...game.players.values()]
-      .map((p, i) => `\`${String(i + 1).padStart(2, '0')}.\` <@${p.id}>`)
-      .join('\n') || '*No players yet — be the first to join!*';
+  const playerLines = formatPlayerList(game.players.keys());
 
   return new EmbedBuilder()
     .setTitle('🔮  Werewords — Lobby')
     .setDescription(
       'A social deduction game of forbidden words and hidden roles.\n' +
-      'Click **Join** to enter. The host can **Start** when at least 3 players are ready.',
+      `Click **Join** to enter. The host can **Start** when at least ${MIN_PLAYERS} players are ready. New here? Press **How to play**.`,
     )
     .addFields({ name: `Players (${game.players.size} / 10)`, value: playerLines })
     .setColor(LOBBY_COLOR)
-    .setFooter({ text: `Host: @${game.hostUsername}  •  Minimum 3 players required` })
+    .setFooter({ text: `Host: @${game.hostUsername}  •  Minimum ${MIN_PLAYERS} players required` })
     .setTimestamp();
 }
 
 // ── Lobby action row ───────────────────────────────────────────────────────────
 
-/** Returns the Join / Leave / Start / Cancel action row for the lobby. */
-function buildLobbyComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ww_join')
-        .setLabel('Join')
-        .setEmoji('✋')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('ww_leave')
-        .setLabel('Leave')
-        .setEmoji('🚪')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('ww_start')
-        .setLabel('Start Game')
-        .setEmoji('▶️')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('ww_cancel')
-        .setLabel('Cancel')
-        .setEmoji('✖️')
-        .setStyle(ButtonStyle.Danger),
-    ),
-  ];
+/**
+ * Returns the Join / Leave / Start / Cancel / How to play action row for the lobby.
+ * Start is disabled until the lobby has enough players.
+ * @param {import('../state').GameState} game
+ */
+function buildLobbyComponents(game) {
+  return [buildLobbyRow({ prefix: 'ww_', playerCount: game.players.size, minPlayers: MIN_PLAYERS })];
 }
 
 // ── Active game embed (the lobby message once the game has started) ───────────

@@ -13,6 +13,9 @@ const { MIN_PLAYERS } = require('./manager');
 const { recordGame } = require('./stats');
 const { lockAndArchive } = require('../_core/threads');
 const { editOrSend } = require('../_core/messages');
+const { howToPlayReply } = require('../_core/lobby');
+const howToPlay = require('./howToPlay');
+const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -235,6 +238,35 @@ function buildNameAnotherCantModal() {
 async function handleButton(interaction, client, game) {
   const { customId, user } = interaction;
 
+  // ── Host ─────────────────────────────────────────────────────────────────
+  if (customId === 'nmj_take_host') {
+    return handleTakeHost(interaction, client, game, { manager: client.nmjManager });
+  }
+
+  // The player whose turn it is has gone quiet: the host passes the turn on, with no penalty.
+  if (customId === 'nmj_skip_turn') {
+    const waitingOn = game.pendingMove ? game.pendingMove.playerId : game.currentPlayerId();
+    const stalled = game.phase === 'playing' && !game.challengeState
+      && (!game.pendingMove || game.pendingMove.stage === 'name_another');
+    if (!stalled || !waitingOn) {
+      return interaction.reply({ content: 'There is no turn to skip right now.', flags: MessageFlags.Ephemeral });
+    }
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the host can skip a turn.');
+    }
+    advanceTurn(game);
+    persistGame(client, game);
+    await interaction.deferUpdate();
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    await updateGameMessage(game, client, undefined, thread);
+    await thread?.send({
+      content: `⏭️ <@${waitingOn}>'s turn was skipped by <@${user.id}> — no penalty.`,
+      allowedMentions: { users: [] },
+    }).catch(() => {});
+    await sendActionPrompt(game, client, thread);
+    return;
+  }
+
   // ── Recruiting ───────────────────────────────────────────────────────────
   if (customId === 'nmj_join') {
     if (game.phase !== 'lobby') {
@@ -266,8 +298,8 @@ async function handleButton(interaction, client, game) {
     if (game.phase !== 'lobby') {
       return interaction.reply({ content: 'This game has already started.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the game creator can start the game.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the game creator can start the game.');
     }
     if (game.players.size < MIN_PLAYERS) {
       return interaction.reply({ content: `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`, flags: MessageFlags.Ephemeral });
@@ -278,13 +310,24 @@ async function handleButton(interaction, client, game) {
     return interaction.update({ components, flags });
   }
 
+  if (customId === 'nmj_cancel') {
+    if (game.phase !== 'lobby') {
+      return interaction.reply({ content: 'This game has already started — use `/nmj end` to end it.', flags: MessageFlags.Ephemeral });
+    }
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the game creator can cancel the game.');
+    }
+    await interaction.deferUpdate();
+    return endGame(game, client, `✖️ Game cancelled by <@${user.id}> before it started.`);
+  }
+
   // ── Ordering ─────────────────────────────────────────────────────────────
   if (customId === 'nmj_spin') {
     if (game.phase !== 'ordering') {
       return interaction.reply({ content: 'Turn order has already been set.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the game creator can spin the wheel.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the game creator can spin the wheel.');
     }
     client.nmjManager.spinWheel(game.threadId);
     const { components, flags } = renderGameMessage(game);
@@ -295,8 +338,8 @@ async function handleButton(interaction, client, game) {
     if (game.phase !== 'ordering') {
       return interaction.reply({ content: 'The game has already begun.', flags: MessageFlags.Ephemeral });
     }
-    if (user.id !== game.hostId) {
-      return interaction.reply({ content: 'Only the game creator can begin the game.', flags: MessageFlags.Ephemeral });
+    if (!isHost(interaction, game)) {
+      return replyNotHost(interaction, game, 'Only the game creator can begin the game.');
     }
     client.nmjManager.beginGame(game.threadId);
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -595,10 +638,16 @@ async function handleInteraction(interaction, client) {
   const isButton = interaction.isButton();
   if (!isButton && !interaction.isModalSubmit()) return;
 
+  // Anyone can read the rules, with or without a game in the thread.
+  if (interaction.customId === 'nmj_howto') {
+    return interaction.reply(howToPlayReply({ name: 'No More Jockeys', howToPlay }));
+  }
+
   const game = client.nmjManager.getGame(interaction.channelId);
   if (!game) {
     return interaction.reply({ content: 'There is no active No More Jockeys game in this thread.', flags: MessageFlags.Ephemeral });
   }
+  trackHostActivity(interaction, game);
   return isButton ? handleButton(interaction, client, game) : handleModal(interaction, client, game);
 }
 

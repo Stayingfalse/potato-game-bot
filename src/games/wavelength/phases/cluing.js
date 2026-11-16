@@ -22,6 +22,11 @@ function buildClueGiverPromptComponents() {
         .setLabel('Open Clue Giver Panel')
         .setStyle(ButtonStyle.Primary)
         .setEmoji('🎯'),
+      new ButtonBuilder()
+        .setCustomId('wl_skip_clue_giver')
+        .setLabel('Skip Clue Giver (host)')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('⏭️'),
     ),
   ];
 }

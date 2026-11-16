@@ -17,6 +17,7 @@ const {
   AttachmentBuilder,
 } = require('discord.js');
 const { MIN_PLAYERS, MAX_PLAYERS } = require('./manager');
+const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 const { CATEGORIES, FINISH, describeSquare } = require('./board');
 const { TURN_SECONDS_CHOICES, maxTeamsFor, teamOf, teamsReady, draftPicker } = require('./rules');
 const { generateBoardImage } = require('./imageGen');
@@ -55,7 +56,7 @@ function categoryLabel(category) {
 // ── Lobby and setup ────────────────────────────────────────────────────────────
 
 function renderLobby(game) {
-  const players = [...game.players.keys()].map(id => `• ${mention(id)}`).join('\n') || '*No players yet — be the first to join!*';
+  const players = formatPlayerList(game.players.keys());
   return message([container(COLOR.lobby,
     [
       `## ${TITLE} — Lobby Open`,
@@ -65,12 +66,7 @@ function renderLobby(game) {
       'Land on ♠ to describe to **every** team, land on a Spin square to spin for a bonus, and win a ♠ round on the finish to win the game.',
     ].join('\n'),
     `**Players (${game.players.size}/${MAX_PLAYERS})**\n${players}\n\n*At least ${MIN_PLAYERS} players needed (two teams of two). Join the voice channel to play.*`,
-    buttons(
-      button('ar_join', 'Join', '✋', ButtonStyle.Success),
-      button('ar_leave', 'Leave', '🚪', ButtonStyle.Secondary),
-      button('ar_start', 'Start', '▶️', ButtonStyle.Primary),
-      button('ar_cancel', 'Cancel', '✖️', ButtonStyle.Danger),
-    ))]);
+    buildLobbyRow({ prefix: 'ar_', playerCount: game.players.size, minPlayers: MIN_PLAYERS }))]);
 }
 
 function teamsText(game) {
@@ -186,6 +182,7 @@ async function renderTurn(game, { voiceMissing = [] } = {}) {
     buttons(
       button('ar_panel', 'Describer Panel', '🎴', ButtonStyle.Primary),
       button('ar_foul', 'Foul', '🚩', ButtonStyle.Danger).setDisabled(!live),
+      ...(live ? [] : [button('ar_skip_turn', 'Skip Turn (host)', '⏭️', ButtonStyle.Secondary)]),
     ))];
   await addBoard(parts, files, game, `Turn ${game.turnNumber} · ${game.team.name} to play`);
   return message(parts, files);
@@ -245,6 +242,7 @@ function renderTurnSummary(game) {
   const { turn, spinResult, control } = game;
   const lines = [];
   if (turn.endsAt) lines.push(turnResultText(game, turn.foulBy ? 0 : turn.correct.length));
+  if (turn.skippedBy) lines.push(`⏭️ Turn skipped by ${mention(turn.skippedBy)} — the timer was never started.`);
   if (spinResult) {
     const target = spinResult.target !== undefined ? game.teams[spinResult.target] : null;
     lines.push(spinResult.steps === 0
@@ -274,6 +272,7 @@ async function renderWinner(game, { includeControls = true } = {}) {
     includeControls ? buttons(
       button('ar_rematch', 'Rematch (same teams)', '🔄', ButtonStyle.Primary),
       button('ar_new_game', 'New Game (Open Signups)', '📋', ButtonStyle.Secondary),
+      button('ar_leaderboard', 'Leaderboard', '🏆', ButtonStyle.Secondary),
       button('ar_close', 'Close Session', '🔒', ButtonStyle.Danger),
     ) : null)];
   await addBoard(parts, files, game, `${winner.name} win!`);

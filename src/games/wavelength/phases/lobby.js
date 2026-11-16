@@ -1,11 +1,10 @@
 'use strict';
 
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { MIN_PLAYERS } = require('../manager');
+const { buildLobbyRow, formatPlayerList } = require('../../_core/lobby');
 
 function renderLobbyText(game) {
-  const playerList = game.players.size === 0
-    ? '*No players yet — be the first to join!*'
-    : [...game.players.values()].map(p => `• ${p.username}`).join('\n');
+  const playerList = formatPlayerList(game.players.keys());
 
   return [
     '## 〰️ Wavelength — Lobby Open',
@@ -17,35 +16,13 @@ function renderLobbyText(game) {
     'A random **Clue Giver** will be chosen when the game starts.',
     'The Clue Giver picks a spectrum and gives a clue. Everyone else nudges a marker to guess where they think the target sits!',
     '',
-    '*Minimum 2 players to start.*',
+    `*Minimum ${MIN_PLAYERS} players to start. New here? Press **How to play**.*`,
   ].join('\n');
 }
 
-function buildLobbyComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('wl_join')
-        .setLabel('Join')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('✋'),
-      new ButtonBuilder()
-        .setCustomId('wl_leave')
-        .setLabel('Leave')
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🚪'),
-      new ButtonBuilder()
-        .setCustomId('wl_start')
-        .setLabel('Start Game')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('▶️'),
-      new ButtonBuilder()
-        .setCustomId('wl_cancel')
-        .setLabel('Cancel')
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji('✖️'),
-    ),
-  ];
+/** Start is disabled until the lobby has enough players. */
+function buildLobbyComponents(game) {
+  return [buildLobbyRow({ prefix: 'wl_', playerCount: game.players.size, minPlayers: MIN_PLAYERS })];
 }
 
 module.exports = {

@@ -59,7 +59,7 @@ function renderMetaText(game) {
 
 function buildLobbyMessage(game) {
   const container = createContainer(renderLobbyText(game), 0x5865F2);
-  container.addActionRowComponents(...buildLobbyComponents());
+  container.addActionRowComponents(...buildLobbyComponents(game));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 

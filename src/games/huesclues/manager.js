@@ -86,13 +86,29 @@ class HuesCluesManager extends BaseGameManager {
     if (game.phase !== 'setup' && game.phase !== 'ended') return false;
     this.clearTimers(game);
     if (game.phase === 'ended') game.gameNumber++;
+    game.turnMessageId = null;
+    this.dealTurn(game);
+    return true;
+  }
 
+  /**
+   * The cue giver hasn't picked a colour or given their first clue: the turn
+   * passes to the next cue giver in order, on the same turn message. Nothing is
+   * scored, and the skipped turn still counts as that player's clue turn.
+   */
+  skipCueGiver(game) {
+    if (game.phase !== 'picking' || game.turnOrder.length < 2) return false;
+    this.dealTurn(game);
+    return true;
+  }
+
+  /** Hands the turn to the next cue giver in order with a fresh card. */
+  dealTurn(game) {
     game.cueGiverId = game.turnOrder[game.turnIndex % game.turnOrder.length];
     game.turnIndex++;
     game.clueTurnsByPlayer[game.cueGiverId] = (game.clueTurnsByPlayer[game.cueGiverId] ?? 0) + 1;
 
     game.phase = 'picking';
-    game.turnMessageId = null;
     game.card = drawCard();
     game.targetIndex = null;
     game.clues = [];
@@ -100,7 +116,6 @@ class HuesCluesManager extends BaseGameManager {
     game.tokens = new Map(game.turnOrder.filter(id => id !== game.cueGiverId).map(id => [id, { cells: [], draft: null }]));
     game.advanceAt = null;
     this.save(game);
-    return true;
   }
 
   /** The cue giver picks which card colour to describe. They can change it until they give a clue. */

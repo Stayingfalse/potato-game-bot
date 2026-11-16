@@ -248,6 +248,61 @@
 
     .channels-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
+    .channel-tag-input { position: relative; }
+    .channel-chips { display: contents; }
+    .channel-tag.unknown { background: var(--surface); border: 1px dashed var(--border); color: var(--muted); }
+    .channel-tag.unknown button { color: var(--muted); }
+    .channel-tag button:focus-visible,
+    .channel-option:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+    .channel-options {
+      display: none;
+      position: absolute;
+      left: -1px;
+      right: -1px;
+      top: calc(100% + 4px);
+      z-index: 20;
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0,0,0,.35);
+      padding: 4px;
+    }
+    .channel-options.open { display: block; }
+    .channel-option {
+      padding: 7px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .channel-option .ch-prefix { color: var(--muted); margin-right: 2px; }
+    .channel-option.active { background: var(--accent); color: #fff; }
+    .channel-option.active .ch-prefix { color: rgba(255,255,255,.8); }
+    .channel-options-empty { padding: 8px 10px; font-size: 12px; color: var(--muted); }
+    .channel-input.invalid { color: var(--danger); }
+
+    /* ── Unsaved changes ──────────────────────────────────────────────────── */
+    .unsaved-badge {
+      display: none;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-weight: 600;
+      background: rgba(240,178,50,.15);
+      color: #f0b232;
+      white-space: nowrap;
+    }
+    .feature-section.dirty .unsaved-badge { display: inline-block; }
+    .feature-section.dirty .btn-save { box-shadow: 0 0 0 2px rgba(240,178,50,.65); }
+    @media (max-width: 520px) {
+      /* No room for both in the header: the badge replaces the channel summary. */
+      .feature-section.dirty .feature-header > .channels-hint { display: none; }
+    }
+
     .extra-settings {
       margin-top: 14px;
       border-top: 1px solid var(--border);
@@ -577,76 +632,183 @@
     }
 
     // ── Channel tag input component ──────────────────────────────────────────
-    function createChannelTagInput(containerOrId, initialIds) {
+    // A searchable multi-select over the server's channels (`channels` from the
+    // guild metadata). Typing filters by name; a pasted channel ID or <#mention>
+    // is still accepted. Without a channel list it falls back to ID entry only.
+    let channelPickerSeq = 0;
+    function createChannelTagInput(containerOrId, initialIds, channels) {
       const container = typeof containerOrId === 'string'
         ? document.getElementById(containerOrId)
         : containerOrId;
-      let ids = [...(initialIds || [])];
-      let activeInput = null;
+      const known = (Array.isArray(channels) ? channels : []).map(c => ({ ...c, id: String(c.id), name: String(c.name ?? '') }));
+      const hasList = known.length > 0;
+      const byId = new Map(known.map(c => [c.id, c]));
+      let ids = [...(initialIds || [])].map(String);
+      let matches = [];
+      let activeIndex = -1;
+      if (!container) return { getIds: () => [...ids], commitPendingInput: () => ({ ok: true }) };
 
-      function tryAddChannel(rawValue) {
-        const trimmed = String(rawValue || '').trim();
-        if (!trimmed) return { ok: true, added: false };
+      const listId = `channel-options-${++channelPickerSeq}`;
+      container.innerHTML = '';
+      const chips = document.createElement('span');
+      chips.className = 'channel-chips';
+      const input = document.createElement('input');
+      input.className = 'channel-input';
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.setAttribute('role', 'combobox');
+      input.setAttribute('aria-autocomplete', 'list');
+      input.setAttribute('aria-expanded', 'false');
+      input.setAttribute('aria-controls', listId);
+      input.setAttribute('aria-label', 'Add a channel');
+      const list = document.createElement('div');
+      list.className = 'channel-options';
+      list.id = listId;
+      list.setAttribute('role', 'listbox');
+      container.append(chips, input, list);
 
+      // Voice and stage channels (types 2 and 13) get a speaker instead of '#'.
+      const prefixOf = (channel) => (channel && (channel.type === '2' || channel.type === '13') ? '🔊' : '#');
+      const notifyChange = () => container.dispatchEvent(new Event('change', { bubbles: true }));
+
+      function parseRawId(rawValue) {
         // Accept raw IDs, "#123...", and Discord channel mention format "<#123...>".
-        const match = trimmed.match(/^<#?(\d+)>?$|^#?(\d+)$/);
-        const channelId = (match && (match[1] || match[2])) || null;
-        if (!channelId) return { ok: false, added: false };
-
-        if (!ids.includes(channelId)) {
-          ids.push(channelId);
-          return { ok: true, added: true };
-        }
-        return { ok: true, added: false };
+        const match = String(rawValue || '').trim().match(/^<#?(\d+)>?$|^#?(\d+)$/);
+        return (match && (match[1] || match[2])) || null;
       }
 
-      function render() {
-        if (!container) return;
-        container.innerHTML = '';
-        for (const id of ids) {
-          const tag = document.createElement('span');
-          tag.className = 'channel-tag';
-          tag.innerHTML = `<span>#${escHtml(id)}</span><button type="button" aria-label="Remove">&times;</button>`;
-          tag.querySelector('button').onclick = () => {
-            ids = ids.filter(x => x !== id);
-            render();
-            container.dispatchEvent(new Event('change'));
-          };
-          container.appendChild(tag);
+      function addId(id) {
+        if (!ids.includes(id)) {
+          ids.push(id);
+          renderChips();
+          notifyChange();
         }
-        const input = document.createElement('input');
-        activeInput = input;
-        input.className = 'channel-input';
-        input.placeholder = ids.length ? '' : 'Paste channel ID and press Enter (leave empty for all channels)';
-        input.addEventListener('keydown', e => {
-          if (e.key === 'Enter' && input.value.trim()) {
-            e.preventDefault();
-            const result = tryAddChannel(input.value);
-            if (result.ok) {
-              input.value = '';
-              render();
-              container.dispatchEvent(new Event('change'));
-            } else {
-              input.style.color = 'var(--danger)';
-              setTimeout(() => { input.style.color = ''; }, 600);
-            }
+        input.value = '';
+        refreshOptions();
+      }
+
+      function removeId(id) {
+        ids = ids.filter(x => x !== id);
+        renderChips();
+        notifyChange();
+        refreshOptions();
+      }
+
+      function renderChips() {
+        chips.innerHTML = '';
+        for (const id of ids) {
+          const channel = byId.get(id);
+          const label = channel ? `${prefixOf(channel)}${channel.name}` : (hasList ? `#unknown (${id})` : `#${id}`);
+          const tag = document.createElement('span');
+          tag.className = `channel-tag${channel || !hasList ? '' : ' unknown'}`;
+          tag.innerHTML = `<span>${escHtml(label)}</span><button type="button" aria-label="Remove ${escHtml(label)}">&times;</button>`;
+          tag.querySelector('button').onclick = (e) => { e.stopPropagation(); removeId(id); input.focus(); };
+          chips.appendChild(tag);
+        }
+        input.placeholder = ids.length
+          ? ''
+          : (hasList ? 'Search channels (leave empty for all channels)' : 'Paste channel ID and press Enter (leave empty for all channels)');
+      }
+
+      function setActive(index) {
+        activeIndex = index;
+        [...list.querySelectorAll('.channel-option')].forEach((el, i) => {
+          const active = i === index;
+          el.classList.toggle('active', active);
+          el.setAttribute('aria-selected', active ? 'true' : 'false');
+          if (active) {
+            input.setAttribute('aria-activedescendant', el.id);
+            el.scrollIntoView({ block: 'nearest' });
           }
         });
-        container.appendChild(input);
-        container.onclick = () => input.focus();
+        if (index < 0) input.removeAttribute('aria-activedescendant');
       }
 
-      if (container) render();
+      function closeOptions() {
+        list.classList.remove('open');
+        input.setAttribute('aria-expanded', 'false');
+        setActive(-1);
+      }
+
+      function refreshOptions({ open = list.classList.contains('open') } = {}) {
+        if (!hasList) return;
+        const query = input.value.trim().toLowerCase().replace(/^#/, '');
+        matches = known.filter(c => !ids.includes(c.id) && c.name.toLowerCase().includes(query));
+        list.innerHTML = '';
+        matches.forEach((channel, i) => {
+          const option = document.createElement('div');
+          option.className = 'channel-option';
+          option.id = `${listId}-${i}`;
+          option.setAttribute('role', 'option');
+          option.innerHTML = `<span class="ch-prefix">${prefixOf(channel)}</span>${escHtml(channel.name)}`;
+          option.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the input
+          option.addEventListener('click', (e) => { e.stopPropagation(); addId(channel.id); input.focus(); });
+          list.appendChild(option);
+        });
+        if (!matches.length) {
+          const empty = document.createElement('div');
+          empty.className = 'channel-options-empty';
+          empty.textContent = parseRawId(input.value)
+            ? 'Press Enter to add this channel ID'
+            : (query ? 'No channels match' : 'Every channel is already added');
+          list.appendChild(empty);
+        }
+        list.classList.toggle('open', open);
+        input.setAttribute('aria-expanded', open ? 'true' : 'false');
+        // Typing a name highlights the first match so Enter adds it.
+        setActive(open && matches.length && query ? 0 : -1);
+      }
+
+      function flashInvalid() {
+        input.classList.add('invalid');
+        setTimeout(() => input.classList.remove('invalid'), 600);
+      }
+
+      // Adds what is typed: the highlighted option, a pasted ID, or an exact/only name match.
+      function commitTyped() {
+        const typed = input.value.trim();
+        if (!typed) return { ok: true, added: false };
+        if (activeIndex >= 0 && matches[activeIndex]) { addId(matches[activeIndex].id); return { ok: true, added: true }; }
+        const rawId = parseRawId(typed);
+        if (rawId) { addId(rawId); return { ok: true, added: true }; }
+        const name = typed.toLowerCase().replace(/^#/, '');
+        const exact = matches.filter(c => c.name.toLowerCase() === name);
+        const pick = exact.length === 1 ? exact[0] : (matches.length === 1 ? matches[0] : null);
+        if (pick) { addId(pick.id); return { ok: true, added: true }; }
+        return { ok: false, added: false, typed };
+      }
+
+      input.addEventListener('input', (e) => { e.stopPropagation(); refreshOptions({ open: true }); });
+      input.addEventListener('change', e => e.stopPropagation()); // only real changes to the selection count
+      input.addEventListener('focus', () => refreshOptions({ open: true }));
+      input.addEventListener('blur', closeOptions);
+      input.addEventListener('keydown', (e) => {
+        const open = list.classList.contains('open');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          if (!hasList) return;
+          e.preventDefault();
+          if (!open) { refreshOptions({ open: true }); if (matches.length) setActive(0); return; }
+          if (!matches.length) return;
+          const step = e.key === 'ArrowDown' ? 1 : -1;
+          setActive((activeIndex + step + matches.length) % matches.length);
+        } else if (e.key === 'Enter') {
+          if (!input.value.trim() && activeIndex < 0) return;
+          e.preventDefault();
+          if (!commitTyped().ok) flashInvalid();
+        } else if (e.key === 'Escape') {
+          if (open) { e.preventDefault(); closeOptions(); }
+        } else if (e.key === 'Backspace' && !input.value && ids.length) {
+          removeId(ids[ids.length - 1]);
+        }
+      });
+      container.onclick = () => input.focus();
+
+      renderChips();
       return {
         getIds: () => [...ids],
         commitPendingInput: () => {
-          if (!activeInput || !activeInput.value.trim()) return { ok: true };
-          const result = tryAddChannel(activeInput.value);
-          if (!result.ok) return { ok: false };
-          activeInput.value = '';
-          render();
-          container.dispatchEvent(new Event('change'));
-          return { ok: true };
+          const result = commitTyped();
+          return result.ok ? { ok: true } : { ok: false, typed: result.typed };
         },
       };
     }
@@ -989,6 +1151,14 @@
       return null;
     }
 
+    // Cards with unsaved edits; leaving the page while any remain asks first.
+    const dirtySections = new Set();
+    window.addEventListener('beforeunload', (e) => {
+      if (dirtySections.size === 0) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
     // ── Build feature section ────────────────────────────────────────────────
     function buildFeatureSection(feat, settings, guildMeta, isSuperAdmin, apiFetch) {
       const safeSettings = settings && typeof settings === 'object' ? settings : {};
@@ -1016,6 +1186,7 @@
           <div class="feature-header-left">
             <span class="feature-name">${escHtml(feat.label)}</span>
             <span class="status-pill ${statusClass}" id="pill-${feat.id}">${statusText}</span>
+            <span class="unsaved-badge" id="unsaved-${feat.id}" role="status">Unsaved changes</span>
           </div>
           <span class="channels-hint" id="ch-summary-${feat.id}" style="color:var(--muted);font-size:12px;">${escHtml(channelSub)}</span>
           <span class="chevron">▼</span>
@@ -1032,7 +1203,7 @@
           <div class="channels-section">
             <div class="channels-label">Restrict to channels (leave empty for all channels):</div>
             <div class="channel-tag-input" id="ch-input-${feat.id}"></div>
-            <div class="channels-hint">Enter a Discord channel ID and press <kbd>Enter</kbd> to add it.</div>
+            <div class="channels-hint" id="ch-hint-${feat.id}"></div>
           </div>` : ''}
           ${extraFields.length ? `
           <div class="extra-settings">
@@ -1071,34 +1242,48 @@
         section.classList.toggle('open');
       });
 
-      // Update pill on toggle change
-      const toggleInput = section.querySelector(`#toggle-${feat.id}`);
-      toggleInput.addEventListener('change', () => {
+      // The header pill and channel summary show what is SAVED; edits only mark the
+      // card as having unsaved changes until Save succeeds.
+      const markDirty = () => { section.classList.add('dirty'); dirtySections.add(section); };
+      const markSaved = (enabled, channelIds) => {
         const pill = section.querySelector(`#pill-${feat.id}`);
-        pill.textContent = toggleInput.checked ? 'ON' : 'OFF';
-        pill.className   = `status-pill ${toggleInput.checked ? 'on' : 'off'}`;
-      });
+        pill.textContent = enabled ? 'ON' : 'OFF';
+        pill.className   = `status-pill ${enabled ? 'on' : 'off'}`;
+        const summary = section.querySelector(`#ch-summary-${feat.id}`);
+        if (summary && channelIds) {
+          summary.textContent = channelIds.length
+            ? `${channelIds.length} channel${channelIds.length !== 1 ? 's' : ''} restricted`
+            : 'All channels';
+        }
+        section.classList.remove('dirty');
+        dirtySections.delete(section);
+      };
 
-      // Build channel tag input if applicable
+      // Build channel picker if applicable
       let channelTagInput = null;
       if (feat.hasChannels) {
         const channelContainer = section.querySelector(`#ch-input-${feat.id}`);
-        channelTagInput = createChannelTagInput(channelContainer, safeChannelIds);
-
-        // Update summary on change
-        channelContainer?.addEventListener('change', () => {
-          const ids = channelTagInput.getIds();
-          const summary = section.querySelector(`#ch-summary-${feat.id}`);
-          if (summary) {
-            summary.textContent = ids.length
-              ? `${ids.length} channel${ids.length !== 1 ? 's' : ''} restricted`
-              : 'All channels';
-          }
-        });
+        const channelList = Array.isArray(guildMeta?.channels) ? guildMeta.channels : [];
+        channelTagInput = createChannelTagInput(channelContainer, safeChannelIds, channelList);
+        const hint = section.querySelector(`#ch-hint-${feat.id}`);
+        if (hint) {
+          hint.innerHTML = channelList.length
+            ? 'Type to search, then click a channel or press <kbd>Enter</kbd> to add it. You can also paste a channel ID.'
+            : 'Enter a Discord channel ID and press <kbd>Enter</kbd> to add it.';
+        }
       }
 
       const wizardRoot = section.querySelector(`#wizard-${feat.id}`);
       const wizardState = buildFeatureWizard(wizardRoot, feat, currentExtra, guildMeta, apiFetch);
+
+      // Any edit inside the card (toggle, channels, advanced or wizard fields) makes it unsaved.
+      const body = section.querySelector('.feature-body');
+      body.addEventListener('input', markDirty);
+      body.addEventListener('change', markDirty);
+      wizardRoot?.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if (button && !button.classList.contains('btn-publish')) markDirty();
+      });
 
       // Save button
       section.querySelector(`#save-${feat.id}`).addEventListener('click', async () => {
@@ -1110,7 +1295,7 @@
         if (channelTagInput) {
           const pending = channelTagInput.commitPendingInput();
           if (!pending.ok) {
-            feedback.textContent   = '✗ Invalid channel ID in input';
+            feedback.textContent   = `✗ No channel matches "${pending.typed}". Pick one from the list or clear the box.`;
             feedback.className     = 'save-feedback err';
             feedback.style.display = 'inline';
             btn.disabled = false;
@@ -1172,6 +1357,7 @@
             feedback.className      = 'save-feedback ok';
             feedback.style.display  = 'inline';
             setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+            markSaved(isEnabled, payload.channelIds);
             if (isSuperAdmin) dbg.ok(`Feature "${feat.id}" saved successfully`);
           } else {
             throw new Error(`HTTP ${r.status}`);

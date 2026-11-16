@@ -53,14 +53,16 @@ const stmtGetGuild = db.prepare(`
 
 const stmtGetPlayer = db.prepare('SELECT * FROM wavelength_player_stats WHERE guild_id = ? AND user_id = ?');
 
-const stmtScoreboard = db.prepare(`
+const RANKING_SQL = `
   SELECT user_id, username, rounds_played, total_score, bullseyes,
          CASE WHEN rounds_played > 0 THEN ROUND(1.0 * total_score / rounds_played, 1) ELSE 0 END AS avg_score
   FROM wavelength_player_stats
   WHERE guild_id = ? AND rounds_played > 0
   ORDER BY total_score DESC, avg_score DESC
-  LIMIT 10
-`);
+`;
+
+const stmtScoreboard = db.prepare(`${RANKING_SQL} LIMIT 10`);
+const stmtRanking = db.prepare(RANKING_SQL);
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -132,5 +134,29 @@ function scoreboard(guildId) {
   return stmtScoreboard.all(guildId);
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-module.exports = { recordRound, getGuildStats, getPlayer, scoreboard };
+/** What /stats shows for a player's row: label/value pairs. */
+function describePlayer(row) {
+  const average = row.rounds_played > 0 ? Math.round(10 * row.total_score / row.rounds_played) / 10 : 0;
+  return [
+    { label: 'Rounds', value: row.rounds_played },
+    { label: 'Total score', value: `${row.total_score} pts` },
+    { label: 'Average', value: `${average} pts a round` },
+    { label: 'Bullseyes', value: row.bullseyes },
+    { label: 'Rounds as clue giver', value: row.rounds_as_clue_giver },
+    { label: 'Synergy bonuses', value: row.synergy_bonuses },
+  ];
+}
+
+/** What /leaderboard shows: every player in a guild, best first, by total score. */
+function leaderboard(guildId) {
+  return stmtRanking.all(guildId).map(row => ({
+    user_id: row.user_id,
+    username: row.username,
+    headline: `${row.total_score} pts`,
+    detail: `${plural(row.rounds_played, 'round')}, ${plural(row.bullseyes, 'bullseye')}`,
+  }));
+}
+
+module.exports = { recordRound, getGuildStats, getPlayer, scoreboard, describePlayer, leaderboard };
