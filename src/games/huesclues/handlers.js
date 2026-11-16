@@ -15,6 +15,7 @@ const {
 const { parseCell, formatCell } = require('./board');
 const flow = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -47,7 +48,7 @@ async function handleLeave(interaction, client, game) {
 }
 
 async function handleStart(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the game.');
   if (game.phase !== 'lobby') return reply(interaction, 'This game has already started.');
   if (game.players.size < MIN_PLAYERS) {
     return reply(interaction, `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`);
@@ -57,7 +58,7 @@ async function handleStart(interaction, client, game) {
 }
 
 async function handleCancel(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can cancel the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can cancel the game.');
   if (game.phase !== 'lobby') return reply(interaction, 'This game has already started.');
   await interaction.deferUpdate();
   return flow.closeSession(game, client, `✖️ Cancelled by <@${interaction.user.id}> before the game started.`);
@@ -68,7 +69,7 @@ async function handleCancel(interaction, client, game) {
 /** Wraps a setup action: host only, during setup, then redraws the setup message. */
 function setupAction(action) {
   return async (interaction, client, game, arg) => {
-    if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can set up the game.');
+    if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can set up the game.');
     if (game.phase !== 'setup') return reply(interaction, 'The game has already started.');
     const error = action(client.huesCluesManager, game, arg);
     if (error) return reply(interaction, error);
@@ -91,7 +92,7 @@ const handleTarget = setupAction((manager, game, value) => {
 });
 
 async function handleBegin(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the game.');
   if (game.phase !== 'setup') return reply(interaction, 'The game has already started.');
   if (!isModeComplete(game.sessionMode)) return reply(interaction, 'Choose a session mode first.');
   await interaction.update(renderSessionStarted(game));
@@ -99,7 +100,7 @@ async function handleBegin(interaction, client, game) {
 }
 
 async function handleToggleAuto(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can change auto-advance.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can change auto-advance.');
   if (game.phase === 'lobby') return reply(interaction, 'Start the game first.');
   await flow.toggleAutoAdvance(game, client);
   return interaction.update(await renderGameMessage(game));
@@ -176,6 +177,14 @@ async function handleNoMore(interaction, client, game) {
   if (!client.huesCluesManager.giveClue(game, 2, null)) return reply(interaction, 'That clue has already been given.');
   await interaction.deferUpdate();
   return flow.openGuessRound(game, client);
+}
+
+/** The cue giver has gone quiet: the host moves the turn on without them. */
+async function handleSkipCue(interaction, client, game) {
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can skip the cue giver.');
+  if (game.phase !== 'picking' && game.phase !== 'followup') return reply(interaction, 'There is nothing to skip right now.');
+  await interaction.deferUpdate();
+  return flow.skipCueGiver(game, client, interaction.user.id);
 }
 
 // ── Guessers ───────────────────────────────────────────────────────────────────
@@ -261,7 +270,7 @@ async function handleLock(interaction, client, game) {
 }
 
 async function handleForceLock(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can lock the remaining tokens.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can lock the remaining tokens.');
   if (game.phase !== 'guessing') return reply(interaction, 'Tokens can\'t be placed right now.');
   await interaction.deferUpdate();
   client.huesCluesManager.lockRemaining(game);
@@ -271,7 +280,7 @@ async function handleForceLock(interaction, client, game) {
 // ── After a turn ───────────────────────────────────────────────────────────────
 
 async function handleNext(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the next turn.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the next turn.');
   if (game.phase !== 'ended') return reply(interaction, 'This turn is still going.');
   if (evaluateSessionGoal(game).complete) {
     return reply(interaction, '🏁 The session is over. Choose **New Game (Open Signups)** or **End Game & Close Session**.');
@@ -281,16 +290,24 @@ async function handleNext(interaction, client, game) {
 }
 
 async function handleNewGame(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can open sign-ups for a new game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can open sign-ups for a new game.');
   if (game.phase !== 'ended') return reply(interaction, 'This turn is still going.');
   await interaction.deferUpdate();
   return flow.newSession(game, client);
 }
 
 async function handleClose(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can close the session.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can close the session.');
   await interaction.deferUpdate();
   return flow.closeSession(game, client, `🔒 Session closed by <@${interaction.user.id}>. Thanks for playing Hues & Clues!`);
+}
+
+function handleTakeHostButton(interaction, client, game) {
+  return handleTakeHost(interaction, client, game, {
+    manager: client.huesCluesManager,
+    // The lobby and setup messages name the host.
+    rerender: () => (['lobby', 'setup'].includes(game.phase) ? flow.updateGameMessage(game, client) : null),
+  });
 }
 
 /** customId → handler. Add a line here for every new button. */
@@ -317,6 +334,8 @@ const BUTTONS = {
   hc_next: handleNext,
   hc_new_game: handleNewGame,
   hc_close: handleClose,
+  hc_skip_cue: handleSkipCue,
+  hc_take_host: handleTakeHostButton,
 };
 
 /** Buttons that carry a value in their customId: prefix → handler(…, value). */
@@ -348,6 +367,7 @@ async function handleInteraction(interaction, client) {
 
   const game = client.huesCluesManager.getGame(interaction.channelId);
   if (!game) return reply(interaction, 'There is no active Hues & Clues game in this thread.');
+  trackHostActivity(interaction, game);
   const [handler, value] = found;
   return handler(interaction, client, game, value);
 }

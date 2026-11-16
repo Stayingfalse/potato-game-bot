@@ -19,6 +19,7 @@ const { fetchChannel, lockAndArchive } = require('../../_core/threads');
 const WerewordsRepository = require('../repository');
 const { renderGameMessage } = require('../render');
 const { updateGameMessage } = require('../gameMessage');
+const { isHost, replyNotHost } = require('../../_core/host');
 
 const { wordPool, updateLobbyMessage } = require('./shared');
 
@@ -29,8 +30,8 @@ async function handleEndGameButton(interaction, client, game) {
     return interaction.reply({ content: 'There is no active game to end.', flags: MessageFlags.Ephemeral });
   }
 
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can end the game early.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can end the game early.');
   }
 
   await interaction.deferUpdate();
@@ -165,8 +166,8 @@ async function handleRematchSame(interaction, client, game) {
   if (!game || game.phase !== 'ended') {
     return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can start a rematch.');
   }
 
   await interaction.update({ components: [] });
@@ -191,8 +192,8 @@ async function handleRematchOpen(interaction, client, game) {
   if (!game || game.phase !== 'ended') {
     return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can open sign-ups.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can open sign-ups.');
   }
 
   await interaction.deferUpdate();
@@ -220,8 +221,8 @@ async function handleCloseSession(interaction, client, game) {
   if (!game || game.phase !== 'ended') {
     return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can close the session.');
   }
 
   await interaction.deferUpdate();

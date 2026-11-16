@@ -6,6 +6,7 @@ const HighRollRepository = require('./repository');
 const { renderGameMessage } = require('./render');
 const { startRound, finishRound, closeSession } = require('./flow');
 const { fetchChannel } = require('../_core/threads');
+const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -34,7 +35,7 @@ async function handleLeave(interaction, client, game) {
 }
 
 async function handleStart(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the game.');
   if (game.phase !== 'lobby') return reply(interaction, 'This game has already started.');
   if (game.players.size < MIN_PLAYERS) {
     return reply(interaction, `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`);
@@ -44,7 +45,7 @@ async function handleStart(interaction, client, game) {
 }
 
 async function handleCancel(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can cancel the game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can cancel the game.');
   await interaction.deferUpdate();
   return closeSession(game, client, `✖️ Cancelled by <@${interaction.user.id}>.`);
 }
@@ -67,16 +68,21 @@ async function handleRoll(interaction, client, game) {
 }
 
 async function handleAgain(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can start the next game.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can start the next game.');
   if (game.phase !== 'ended') return reply(interaction, 'This game is still going.');
   await startRound(game, client);
   return interaction.update(renderGameMessage(game));
 }
 
 async function handleClose(interaction, client, game) {
-  if (interaction.user.id !== game.hostId) return reply(interaction, 'Only the host can close the session.');
+  if (!isHost(interaction, game)) return replyNotHost(interaction, game, 'Only the host can close the session.');
   await interaction.deferUpdate();
   return closeSession(game, client, '🔒 Session closed. Thanks for playing!');
+}
+
+/** A player takes over from a host who has gone quiet (see _core/host.js). */
+function handleTakeHostButton(interaction, client, game) {
+  return handleTakeHost(interaction, client, game, { manager: client.highRollManager });
 }
 
 /** customId → handler. Add a line here for every new button. */
@@ -88,6 +94,7 @@ const BUTTONS = {
   hr_roll: handleRoll,
   hr_again: handleAgain,
   hr_close: handleClose,
+  hr_take_host: handleTakeHostButton,
 };
 
 /** Entry point for every interaction whose customId starts with the manifest's prefix. */
@@ -97,6 +104,7 @@ async function handleInteraction(interaction, client) {
 
   const game = client.highRollManager.getGame(interaction.channelId);
   if (!game) return reply(interaction, 'There is no active High Roll game in this thread.');
+  trackHostActivity(interaction, game);
   return handler(interaction, client, game);
 }
 

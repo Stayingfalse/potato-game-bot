@@ -13,6 +13,7 @@ const { MIN_PLAYERS } = require('../manager');
 const WerewordsRepository = require('../repository');
 const { fetchChannel } = require('../../_core/threads');
 const { closeSession } = require('./endgame');
+const { isHost, replyNotHost } = require('../../_core/host');
 
 /** A player joins the lobby. */
 async function handleJoin(interaction, client, game) {
@@ -60,8 +61,8 @@ async function handleStart(interaction, client, game) {
   if (!game || game.phase !== 'lobby') {
     return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can start the game.');
   }
   if (game.players.size < MIN_PLAYERS) {
     return interaction.reply({
@@ -81,8 +82,8 @@ async function handleCancel(interaction, client, game) {
   if (!game || game.phase !== 'lobby') {
     return interaction.reply({ content: 'There is no active lobby to cancel.', flags: MessageFlags.Ephemeral });
   }
-  if (user.id !== game.hostId) {
-    return interaction.reply({ content: 'Only the host can cancel the session.', flags: MessageFlags.Ephemeral });
+  if (!isHost(interaction, game)) {
+    return replyNotHost(interaction, game, 'Only the host can cancel the session.');
   }
 
   await interaction.deferUpdate();
