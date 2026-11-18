@@ -262,13 +262,12 @@ async function closeSession(game, client, reason) {
   });
 
   client.werewordsManager.deleteGame(game.threadId);
-  await (gamesPlayed === 0 && game.phase === 'lobby' ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+  await (gamesPlayed === 0 ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
 }
 
 /** One line for the channel card: how the session's games went. */
 function cardResult(game) {
   const games = game.sessionHistory;
-  if (games.length === 0) return '🏁 Session ended before a game was finished.';
   const villagerWins = games.filter(g => g.outcome === 'villagers_word' || g.outcome === 'villagers_vote').length;
   const last = games.at(-1);
   return [

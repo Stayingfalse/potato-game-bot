@@ -60,7 +60,7 @@ async function closeSession(game, client, reason) {
   await updateGameMessage(game, client, { closedReason: reason });
   lockAndArchive(await fetchChannel(client, game.threadId), { delayMs: 5_000 });
   client.highRollManager.deleteGame(game.threadId);
-  if (game.phase === 'lobby') await card.cancel(client, game);
+  if (game.rolls.size === 0 && game.gameNumber === 1) await card.cancel(client, game); // nothing was played
   else await card.finish(client, game, cardResult(game));
 }
 

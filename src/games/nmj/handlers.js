@@ -145,7 +145,7 @@ function advanceTurn(game) {
 
 /** Ends the game: records stats if there is a winner, shows the result on the channel card, locks/archives the thread and cleans up. */
 async function endGame(game, client, resultText, { winnerId } = {}) {
-  const cancelled = game.phase === 'lobby';
+  const cancelled = !winnerId && game.moves.length === 0;
   game.phase = 'ended';
   persistGame(client, game);
   // Only a game that finished with a winner counts towards stats.

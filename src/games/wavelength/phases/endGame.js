@@ -55,7 +55,6 @@ async function closeSession(game, client, reason) {
   if (!game) return;
 
   client.wavelengthManager.clearTimers(game);
-  const cancelled = game.phase === 'lobby';
   game.phase = 'ended';
   WavelengthRepository.upsert(game);
 
@@ -89,13 +88,15 @@ async function closeSession(game, client, reason) {
   }
 
   client.wavelengthManager.deleteGame(game.threadId);
+  // Nothing was played: the card says the game was cancelled rather than showing empty standings.
+  const cancelled = (game.sessionHistory ?? []).length === 0;
   await (cancelled ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
 }
 
 /** One line for the channel card: the top three of the session's standings. */
 function cardResult(game) {
   const top = computeSessionTotals(game).slice(0, 3);
-  if (top.length === 0) return '🏁 Session over — no scores recorded.';
+  if (top.length === 0) return null;
   const medals = ['🥇', '🥈', '🥉'];
   return `🏁 Final standings: ${top.map((entry, i) => `${medals[i]} <@${entry.userId}> ${entry.total} pts`).join(' · ')}`;
 }

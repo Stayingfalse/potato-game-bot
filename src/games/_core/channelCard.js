@@ -9,7 +9,7 @@
  *              that works from the channel, and a link to the thread
  *   playing    "Game in progress — N players" and a link to the thread
  *   finished   the result in a line or two, and "Thread closed"
- *   cancelled  "Cancelled", and "Thread closed"
+ *   cancelled  "Cancelled — thread closed", for a session closed before anything was played
  *
  * Each game makes one card with createChannelCard() and calls it from a few
  * places: post() in the start command, update() whenever the lobby or phase
@@ -132,7 +132,7 @@ function createChannelCard({ name, emoji, prefix, clientKey, repository, isLobby
   const update = (client, game) => edit(client, game, {});
   /** Shows the session's result and "Thread closed". */
   const finish = (client, game, result) => edit(client, game, { status: 'finished', result });
-  /** Shows "Cancelled". */
+  /** Shows "Cancelled": for a session closed before anything was played. */
   const cancel = (client, game) => edit(client, game, { status: 'cancelled' });
 
   /**

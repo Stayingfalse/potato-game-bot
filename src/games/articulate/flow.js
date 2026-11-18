@@ -187,7 +187,7 @@ async function closeSession(game, client, reason) {
     lockAndArchive(thread, { delayMs: 5_000 });
   }
   managerOf(client).deleteGame(game.threadId);
-  const cancelled = ['lobby', 'setup'].includes(game.phase) && game.gameNumber === 1;
+  const cancelled = game.turnNumber === 0 && game.gameNumber === 1; // nothing was played
   await (cancelled ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
 }
 

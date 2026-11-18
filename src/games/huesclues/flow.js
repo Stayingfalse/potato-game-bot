@@ -177,13 +177,11 @@ async function closeSession(game, client, reason) {
     lockAndArchive(thread, { delayMs: 5_000 });
   }
   managerOf(client).deleteGame(game.threadId);
-  const cancelled = game.phase === 'lobby' && game.sessionHistory.length === 0;
-  await (cancelled ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+  await (game.sessionHistory.length === 0 ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
 }
 
 /** One line for the channel card: the top three of the session's standings. */
 function cardResult(game) {
-  if (game.sessionHistory.length === 0) return '🏁 Session over — no turns were played.';
   const medals = ['🥇', '🥈', '🥉'];
   const top = sessionTotals(game).slice(0, 3).map((entry, i) => `${medals[i]} <@${entry.userId}> ${entry.total} pts`);
   return `🏁 Final standings: ${top.join(' · ')}`;
