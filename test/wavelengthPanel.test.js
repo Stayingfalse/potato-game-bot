@@ -146,6 +146,7 @@ describe('the private guess panel', () => {
   it('the modal sets the position and updates the panel', async () => {
     const interaction = await press(guesser, `wl_guess_modal_${guesser.id}`, { kind: 'modal', fields: { wl_guess_input: ' 42 ' } });
     assert.equal(position(), 42);
+    assert.equal(game.guesses.get(guesser.id).touched, true, 'a typed guess counts at the timeout');
     assert.deepEqual(callTypes(interaction), ['deferUpdate', 'editReply']);
     assert.match(lastEdit(interaction).content, /\*\*42\*\*/);
     await press(guesser, `wl_guess_modal_${guesser.id}`, { kind: 'modal', fields: { wl_guess_input: '0' } });

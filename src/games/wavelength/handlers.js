@@ -325,7 +325,9 @@ async function handleInteraction(interaction, client) {
       });
     }
 
-    game.guesses.get(ownerId).position = position;
+    const typedGuess = game.guesses.get(ownerId);
+    typedGuess.position = position;
+    typedGuess.touched = true; // a typed guess counts even if never submitted
     WavelengthRepository.upsert(game);
     await interaction.deferUpdate();
     return interaction.editReply(await buildGuessPanel(game, ownerId));
