@@ -30,7 +30,7 @@ const { howToPlayReply } = require('../_core/lobby');
 const howToPlay = require('./howToPlay');
 const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
-const { MIN_PLAYERS } = require('./manager');
+const { MIN_PLAYERS, lockRemainingGuesses } = require('./manager');
 
 const spectra = require('./spectra.json');
 
@@ -144,20 +144,35 @@ async function sendTurnPing(game, client, preFetchedThread) {
   return !!sent;
 }
 
-async function scheduleGuessTimeout(game, client) {
+/** How long real-time guessers have before their guesses lock. */
+const GUESS_TIME_MS = 3 * 60 * 1_000;
+
+function armGuessTimeout(game, client, delayMs) {
+  game.guessTimeout = setTimeout(async () => {
+    game.guessTimeout = null;
+    if (game.phase !== 'guessing') return;
+    lockRemainingGuesses(game);
+    WavelengthRepository.upsert(game);
+    await startRevealPhase(game, client);
+  }, Math.max(0, delayMs));
+}
+
+/** Starts a fresh real-time guess timer and stores its deadline on the game (`guessEndsAt`). */
+async function scheduleGuessTimeout(game, client, { durationMs = GUESS_TIME_MS, now = Date.now() } = {}) {
   clearGuessTimeout(game);
   if (game.phase !== 'guessing' || game.gamePace === 'turnbased') return;
 
-  game.guessTimeout = setTimeout(async () => {
-    if (game.phase !== 'guessing') return;
-    for (const [, guess] of game.guesses) {
-      guess.submitted = true;
-    }
-    WavelengthRepository.upsert(game);
-    await startRevealPhase(game, client);
-  }, 3 * 60 * 1_000);
-
+  game.guessEndsAt = now + durationMs;
+  armGuessTimeout(game, client, durationMs);
   WavelengthRepository.upsert(game);
+}
+
+/** After a restart: re-arms the guess timer for only the time left before the saved deadline. */
+async function resumeGuessTimeout(game, client, now = Date.now()) {
+  if (!game.guessEndsAt) return scheduleGuessTimeout(game, client, { now });
+  clearGuessTimeout(game);
+  if (game.phase !== 'guessing' || game.gamePace === 'turnbased') return;
+  armGuessTimeout(game, client, game.guessEndsAt - now);
 }
 
 async function checkAllSubmitted(game, client) {
@@ -235,8 +250,9 @@ async function handleInteraction(interaction, client) {
       content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`,
       flags: MessageFlags.Ephemeral,
     });
-    await updateGameMessage(game, client);
+    // Arm the timer first so the round message shows the deadline.
     await scheduleGuessTimeout(game, client);
+    await updateGameMessage(game, client);
     await sendTurnPing(game, client);
     return;
   }
@@ -623,6 +639,7 @@ async function handleInteraction(interaction, client) {
     }
 
     guess.position = Math.max(0, Math.min(100, guess.position + delta));
+    guess.touched = true;
     WavelengthRepository.upsert(game);
 
     const player = game.players.get(user.id);
@@ -776,4 +793,5 @@ module.exports = {
   updateGameMessage,
   startConfiguredRound,
   scheduleGuessTimeout,
+  resumeGuessTimeout,
 };

@@ -25,6 +25,8 @@ class WavelengthGameState extends BaseGameState {
     this.clue = null;
     this.guesses = new Map();
     this.guessTimeout = null;
+    // When the real-time guess timer locks guesses (ms since epoch), or null when no timer runs.
+    this.guessEndsAt = null;
     this.autoAdvanceTimeout = null;
     this.sessionHistory = [];
     this.sessionMode = null;
@@ -59,6 +61,7 @@ class WavelengthGameState extends BaseGameState {
     game.sessionHistory = JSON.parse(row.session_history || '[]');
     game.gamePace = row.game_pace ?? 'realtime';
     game.autoAdvanceRounds = row.auto_advance_rounds === 1;
+    game.guessEndsAt = row.guess_ends_at ?? null;
     game._createdAt = row.created_at;
     return game;
   }
@@ -87,6 +90,7 @@ class WavelengthGameState extends BaseGameState {
       game_pace:            game.gamePace ?? 'realtime',
       auto_advance_rounds:  game.autoAdvanceRounds ? 1 : 0,
       session_history:      JSON.stringify(game.sessionHistory ?? []),
+      guess_ends_at:        game.guessEndsAt ?? null,
       created_at:           game._createdAt ?? Date.now(),
     };
   }

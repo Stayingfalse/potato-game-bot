@@ -75,10 +75,18 @@ function renderPublicClueText(game) {
     `> 💬 **"${game.clue}"**`,
     '',
     'Click **View Guess Panel** below to position your marker on the spectrum and submit your guess.',
+    renderGuessDeadline(game),
     '',
     `**📊 Submissions — ${submitted}/${guessers.length}**`,
     submissions,
-  ].join('\n');
+  ].filter(line => line !== null).join('\n');
+}
+
+/** The guess deadline: a live Discord countdown in real-time pace, or null when no timer is armed. */
+function renderGuessDeadline(game) {
+  if (game.gamePace === 'turnbased') return '🐢 Turn-based: the round waits for everyone to submit.';
+  if (!game.guessEndsAt) return null;
+  return `⏳ Guesses lock <t:${Math.round(game.guessEndsAt / 1000)}:R>`;
 }
 
 module.exports = {
