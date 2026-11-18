@@ -9,6 +9,7 @@ const { fetchChannel } = require('../_core/threads');
 const { replyWithLeaderboard } = require('../_core/statsDisplay');
 const { howToPlayReply } = require('../_core/lobby');
 const howToPlay = require('./howToPlay');
+const card = require('./card');
 const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
@@ -31,14 +32,16 @@ async function handleJoin(interaction, client, game) {
   }
   const thread = await fetchChannel(client, game.threadId);
   await thread?.members.add(interaction.user.id).catch(() => {});
-  return interaction.update(await renderGameMessage(game));
+  await interaction.update(await renderGameMessage(game));
+  return card.update(client, game);
 }
 
 async function handleLeave(interaction, client, game) {
   if (!client.articulateManager.removePlayer(game.threadId, interaction.user.id)) {
     return reply(interaction, 'You are not in the lobby.');
   }
-  return interaction.update(await renderGameMessage(game));
+  await interaction.update(await renderGameMessage(game));
+  return card.update(client, game);
 }
 
 async function handleStart(interaction, client, game) {
@@ -48,7 +51,8 @@ async function handleStart(interaction, client, game) {
     return reply(interaction, `Need at least **${MIN_PLAYERS} players** to start (two teams of two). Currently: **${game.players.size}**.`);
   }
   client.articulateManager.beginSetup(game);
-  return interaction.update(await renderGameMessage(game));
+  await interaction.update(await renderGameMessage(game));
+  return card.update(client, game);
 }
 
 async function handleCancel(interaction, client, game) {
@@ -326,6 +330,11 @@ function findHandler(interaction) {
 async function handleInteraction(interaction, client) {
   // Anyone can read the rules, with or without a game in the thread.
   if (interaction.customId === 'ar_howto') return interaction.reply(howToPlayReply({ name: 'Articulate', howToPlay }));
+
+  // The Join button on the status card in the starting channel.
+  if (interaction.customId === card.joinId) {
+    return card.handleJoin(interaction, client, { refreshLobby: (game, c) => flow.updateGameMessage(game, c) });
+  }
 
   const found = findHandler(interaction);
   if (!found) return;

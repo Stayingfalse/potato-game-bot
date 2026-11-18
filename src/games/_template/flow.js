@@ -10,6 +10,7 @@ const { renderGameMessage } = require('./render');
 const { recordGame } = require('./stats');
 const { fetchChannel, lockAndArchive } = require('../_core/threads');
 const { editOrSend } = require('../_core/messages');
+const card = require('./card');
 
 /** Re-renders the game message in place, or posts it if it doesn't exist yet. */
 async function updateGameMessage(game, client, options) {
@@ -50,12 +51,24 @@ async function finishRound(game, client) {
   await updateGameMessage(game, client);
 }
 
-/** Ends the session from any phase: final message, archive the thread, delete the game. */
+/**
+ * Ends the session from any phase: final message, archive the thread, delete the
+ * game, and show the result (or "Cancelled") on the channel card.
+ */
 async function closeSession(game, client, reason) {
   client.highRollManager.clearTimers(game);
   await updateGameMessage(game, client, { closedReason: reason });
   lockAndArchive(await fetchChannel(client, game.threadId), { delayMs: 5_000 });
   client.highRollManager.deleteGame(game.threadId);
+  if (game.rolls.size === 0 && game.gameNumber === 1) await card.cancel(client, game); // nothing was played
+  else await card.finish(client, game, cardResult(game));
+}
+
+/** The result in a line for the channel card. */
+function cardResult(game) {
+  if (game.rolls.size === 0) return '🏁 Nobody rolled.';
+  const best = Math.max(...game.rolls.values());
+  return `🏆 ${game.winnerIds().map(id => `<@${id}>`).join(', ')} won with a roll of **${best}**.`;
 }
 
 module.exports = { updateGameMessage, scheduleRollTimeout, startRound, finishRound, closeSession };

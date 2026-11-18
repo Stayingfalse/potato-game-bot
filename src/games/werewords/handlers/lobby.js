@@ -11,8 +11,10 @@ const {
 } = require('../phases/lobby');
 const { MIN_PLAYERS } = require('../manager');
 const WerewordsRepository = require('../repository');
+const card = require('../card');
 const { fetchChannel } = require('../../_core/threads');
 const { closeSession } = require('./endgame');
+const { updateLobbyMessage } = require('./shared');
 const { howToPlayReply } = require('../../_core/lobby');
 const howToPlay = require('../howToPlay');
 const { isHost, replyNotHost } = require('../../_core/host');
@@ -35,7 +37,8 @@ async function handleJoin(interaction, client, game) {
   const thread = await fetchChannel(client, game.threadId);
   if (thread) await thread.members.add(user.id).catch(() => {});
 
-  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
+  await interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
+  return card.update(client, game);
 }
 
 /** A player leaves the lobby. */
@@ -54,7 +57,8 @@ async function handleLeave(interaction, client, game) {
   const thread = await fetchChannel(client, game.threadId);
   if (thread) await thread.members.remove(user.id).catch(() => {});
 
-  return interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
+  await interaction.update({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) });
+  return card.update(client, game);
 }
 
 /** The host starts the game: the lobby message turns into the text-or-voice mode choice. */
@@ -76,6 +80,7 @@ async function handleStart(interaction, client, game) {
   game.phase = 'mode_select';
   WerewordsRepository.upsert(game);
   await interaction.update({ embeds: [buildModeSelectEmbed(game)], components: buildModeSelectComponents() });
+  await card.update(client, game);
 }
 
 /** The host cancels the session before it starts. */
@@ -97,6 +102,13 @@ async function handleHowTo(interaction) {
   return interaction.reply(howToPlayReply({ name: 'Werewords', howToPlay }));
 }
 
+/** The Join button on the status card in the starting channel. */
+function handleCardJoin(interaction, client) {
+  return card.handleJoin(interaction, client, {
+    refreshLobby: game => updateLobbyMessage(game, client, { embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game) }),
+  });
+}
+
 /** Matches a lobby button, including the `ww_join_<threadId>` form used before the lobby moved into the thread. */
 function lobbyButton(action) {
   return id => id === `ww_${action}` || id.startsWith(`ww_${action}_`);
@@ -109,6 +121,7 @@ const buttons = [
   { match: lobbyButton('start'), handle: handleStart },
   { match: lobbyButton('cancel'), handle: handleCancel },
   { match: id => id === 'ww_howto', handle: handleHowTo },
+  { match: id => id === card.joinId, handle: handleCardJoin },
 ];
 
 module.exports = { buttons };

@@ -137,7 +137,7 @@ describe('a game through the real command and buttons', () => {
     const start = slashCommand({ sub: 'start', user: HOST, channel });
     await articulate.command.execute(start, client);
     game = manager.getGame(thread.id);
-    assert.match(start.replies()[0], /game created/);
+    assert.match(start.replies()[0], /Lobby open/);
     assert.ok(text(sessionMessage()).includes('ar_join'));
   });
 

@@ -13,6 +13,7 @@ const SCHEMA = `
     host_username         TEXT NOT NULL,
     message_id            TEXT,
     turn_message_id       TEXT,
+    card_message_id       TEXT,
     phase                 TEXT NOT NULL DEFAULT 'lobby',
     players               TEXT NOT NULL DEFAULT '[]',
     session_mode          TEXT,
@@ -37,7 +38,9 @@ const SCHEMA = `
  * When you add a column after the game has shipped, add it to SCHEMA *and*
  * here, so existing databases get it on startup.
  */
-const ADDED_COLUMNS = {};
+const ADDED_COLUMNS = {
+  card_message_id: 'card_message_id TEXT',
+};
 
 /** Adds any columns a table created by an older version is missing. Runs in a transaction. */
 function migrate(db) {

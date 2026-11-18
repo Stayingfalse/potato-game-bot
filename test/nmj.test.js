@@ -121,6 +121,7 @@ describe('a full game through the real handlers', () => {
     game = manager.createGame('G', origin.id, thread.id, 'h', 'Host');
     manager.addPlayer(thread.id, H);
     game.messageId = (await thread.send({})).id;
+    game.cardMessageId = (await origin.send({ content: 'card' })).id;
 
     await press(A, 'nmj_join');
     assert.deepEqual((await press(A, 'nmj_join')).replies(), ['You are already in the game.']);
@@ -174,7 +175,7 @@ describe('a full game through the real handlers', () => {
     assert.equal(game.currentPlayerId(), 'b');
   });
 
-  it('the last player standing wins; the thread is archived and the result posted where it started', async () => {
+  it('the last player standing wins; the thread is archived and the result shown on the channel card', async () => {
     await modal(B, 'nmj_move_modal', { nmj_celeb: 'Brad Pitt', nmj_category: 'No More blondes' });
     await press(H, 'nmj_challenge');
     await modal(H, 'nmj_challenge_modal', { nmj_challenge_category: 'actresses' });
@@ -184,8 +185,11 @@ describe('a full game through the real handlers', () => {
     assert.equal(game.phase, 'ended');
     assert.equal(manager.getGame(thread.id), null);
     assert.deepEqual([thread.locked, thread.archived], [true, true]);
-    assert.equal(origin.sent.length, 1);
-    assert.ok(JSON.stringify(origin.sent[0].components).includes('wins No More Jockeys'));
+    assert.equal(origin.sent.length, 1, 'only the card: the game message is not re-posted to the channel');
+    const card = origin.store.get(game.cardMessageId).payload;
+    assert.match(card.content, /🏆 <@h> wins No More Jockeys!/);
+    assert.match(card.content, /Thread closed/);
+    assert.deepEqual(card.components, []);
     assert.deepEqual(repository.getAll(), []);
   });
 

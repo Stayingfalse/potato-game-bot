@@ -96,7 +96,7 @@ describe('a full session through the real command and handlers', () => {
     await wavelength.command.execute(start, client);
     game = manager.getGame(thread.id);
     assert.ok(game.messageId);
-    assert.match(start.replies()[0], /game created/);
+    assert.match(start.replies()[0], /Lobby open/);
   });
 
   it('lobby: needs two players; join and leave; only the host starts', async () => {

@@ -72,7 +72,7 @@ describe('a game through the real command and buttons', () => {
     await highRoll.command.execute(start, client);
     game = manager.getGame(thread.id);
     assert.ok(game.messageId);
-    assert.match(start.replies()[0], /game created/);
+    assert.match(start.replies()[0], /Lobby open/);
     assert.ok(text().includes('hr_join'));
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });
