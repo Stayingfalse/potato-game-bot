@@ -21,6 +21,7 @@ const { buildLobbyRow, formatPlayerList } = require('../_core/lobby');
 const { CATEGORIES, FINISH, describeSquare } = require('./board');
 const { TURN_SECONDS_CHOICES, maxTeamsFor, teamOf, teamsReady, draftPicker } = require('./rules');
 const { generateBoardImage } = require('./imageGen');
+const { altText, listText } = require('../_core/altText');
 
 const TITLE = '🗣️ Articulate';
 const COLOR = { lobby: 0x5865F2, turn: 0xF39C12, live: 0x3498DB, control: 0xECF0F1, done: 0x2ECC71, closed: 0x95A5A6 };
@@ -275,7 +276,7 @@ async function renderWinner(game, { includeControls = true } = {}) {
       button('ar_leaderboard', 'Leaderboard', '🏆', ButtonStyle.Secondary),
       button('ar_close', 'Close Session', '🔒', ButtonStyle.Danger),
     ) : null)];
-  await addBoard(parts, files, game, `${winner.name} win!`);
+  await addBoard(parts, files, game, `${winner.name} win!`, null, { caption: false });
   return message(parts, files);
 }
 
@@ -336,7 +337,7 @@ function renderDescriberPanel(game) {
 /** Board images are cached per state, so editing a turn message doesn't redraw an unchanged board. */
 const boardCache = new WeakMap();
 
-async function addBoard(parts, files, game, heading, spinAngle = null) {
+async function addBoard(parts, files, game, heading, spinAngle = null, { caption = true } = {}) {
   const key = JSON.stringify([heading, spinAngle, game.currentTeam, game.teams.map(t => t.position)]);
   let buffer = boardCache.get(game)?.key === key ? boardCache.get(game).buffer : null;
   if (!buffer) {
@@ -348,10 +349,25 @@ async function addBoard(parts, files, game, heading, spinAngle = null) {
       return;
     }
   }
-  files.push(new AttachmentBuilder(buffer, { name: 'articulate_board.png' }));
-  parts.push(new ContainerBuilder().setAccentColor(COLOR.turn).addMediaGalleryComponents(
-    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://articulate_board.png')),
-  ));
+  const description = boardAlt(game, heading, spinAngle);
+  files.push(new AttachmentBuilder(buffer, { name: 'articulate_board.png', description }));
+  const box = new ContainerBuilder().setAccentColor(COLOR.turn).addMediaGalleryComponents(
+    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://articulate_board.png').setDescription(description)),
+  );
+  // Every team's square in text too: the board is small on a phone and silent to a screen reader.
+  if (caption) box.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 📍 ${game.teams.map(t => `${t.emoji} ${t.name} ${t.position}/${FINISH}`).join(' · ')}`));
+  parts.push(box);
+}
+
+/** Alt text for the board: the heading, where every team stands and, after a spin, what it landed on. */
+function boardAlt(game, heading, spinAngle) {
+  const squareName = position => describeSquare(position).replace(/^[^\p{L}]+/u, '').replace(/ \(Start\)$/, ', start');
+  const teams = game.teams.map(t => `Team ${t.name} on square ${t.position} of ${FINISH} (${squareName(t.position)})`);
+  const spin = spinAngle !== null && game.spinResult
+    ? ` The spinner landed on ${game.spinResult.steps > 0 ? `${game.spinResult.key === 'narrow' ? 'narrow' : 'wide'} green, ${game.spinResult.steps} squares` : 'no bonus'}.`
+    : '';
+  const current = game.teams[game.currentTeam];
+  return altText(`Articulate board (${heading}). ${listText(teams)}.${current && game.phase !== 'ended' ? ` Team ${current.name} is highlighted.` : ''}${spin}`);
 }
 
 /**

@@ -8,7 +8,9 @@ const assert = require('node:assert/strict');
 const {
   user, createThread, createChannel, createClient, componentInteraction, slashCommand, quietly, allCustomIds,
 } = require('./helpers/discord');
+const { trackImages, missingAltText } = require('./helpers/images');
 
+const images = trackImages(); // before src/ is loaded
 const articulate = src('games/articulate/index.js');
 const repository = src('games/articulate/repository');
 const ArticulateGameState = src('games/articulate/state');
@@ -212,6 +214,8 @@ describe('a game through the real command and buttons', () => {
     const turn = text(turnMessage());
     assert.ok(turn.includes('ar_panel'));
     assert.ok(turn.includes('attachment://articulate_board.png'));
+    assert.match(turn, /📍 .*Red 0\/\d+ · .*Blue 0\/\d+/, 'every team\'s square is in text beside the board');
+    assert.match(turnMessage().payload.files[0].description, /^Articulate board \(Turn 1 · Blue to play\)\. Team Red on square 0 of \d+ \(\w+, start\) and Team Blue on square 0/);
     assert.match(turn, /Not in voice:/);
     assert.match(pings().at(-1), /you're describing for Team Blue/);
   });
@@ -451,5 +455,12 @@ describe('/articulate end', () => {
 
     await articulate.command.execute(slashCommand({ sub: 'end', user: user('h'), channel, channelId: thread.id }), client);
     assert.equal(manager.getGame(thread.id), null);
+  });
+});
+
+describe('alt text', () => {
+  it('every generated image in the game runs above has a description', () => {
+    assert.ok(images.attachments.length > 0 && images.mediaItems.length > 0, 'images were generated');
+    assert.deepEqual(missingAltText(images), []);
   });
 });
