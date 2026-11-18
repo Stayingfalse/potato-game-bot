@@ -81,7 +81,7 @@ async function buildClueEntryPanel(game) {
       `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
       '🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!',
     components: buildClueSubmitComponents(),
-    ...(cgImageBuffer ? { files: [new AttachmentBuilder(cgImageBuffer, { name: 'target.png' })] } : {}),
+    ...(cgImageBuffer ? { files: [new AttachmentBuilder(cgImageBuffer, { name: 'target.png', description: `Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, target at ${game.targetPosition}` })] } : {}),
   };
 }
 
@@ -589,7 +589,7 @@ async function handleInteraction(interaction, client) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
 
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
+    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png', description: `Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, clue "${game.clue}", your marker at ${guess.position}` })] : [];
     const components = buildNudgeComponents(user.id, guess.submitted, guess.position);
 
     return interaction.reply({
@@ -639,7 +639,7 @@ async function handleInteraction(interaction, client) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
 
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
+    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png', description: `Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, clue "${game.clue}", your marker at ${guess.position}` })] : [];
     const components = buildNudgeComponents(user.id, false, guess.position);
 
     return interaction.update({
@@ -684,7 +684,7 @@ async function handleInteraction(interaction, client) {
       console.error('[Wavelength] generateGuesserImage failed:', err);
     }
 
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
+    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png', description: `Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, clue "${game.clue}", your marker at ${guess.position}` })] : [];
 
     await interaction.update({
       content: `✅ Locked in at position **${guess.position}**! Waiting for the others…`,

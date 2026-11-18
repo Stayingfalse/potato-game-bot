@@ -32,6 +32,7 @@ const {
 } = require('./phases/sessionEnd');
 const { renderRevealBreakdownText } = require('./phases/reveal');
 const { generateRevealImage } = require('./imageGen');
+const { altText, listText } = require('../_core/altText');
 
 function createContainer(text, accentColor) {
   return new ContainerBuilder()
@@ -90,6 +91,17 @@ function buildGuessingMessage(game) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
+/** Alt text for the reveal: the dial's ends, the clue, the target, the group average and every guess. */
+function revealAlt(round, playerGuesses) {
+  const average = round.scores?.avgPosition;
+  const guesses = playerGuesses.map(g => `${g.username} at ${g.position}`);
+  return altText([
+    `Wavelength dial from ${round.spectrum.left} to ${round.spectrum.right}${round.clue ? `, clue "${round.clue}"` : ''}.`,
+    `Target at ${round.target}${average !== null && average !== undefined ? `, group average ${average}` : ''}.`,
+    guesses.length > 0 ? `Guesses: ${listText(guesses)}.` : 'No guesses.',
+  ].join(' '));
+}
+
 async function buildEndedMessage(game, options = {}) {
   const latestRound = game.sessionHistory?.[game.sessionHistory.length - 1] ?? null;
   const goal = evaluateSessionGoal(game);
@@ -124,7 +136,8 @@ async function buildEndedMessage(game, options = {}) {
         playerGuesses,
         latestRound.clue,
       );
-      files.push(new AttachmentBuilder(imageBuffer, { name: 'wavelength_reveal.png' }));
+      const description = revealAlt(latestRound, playerGuesses);
+      files.push(new AttachmentBuilder(imageBuffer, { name: 'wavelength_reveal.png', description }));
       components.push(
         new ContainerBuilder()
           .setAccentColor(0x2ECC71)
@@ -132,7 +145,7 @@ async function buildEndedMessage(game, options = {}) {
             new MediaGalleryBuilder().addItems(
               new MediaGalleryItemBuilder()
                 .setURL('attachment://wavelength_reveal.png')
-                .setDescription('Wavelength reveal image'),
+                .setDescription(description),
             ),
           ),
       );

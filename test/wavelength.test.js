@@ -11,6 +11,9 @@ const Database = require('better-sqlite3');
 const {
   user, createThread, createChannel, createClient, componentInteraction, slashCommand, quietly,
 } = require('./helpers/discord');
+const { trackImages, missingAltText } = require('./helpers/images');
+
+const images = trackImages(); // before src/ is loaded
 
 // Stay offline: avatar downloads for the dial images fail straight away.
 https.get = () => {
@@ -138,6 +141,10 @@ describe('a full session through the real command and handlers', () => {
     assert.equal(game.guessTimeout, null);
     const stats = db.prepare("SELECT user_id FROM wavelength_player_stats WHERE guild_id = 'guild-1' ORDER BY user_id").all();
     assert.deepEqual(stats.map(s => s.user_id), ['b', 'h']);
+    const reveal = images.attachments.filter(a => a.name === 'wavelength_reveal.png').at(-1);
+    const { left, right } = game.chosenSpectrum;
+    assert.equal(reveal?.description,
+      `Wavelength dial from ${left} to ${right}, clue "Volcano". Target at ${game.sessionHistory.at(-1).target}, group average 75. Guesses: Bee at 75.`);
   });
 
   it('between rounds the session is still open, so the host can\'t start another', async () => {
@@ -200,5 +207,13 @@ describe('restore', () => {
   it('drops a saved game whose thread is gone', async () => {
     await quietly(() => wavelength.restore(createClient([], { wavelengthManager: newManager() })));
     assert.deepEqual(repository.getAll(), []);
+  });
+});
+
+describe('alt text', () => {
+  it('every generated image in the session above has a description', () => {
+    const names = new Set(images.attachments.map(a => a.name));
+    for (const name of ['target.png', 'guess.png', 'wavelength_reveal.png']) assert.ok(names.has(name), `${name} was generated`);
+    assert.deepEqual(missingAltText(images), []);
   });
 });
