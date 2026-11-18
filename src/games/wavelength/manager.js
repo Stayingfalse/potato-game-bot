@@ -35,6 +35,7 @@ class WavelengthManager extends BaseGameManager {
     game.targetPosition = null;
     game.clue = null;
     game.guesses = new Map();
+    game.guessEndsAt = null;
     WavelengthRepository.upsert(game);
     return game;
   }
@@ -54,6 +55,7 @@ class WavelengthManager extends BaseGameManager {
     game.targetPosition = null;
     game.clue = null;
     game.guesses = new Map();
+    game.guessEndsAt = null;
     game.sessionHistory = [];
     game.sessionMode = null;
     game.gamePace = 'realtime';
@@ -152,9 +154,11 @@ class WavelengthManager extends BaseGameManager {
     game.spectrumOptions = sampleN(spectraPool, 2);
 
     game.guesses = new Map();
+    game.guessEndsAt = null;
     for (const id of playerIds) {
       if (id !== game.clueGiverId) {
-        game.guesses.set(id, { position: 50, submitted: false });
+        // touched: the player moved their marker at least once (see countsAsGuess).
+        game.guesses.set(id, { position: 50, submitted: false, touched: false });
       }
     }
 
@@ -206,4 +210,25 @@ class WavelengthManager extends BaseGameManager {
   }
 }
 
-module.exports = { WavelengthManager, WavelengthGameState, MIN_PLAYERS };
+/**
+ * Whether a guess takes part in scoring: the player submitted it or moved their
+ * marker at least once. Guesses left untouched when the timer ran out are
+ * marked `missed` and leave the round out (score, average, spread, image, stats).
+ */
+function countsAsGuess(guess) {
+  return !!guess && !guess.missed && (guess.submitted || guess.touched);
+}
+
+/**
+ * The guess timer ran out: locks every guess still open. A guess the player
+ * moved is kept at its position; one never touched is marked missed.
+ */
+function lockRemainingGuesses(game) {
+  for (const guess of game.guesses.values()) {
+    if (guess.submitted) continue;
+    guess.submitted = true;
+    if (!guess.touched) guess.missed = true;
+  }
+}
+
+module.exports = { WavelengthManager, WavelengthGameState, MIN_PLAYERS, countsAsGuess, lockRemainingGuesses };

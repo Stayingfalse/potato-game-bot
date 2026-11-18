@@ -26,6 +26,7 @@ const SCHEMA = `
     game_pace            TEXT NOT NULL DEFAULT 'realtime',
     auto_advance_rounds  INTEGER NOT NULL DEFAULT 0,
     session_history      TEXT NOT NULL DEFAULT '[]',
+    guess_ends_at        INTEGER,
     created_at           INTEGER NOT NULL
   );
 `;
@@ -38,6 +39,7 @@ const ADDED_COLUMNS = {
   auto_advance_rounds: "auto_advance_rounds INTEGER NOT NULL DEFAULT 0",
   session_history: "session_history TEXT NOT NULL DEFAULT '[]'",
   round_message_id: "round_message_id TEXT",
+  guess_ends_at: "guess_ends_at INTEGER",
 };
 
 /** Adds any columns that a table created by an older version is missing. */

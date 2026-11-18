@@ -2,6 +2,7 @@
 
 const WavelengthRepository = require('../repository');
 const WavelengthStatsRepository = require('../stats');
+const { countsAsGuess } = require('../manager');
 
 const TIER_BULLSEYE = 0;
 const TIER_CLOSE = 5;
@@ -31,18 +32,30 @@ function stdDev(guesses) {
   return Math.sqrt(variance);
 }
 
+/** The guesses that take part in scoring: players who didn't guess before the timer ran out are left out. */
+function countedGuesses(guesses) {
+  return new Map([...guesses].filter(([, guess]) => countsAsGuess(guess)));
+}
+
+/** IDs of the guessers who didn't guess before the timer ran out. */
+function missedGuesserIds(guesses) {
+  return [...guesses].filter(([, guess]) => !countsAsGuess(guess)).map(([userId]) => userId);
+}
+
 function computeScores(game) {
   const target = game.targetPosition;
-  const avg = groupAverage(game.guesses);
+  const guesses = countedGuesses(game.guesses);
+  const avg = groupAverage(guesses);
   const avgTier = avg !== null ? classifyTier(avg, target) : { points: 0 };
   const avgScr = avgTier.points;
-  const dev = stdDev(game.guesses);
-  const synergy = dev <= 10 ? 5 : dev <= 15 ? 3 : 0;
+  const dev = stdDev(guesses);
+  // Nobody guessed: there's no spread to reward.
+  const synergy = guesses.size === 0 ? 0 : dev <= 10 ? 5 : dev <= 15 ? 3 : 0;
 
   const guesserScores = new Map();
   let clueGiverFromGuessers = 0;
 
-  for (const [userId, { position }] of game.guesses) {
+  for (const [userId, { position }] of guesses) {
     const tier = classifyTier(position, target);
     const individual = tier.points;
     const bonus = avgScr;
@@ -88,6 +101,8 @@ function renderRevealBreakdownText(game, round) {
     const pos = round.guesses?.[userId]?.position ?? '?';
     return `<@${userId}> — pos \`${pos}\` ${score.tier} **${score.individual}** + group bonus **+${score.bonus}** = **${score.total} pts**`;
   });
+  const missedLines = (round.missedIds ?? []).map(userId => `😴 <@${userId}> didn't guess`);
+  const nobodyGuessed = guesserLines.length === 0 && missedLines.length > 0;
 
   return [
     `## 〰️ Wavelength — Scores (Round ${round.roundNumber ?? game.gameNumber})`,
@@ -100,7 +115,8 @@ function renderRevealBreakdownText(game, round) {
     `**Deviation (σ):** ${scoreData.deviation ?? 0}`,
     '',
     '**📊 Guesser Scores**',
-    guesserLines.join('\n') || '*No guesser scores recorded.*',
+    (nobodyGuessed ? '*Nobody guessed this round.*' : guesserLines.join('\n')) || '*No guesser scores recorded.*',
+    missedLines.length ? missedLines.join('\n') : null,
     '',
     '**🎤 Clue Giver Score**',
     `<@${round.clueGiverId}> (${clueGiver?.username ?? '?'})`,
@@ -119,6 +135,7 @@ async function startRevealPhase(game, client) {
     clearTimeout(game.guessTimeout);
     game.guessTimeout = null;
   }
+  game.guessEndsAt = null;
 
   const scores = computeScores(game);
   game.sessionHistory.push({
@@ -127,7 +144,9 @@ async function startRevealPhase(game, client) {
     clue: game.clue,
     spectrum: game.chosenSpectrum,
     clueGiverId: game.clueGiverId,
-    guesses: Object.fromEntries(game.guesses),
+    // Only counted guesses: the reveal image draws these and nothing else.
+    guesses: Object.fromEntries(countedGuesses(game.guesses)),
+    missedIds: missedGuesserIds(game.guesses),
     scores: serializeScores(scores),
   });
 
