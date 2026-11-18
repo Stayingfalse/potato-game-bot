@@ -1,7 +1,7 @@
 'use strict';
 
 const { src } = require('./helpers/env');
-const { describe, it, after } = require('node:test');
+const { describe, it, before, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   user, createThread, createChannel, createClient, componentInteraction, slashCommand,
@@ -35,7 +35,7 @@ const statsCount = () => db.prepare('SELECT COALESCE(SUM(games_played), 0) AS n 
 describe('upgrading the werewords_games table', () => {
   it('adds the new columns and loads the saved game with defaults', () => {
     const columns = db.prepare('PRAGMA table_info(werewords_games)').all().map(c => c.name);
-    for (const column of ['ready_players', 'session_history', 'response_stats_shown', 'phase_ends_at', 'werewolf_revealed']) {
+    for (const column of ['ready_players', 'session_history', 'response_stats_shown', 'phase_ends_at', 'werewolf_revealed', 'timer_ends_at']) {
       assert.ok(columns.includes(column), column);
     }
     const game = WerewordsGameState.fromRow(repository.getAll()[0]);
@@ -169,6 +169,8 @@ describe('a session through the real command and handlers', () => {
     const board = game.boardMessageId;
     await press(HOST, 'ww_guess_correct_c', { on: guessMessage });
     assert.equal(game.phase, 'reveal');
+    assert.equal(game.timerTimeout, null, 'the guessed word stops the countdown');
+    assert.equal(game.timerWarningTimeout, null);
     assert.equal(game.winnerGuesserUserId, 'c');
     assert.notEqual(game.boardMessageId, board);
     assert.match(message(board).content, /^⬇️ Continued below:/);
@@ -311,5 +313,143 @@ describe('restoring a game mid-play', () => {
     assert.equal(restored.word, 'Kiwi');
     assert.equal(thread.sent.length, sentBefore);
     assert.deepEqual(embedTitles(thread.store.get(restored.boardMessageId)), ['🔮  Werewords — Game Board']);
+  });
+});
+
+describe('the round timer', () => {
+  const { startGameTimer } = src('games/werewords/phases/timer');
+  const { endGame } = src('games/werewords/phases/endGame');
+  const START = 1_700_000_000_000;
+  const flush = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  /** Moves the mocked clock forward a second at a time, letting each fired timer's work finish. */
+  const advance = async ms => {
+    for (let left = ms; left > 0; left -= 1000) {
+      mock.timers.tick(Math.min(1000, left));
+      await flush();
+    }
+  };
+  const warnings = thread => thread.sent.filter(p => /seconds remaining/.test(p.content ?? ''));
+
+  before(() => mock.timers.enable({ apis: ['setTimeout', 'Date'], now: START }));
+  after(() => mock.timers.reset());
+
+  /** A game in play with everyone ready and its board posted, as the ready handler leaves it. */
+  async function playingGame(id, sessionMode, extra = {}) {
+    const thread = createThread(id);
+    const manager = newManager();
+    const client = createClient([thread], { werewordsManager: manager });
+    const game = manager.createGame('G', 'C', thread.id, 'h', 'Host');
+    for (const u of [user('h'), user('a'), user('b')]) manager.addPlayer(thread.id, u);
+    manager.assignRoles(thread.id);
+    Object.assign(game, {
+      phase: 'playing', word: 'Kiwi', sessionMode, readyPlayers: new Set(['h', 'a', 'b']),
+      boardMessageId: (await thread.send({})).id, ...extra,
+    });
+    repository.upsert(game);
+    return { thread, manager, client, game };
+  }
+
+  /** Counts edits made to a message from now on. */
+  const countEdits = message => {
+    const counter = { n: 0 };
+    const edit = message.edit;
+    message.edit = async update => { counter.n++; return edit(update); };
+    return counter;
+  };
+
+  it('shows the deadline as a live Discord timestamp and saves it', async () => {
+    const { thread, manager, client, game } = await playingGame('timer-board', 'text');
+    await startGameTimer(game, thread, client);
+    assert.equal(game.timerEndsAt, START + 240_000);
+    assert.equal(game.timeLeft, 240);
+    const fields = thread.store.get(game.boardMessageId).payload.embeds[0].data.fields;
+    const time = fields.find(f => f.name === '⏱ Time Remaining').value;
+    const seconds = (START + 240_000) / 1000;
+    assert.ok(time.includes(`<t:${seconds}:R>`) && time.includes(`<t:${seconds}:T>`), time);
+    const saved = WerewordsGameState.fromRow(repository.getAll().find(r => r.thread_id === thread.id));
+    assert.equal(saved.timerEndsAt, START + 240_000);
+    await advance(100_000);
+    assert.equal(game.timeLeft, 140, 'timeLeft is derived from the deadline');
+    manager.deleteGame(thread.id);
+  });
+
+  it('text mode: plain 60 s and 10 s warnings, no board edits, and the round ends at the deadline', async () => {
+    mock.timers.setTime(START);
+    const { thread, manager, client, game } = await playingGame('timer-text', 'text');
+    await startGameTimer(game, thread, client);
+    const edits = countEdits(thread.store.get(game.boardMessageId));
+
+    await advance(239_999);
+    assert.equal(game.phase, 'playing');
+    assert.deepEqual(warnings(thread).map(p => p.content), ['⏱️ 60 seconds remaining!', '⏱️ 10 seconds remaining!']);
+    assert.ok(thread.sent.every(p => !p.tts), 'text mode never uses TTS');
+    assert.equal(edits.n, 0, 'the board is not edited to tick the clock');
+
+    await quietly(() => advance(1));
+    assert.equal(game.phase, 'voting');
+    assert.equal(game.timerTimeout, null);
+    manager.deleteGame(thread.id);
+  });
+
+  it('voice mode: TTS warnings at 60, 30 and 10 seconds', async () => {
+    mock.timers.setTime(START);
+    const { thread, manager, client, game } = await playingGame('timer-voice', 'voice');
+    await startGameTimer(game, thread, client);
+    await quietly(() => advance(240_000));
+    assert.deepEqual(warnings(thread).map(p => [p.content, p.tts]), [
+      ['⏱️ 60 seconds remaining!', true],
+      ['⏱️ 30 seconds remaining!', true],
+      ['⏱️ 10 seconds remaining!', true],
+    ]);
+    assert.equal(game.phase, 'voting');
+    manager.deleteGame(thread.id);
+  });
+
+  it('restore re-arms only the remaining time and skips warnings already passed', async () => {
+    mock.timers.setTime(START);
+    const { thread } = await playingGame('timer-restore', 'voice', { timerEndsAt: START + 45_000 });
+    // A fresh manager loads the saved game, as after a crash.
+    const manager = newManager();
+    const client = createClient([thread], { werewordsManager: manager });
+    const sentBefore = thread.sent.length;
+    await quietly(() => werewords.restore(client));
+    const restored = manager.getGame(thread.id);
+    assert.equal(restored.timerEndsAt, START + 45_000);
+    assert.equal(restored.timeLeft, 45);
+    assert.ok(restored.timerTimeout && restored.timerWarningTimeout);
+    assert.equal(thread.sent.length, sentBefore, 'restore posts nothing');
+
+    await advance(44_999);
+    assert.equal(restored.phase, 'playing');
+    assert.deepEqual(warnings(thread).map(p => p.content), ['⏱️ 30 seconds remaining!', '⏱️ 10 seconds remaining!']);
+    await quietly(() => advance(1));
+    assert.equal(restored.phase, 'voting');
+    manager.deleteGame(thread.id);
+  });
+
+  it('ending the game early, or /werewords end, clears the countdown and its warnings', async () => {
+    mock.timers.setTime(START);
+    const ended = await playingGame('timer-end', 'voice');
+    await startGameTimer(ended.game, ended.thread, ended.client);
+    assert.ok(ended.game.timerTimeout && ended.game.timerWarningTimeout);
+    // The end sequence paces itself with timers, so the mocked clock moves it along.
+    const ending = quietly(() => endGame(ended.game, ended.client, 'host_cancelled'));
+    await advance(10_000);
+    await ending;
+    assert.equal(ended.game.timerTimeout, null);
+    assert.equal(ended.game.timerWarningTimeout, null);
+
+    const closed = await playingGame('timer-close', 'voice');
+    await startGameTimer(closed.game, closed.thread, closed.client);
+    closed.manager.deleteGame(closed.thread.id);
+    assert.equal(closed.game.timerTimeout, null);
+    assert.equal(closed.game.timerWarningTimeout, null);
+
+    await advance(300_000);
+    assert.equal(warnings(ended.thread).length, 0);
+    assert.equal(warnings(closed.thread).length, 0);
+    assert.equal(ended.game.phase, 'ended');
+    assert.equal(closed.game.phase, 'playing', 'the deleted game never moved to the vote');
+    ended.manager.deleteGame(ended.thread.id);
   });
 });

@@ -83,20 +83,18 @@ function startGameTimer(game, thread, client) {
     }
   }, Math.max(0, endsAt - Date.now()));
 
+  // Warnings still ahead, soonest first (on restore, those already passed are dropped).
   const marks = WARNINGS[game.sessionMode === 'voice' ? 'voice' : 'text'];
+  const pending = marks.filter(seconds => endsAt - seconds * 1000 > Date.now());
   const armNextWarning = () => {
-    const now = Date.now();
-    const next = marks.find(seconds => endsAt - seconds * 1000 > now);
-    if (next === undefined) {
-      game.timerWarningTimeout = null;
-      return;
-    }
+    const next = pending.shift();
+    if (next === undefined) return;
     game.timerWarningTimeout = setTimeout(async () => {
       game.timerWarningTimeout = null;
       if (game.phase !== 'playing' || game.timerEndsAt !== endsAt) return;
       armNextWarning();
       await sendTimeWarning(thread, next, game.sessionMode);
-    }, endsAt - next * 1000 - now);
+    }, Math.max(0, endsAt - next * 1000 - Date.now()));
   };
   armNextWarning();
   return boardRefresh;
