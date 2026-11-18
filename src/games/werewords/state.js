@@ -41,7 +41,12 @@ class WerewordsGameState extends BaseGameState {
     this.readyPlayers = new Set();
 
     // Populated during the playing phase
-    this.timerInterval = null;
+    /** setTimeout handle for the round's deadline (see phases/timer.js). */
+    this.timerTimeout = null;
+    /** setTimeout handle for the next time warning. */
+    this.timerWarningTimeout = null;
+    /** When the round's countdown ends (ms since epoch); null until it starts. */
+    this.timerEndsAt = null;
     this.timeLeft = 240; // seconds (4 minutes)
 
     // Populated during reveal / voting phases
@@ -70,6 +75,20 @@ class WerewordsGameState extends BaseGameState {
     /** Set to true once the response-card stats embed has been posted (e.g. before voting). */
     this.responseStatsShown = false;
   }
+
+  /**
+   * Seconds left in the round. Once the countdown has started this is derived
+   * from `timerEndsAt`; before that it is the round's length.
+   */
+  get timeLeft() {
+    if (this.timerEndsAt) return Math.max(0, Math.ceil((this.timerEndsAt - Date.now()) / 1000));
+    return this._timeLeft;
+  }
+
+  set timeLeft(seconds) {
+    this._timeLeft = seconds;
+  }
+
   /** Rehydrates a game state instance from a saved `werewords_games` row. */
   static fromRow(row) {
     const game = new WerewordsGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
@@ -82,6 +101,7 @@ class WerewordsGameState extends BaseGameState {
     game.tokens = JSON.parse(row.tokens);
     game.readyPlayers = new Set(JSON.parse(row.ready_players || '[]'));
     game.timeLeft = row.time_left;
+    game.timerEndsAt = row.timer_ends_at ?? null;
     game.votes = new Map(Object.entries(JSON.parse(row.votes || '{}')));
     game.phaseEndsAt = row.phase_ends_at ?? null;
     game.werewolfRevealed = !!row.werewolf_revealed;
@@ -112,6 +132,7 @@ class WerewordsGameState extends BaseGameState {
       tokens:                   JSON.stringify(game.tokens),
       ready_players:            JSON.stringify([...(game.readyPlayers ?? [])]),
       time_left:                game.timeLeft,
+      timer_ends_at:            game.timerEndsAt ?? null,
       votes:                    JSON.stringify(Object.fromEntries(game.votes ?? new Map())),
       phase_ends_at:            game.phaseEndsAt ?? null,
       werewolf_revealed:        game.werewolfRevealed ? 1 : 0,

@@ -34,8 +34,10 @@ async function restore(client) {
     if (game.phase === 'playing' || game.phase === 'starting') {
       game.phase = 'playing';
       await updateGameMessage(game, client);
-      // The countdown only runs once everyone has confirmed their role.
-      if (game.readyPlayers.size >= game.players.size) startGameTimer(game, thread, client);
+      // The countdown only runs once everyone has confirmed their role. It is
+      // re-armed from the saved deadline, so only the remaining time is left and
+      // warnings already passed are skipped.
+      if (game.readyPlayers.size >= game.players.size) await startGameTimer(game, thread, client);
     } else if (game.phase === 'reveal') {
       await updateGameMessage(game, client);
       scheduleRevealTimeout(game, client);
