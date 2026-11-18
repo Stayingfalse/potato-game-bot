@@ -34,6 +34,60 @@ const { MIN_PLAYERS } = require('./manager');
 
 const spectra = require('./spectra.json');
 
+// ── Guess panel ───────────────────────────────────────────────────────────────
+
+const GUESS_PROMPT = 'use the buttons to nudge your marker or **Type a number**, then **SUBMIT**.';
+
+/**
+ * Why `userId` can't use the guess panel that belongs to `ownerId` right now,
+ * or null if they can. `alreadySubmitted` is the message for a locked-in guess.
+ */
+function guessPanelError(game, userId, ownerId, alreadySubmitted = '✅ You have already submitted your guess.') {
+  if (userId !== ownerId) return 'This is not your guess panel.';
+  if (!game || game.phase !== 'guessing') return 'Guessing is not active.';
+  const guess = game.guesses.get(userId);
+  if (!guess) return 'You are not registered as a guesser.';
+  if (guess.submitted) return alreadySubmitted;
+  return null;
+}
+
+/** The private guess panel for one guesser: their dial image, a status line and the nudge buttons. */
+async function buildGuessPanel(game, userId, content) {
+  const guess = game.guesses.get(userId);
+  const player = game.players.get(userId);
+
+  let imageBuffer = null;
+  try {
+    imageBuffer = await generateGuesserImage(
+      player?.avatarURL,
+      player?.username,
+      game.chosenSpectrum,
+      guess.position,
+      game.clue,
+    );
+  } catch (err) {
+    console.error('[Wavelength] generateGuesserImage failed:', err);
+  }
+
+  return {
+    content: content ?? (guess.submitted
+      ? `✅ You locked in at position **${guess.position}**. Waiting for others…`
+      : `📍 Your current position: **${guess.position}** — ${GUESS_PROMPT}`),
+    components: buildNudgeComponents(userId, guess.submitted, guess.position),
+    files: imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [],
+    // Replace the previous dial image rather than adding another one.
+    attachments: [],
+  };
+}
+
+/** A typed guess: a whole number from 0 to 100, or null. */
+function parseGuessPosition(raw) {
+  const text = String(raw ?? '').trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const value = Number(text);
+  return value <= 100 ? value : null;
+}
+
 async function updateGameMessage(game, client, options = {}, preFetchedThread) {
   const thread = preFetchedThread ?? await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return false;
@@ -239,6 +293,26 @@ async function handleInteraction(interaction, client) {
     await scheduleGuessTimeout(game, client);
     await sendTurnPing(game, client);
     return;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('wl_guess_modal_')) {
+    const game = wavelengthManager.getGame(interaction.channelId);
+    const ownerId = interaction.customId.slice('wl_guess_modal_'.length);
+    const error = guessPanelError(game, interaction.user.id, ownerId);
+    if (error) return interaction.reply({ content: error, flags: MessageFlags.Ephemeral });
+
+    const position = parseGuessPosition(interaction.fields.getTextInputValue('wl_guess_input'));
+    if (position == null) {
+      return interaction.reply({
+        content: '❌ Enter a whole number from **0** to **100** (0 is the far left, 100 the far right).',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    game.guesses.get(ownerId).position = position;
+    WavelengthRepository.upsert(game);
+    await interaction.deferUpdate();
+    return interaction.editReply(await buildGuessPanel(game, ownerId));
   }
 
   if (!interaction.isButton()) return;
@@ -573,33 +647,9 @@ async function handleInteraction(interaction, client) {
       return interaction.reply({ content: 'You are not registered as a guesser in this game.', flags: MessageFlags.Ephemeral });
     }
 
-    const guess = game.guesses.get(user.id);
-    const player = game.players.get(user.id);
-
-    let imageBuffer = null;
-    try {
-      imageBuffer = await generateGuesserImage(
-        player.avatarURL,
-        player.username,
-        game.chosenSpectrum,
-        guess.position,
-        game.clue,
-      );
-    } catch (err) {
-      console.error('[Wavelength] generateGuesserImage failed:', err);
-    }
-
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
-    const components = buildNudgeComponents(user.id, guess.submitted, guess.position);
-
-    return interaction.reply({
-      content: guess.submitted
-        ? `✅ You locked in at position **${guess.position}**. Waiting for others…`
-        : `📍 Your current position: **${guess.position}** — use the buttons to nudge your marker, then **SUBMIT**.`,
-      components,
-      files,
-      flags: MessageFlags.Ephemeral,
-    });
+    // Drawing the dial can take a moment (avatar download), so acknowledge first.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    return interaction.editReply(await buildGuessPanel(game, user.id));
   }
 
   if (customId.startsWith('wl_nudge_')) {
@@ -607,90 +657,55 @@ async function handleInteraction(interaction, client) {
     const targetUserId = parts[2];
     const delta = parseInt(parts[3], 10);
 
-    if (user.id !== targetUserId) {
-      return interaction.reply({ content: 'This is not your guess panel.', flags: MessageFlags.Ephemeral });
-    }
-    if (!game || game.phase !== 'guessing') {
-      return interaction.reply({ content: 'Guessing is not active.', flags: MessageFlags.Ephemeral });
-    }
+    const error = guessPanelError(game, user.id, targetUserId);
+    if (error) return interaction.reply({ content: error, flags: MessageFlags.Ephemeral });
 
     const guess = game.guesses.get(user.id);
-    if (!guess) {
-      return interaction.reply({ content: 'You are not registered as a guesser.', flags: MessageFlags.Ephemeral });
-    }
-    if (guess.submitted) {
-      return interaction.reply({ content: '✅ You have already submitted your guess.', flags: MessageFlags.Ephemeral });
-    }
-
     guess.position = Math.max(0, Math.min(100, guess.position + delta));
     WavelengthRepository.upsert(game);
+    // Acknowledge before drawing the dial: a slow avatar download must not hit Discord's 3-second limit.
+    await interaction.deferUpdate();
 
-    const player = game.players.get(user.id);
-    let imageBuffer = null;
-    try {
-      imageBuffer = await generateGuesserImage(
-        player.avatarURL,
-        player.username,
-        game.chosenSpectrum,
-        guess.position,
-        game.clue,
-      );
-    } catch (err) {
-      console.error('[Wavelength] generateGuesserImage failed:', err);
-    }
+    return interaction.editReply(await buildGuessPanel(game, user.id));
+  }
 
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
-    const components = buildNudgeComponents(user.id, false, guess.position);
+  if (customId.startsWith('wl_guess_type_')) {
+    const targetUserId = customId.slice('wl_guess_type_'.length);
+    const error = guessPanelError(game, user.id, targetUserId);
+    if (error) return interaction.reply({ content: error, flags: MessageFlags.Ephemeral });
 
-    return interaction.update({
-      content: `📍 Your current position: **${guess.position}** — use the buttons to nudge your marker, then **SUBMIT**.`,
-      components,
-      files,
-    });
+    const input = new TextInputBuilder()
+      .setCustomId('wl_guess_input')
+      .setLabel('Position: 0 (far left) to 100 (far right)')
+      .setStyle(TextInputStyle.Short)
+      .setMinLength(1)
+      .setMaxLength(3)
+      .setPlaceholder('e.g. 42')
+      .setValue(String(game.guesses.get(user.id).position))
+      .setRequired(true);
+
+    return interaction.showModal(new ModalBuilder()
+      .setCustomId(`wl_guess_modal_${user.id}`)
+      .setTitle('Type Your Guess')
+      .addComponents(new ActionRowBuilder().addComponents(input)));
   }
 
   if (customId.startsWith('wl_submit_')) {
     const targetUserId = customId.split('wl_submit_')[1];
 
-    if (user.id !== targetUserId) {
-      return interaction.reply({ content: 'This is not your guess panel.', flags: MessageFlags.Ephemeral });
-    }
-    if (!game || game.phase !== 'guessing') {
-      return interaction.reply({ content: 'Guessing is not active.', flags: MessageFlags.Ephemeral });
-    }
+    const error = guessPanelError(game, user.id, targetUserId, '✅ Already submitted.');
+    if (error) return interaction.reply({ content: error, flags: MessageFlags.Ephemeral });
 
     const guess = game.guesses.get(user.id);
-    if (!guess) {
-      return interaction.reply({ content: 'You are not registered as a guesser.', flags: MessageFlags.Ephemeral });
-    }
-    if (guess.submitted) {
-      return interaction.reply({ content: '✅ Already submitted.', flags: MessageFlags.Ephemeral });
-    }
-
     guess.submitted = true;
     WavelengthRepository.upsert(game);
+    await interaction.deferUpdate();
 
-    const player = game.players.get(user.id);
-    let imageBuffer = null;
-    try {
-      imageBuffer = await generateGuesserImage(
-        player.avatarURL,
-        player.username,
-        game.chosenSpectrum,
-        guess.position,
-        game.clue,
-      );
-    } catch (err) {
-      console.error('[Wavelength] generateGuesserImage failed:', err);
-    }
-
-    const files = imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [];
-
-    await interaction.update({
-      content: `✅ Locked in at position **${guess.position}**! Waiting for the others…`,
-      components: buildNudgeComponents(user.id, true, guess.position),
-      files,
-    });
+    await interaction.editReply(await buildGuessPanel(
+      game,
+      user.id,
+      `✅ Locked in at position **${guess.position}**! Waiting for the others…`,
+    ));
 
     await updateGameMessage(game, client);
     if (getRemainingGuessers(game).length > 0) {
