@@ -119,11 +119,14 @@ Never forget a friend's birthday again! The bot can automatically announce birth
 - `/birthday list all:True` - View all registered birthdays
 - `/birthday delete` - Remove your birthday
 
-**Admin Commands:**
-- `/birthday start` - Enable automatic birthday announcements
-- `/birthday stop` - Disable announcements
-- `/birthday setchannel <channel>` - Choose where announcements appear
-- `/birthday resend` - Re-send today's birthday messages
+**Admin Commands** (`/birthday-admin`, only shown to members with **Manage Server**):
+- `/birthday-admin start [channel]` - Enable automatic birthday announcements
+- `/birthday-admin stop` - Disable announcements
+- `/birthday-admin setchannel <channel>` - Choose where announcements appear
+- `/birthday-admin settime <hour> <timezone>` - Choose when announcements go out (hour 0-23 in your server's time zone)
+- `/birthday-admin resend` - Re-send today's birthday messages
+
+Announcements go out once a day at the server's chosen hour in its time zone (default: midnight UTC), and "today" means the date in that time zone, so a server set to `America/New_York` at 9 gets its birthdays at 9 am New York time on the day itself. The time can also be changed in the dashboard's Birthdays card; both edit the same setting. Server admins can change who sees `/birthday-admin` under Server Settings → Integrations; the bot still checks for Manage Server.
 
 ### Stats & Leaderboards 🏆
 

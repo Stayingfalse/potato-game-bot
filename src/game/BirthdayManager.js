@@ -3,10 +3,16 @@
 /**
  * BirthdayManager — handles scheduled daily birthday announcements.
  *
+ * Each server picks the hour its announcements go out, in its own time zone
+ * (/birthday-admin settime or the dashboard; default midnight UTC). "Today"
+ * — which birthdays match and the dedup date — is the server's local date.
+ *
  * Call `start(client)` once on bot ready.  The manager will:
  *   1. Fire immediately to catch any birthdays already due today.
- *   2. Schedule itself to run every day at midnight UTC (via a self-adjusting
- *      setTimeout so it always fires right at the turn of the day).
+ *   2. Schedule itself to run at the top of every hour (via a self-adjusting
+ *      setTimeout), announcing for each server whose local time has reached
+ *      its chosen hour and that hasn't announced today yet.  A server whose
+ *      hour passed while the bot was down is caught up on the next run.
  */
 
 const repo = require('../db/BirthdayRepository');
@@ -54,19 +60,54 @@ function randomMessage(mention) {
 
 /**
  * ISO date string for a given Date (UTC), e.g. "2025-04-22".
- * Used as the deduplication key.
  */
 function todayKey(date) {
   return date.toISOString().slice(0, 10);
 }
 
 /**
- * Compute milliseconds until the next UTC midnight from `now`.
+ * The wall-clock date and hour of `date` in `timeZone`.
+ * An unknown time zone falls back to UTC.
+ * @returns {{ year: number, month: number, day: number, hour: number, dateKey: string }}
+ *   month is 1-based; dateKey is "YYYY-MM-DD" (the deduplication key).
  */
-function msUntilMidnightUTC(now) {
-  const tomorrow = new Date(now);
-  tomorrow.setUTCHours(24, 0, 0, 0);
-  return tomorrow.getTime() - now.getTime();
+function localDateTime(date, timeZone = 'UTC') {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', hourCycle: 'h23',
+    }).formatToParts(date);
+  } catch {
+    return localDateTime(date, 'UTC');
+  }
+  const get = type => Number(parts.find(p => p.type === type).value);
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour') % 24;
+  const dateKey = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return { year, month, day, hour, dateKey };
+}
+
+/**
+ * The local date and hour right now for a guild, in its chosen time zone.
+ * @param {string} guildId
+ * @param {Date} [now]
+ */
+function guildToday(guildId, now = new Date()) {
+  const { hour, timezone } = repo.getAnnounceTime(guildId);
+  return { ...localDateTime(now, timezone), announceHour: hour, timezone };
+}
+
+/**
+ * Compute milliseconds until the next top of the hour (UTC) from `now`.
+ * Every IANA zone in use is offset by whole or half/quarter hours; the
+ * scheduler compares local hours, so running on each UTC hour is enough.
+ */
+function msUntilNextHour(now) {
+  const next = new Date(now);
+  next.setUTCMinutes(60, 0, 0);
+  return next.getTime() - now.getTime();
 }
 
 class BirthdayManager {
@@ -97,9 +138,9 @@ class BirthdayManager {
     }
   }
 
-  /** Schedule the next run at the following UTC midnight. */
+  /** Schedule the next run at the top of the next hour. */
   _scheduleNext() {
-    const delay = msUntilMidnightUTC(new Date());
+    const delay = msUntilNextHour(new Date());
     this._timer = setTimeout(() => {
       this._runAnnouncements().catch(err =>
         console.error('[BirthdayManager] Error during announcement run:', err),
@@ -108,21 +149,27 @@ class BirthdayManager {
     }, delay);
   }
 
-  /** Core logic: find today's birthdays and post announcements. */
-  async _runAnnouncements() {
+  /**
+   * Hourly run: post announcements for every guild whose chosen local hour
+   * has been reached today (its local date) and not yet announced.
+   * @param {Date} [now]
+   */
+  async _runAnnouncements(now = new Date()) {
     if (!this._client) return;
 
-    const now = new Date();
-
-    // Prune old dedup records (keep last 2 days to be safe)
+    // Prune old dedup records. Keys are guild-local dates, which can be a day
+    // either side of UTC, so keep the last 3 UTC days to be safe.
     const pruneBeforeDate = new Date(now);
-    pruneBeforeDate.setUTCDate(pruneBeforeDate.getUTCDate() - 2);
+    pruneBeforeDate.setUTCDate(pruneBeforeDate.getUTCDate() - 3);
     repo.pruneAnnouncements(todayKey(pruneBeforeDate));
 
     for (const [, guild] of this._client.guilds.cache) {
       // Birthdays switched off in the dashboard: no automatic announcements.
       if (!isFeatureEnabled(guild.id, BIRTHDAY_FEATURE_ID)) continue;
-      await this.runForGuild(guild).catch(err =>
+      // Not yet this guild's announcement hour (local time).
+      const local = guildToday(guild.id, now);
+      if (local.hour < local.announceHour) continue;
+      await this.runForGuild(guild, now).catch(err =>
         console.error(`[BirthdayManager] Error processing guild ${guild.id}:`, err),
       );
     }
@@ -132,10 +179,13 @@ class BirthdayManager {
    * Send any unannounced birthday messages for a single guild.
    * Respects the existing dedup records — already-announced users are skipped.
    *
+   * "Today" is the guild's local date in its chosen time zone.
+   *
    * @param {import('discord.js').Guild} guild
+   * @param {Date} [now]
    * @returns {Promise<{ sent: number, total: number, channelId: string|null }>}
    */
-  async runForGuild(guild) {
+  async runForGuild(guild, now = new Date()) {
     if (!this._client) return { sent: 0, total: 0, channelId: null };
 
     const guildId  = guild.id;
@@ -147,10 +197,7 @@ class BirthdayManager {
     const channel = this._client.channels.cache.get(settings.channel_id);
     if (!channel) return { sent: 0, total: 0, channelId: settings.channel_id };
 
-    const now     = new Date();
-    const dateKey = todayKey(now);
-    const day     = now.getUTCDate();
-    const month   = now.getUTCMonth() + 1; // 1-based
+    const { dateKey, day, month } = guildToday(guildId, now); // month is 1-based
 
     const userIds = repo.getTodaysBirthdays(guildId, day, month);
     let sent = 0;
@@ -176,3 +223,6 @@ class BirthdayManager {
 }
 
 module.exports = BirthdayManager;
+module.exports.localDateTime = localDateTime;
+module.exports.guildToday = guildToday;
+module.exports.msUntilNextHour = msUntilNextHour;
