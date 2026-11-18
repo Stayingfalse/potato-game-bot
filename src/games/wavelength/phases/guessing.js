@@ -12,14 +12,14 @@ function buildNudgeButton(userId, delta, label, submitted, position) {
 }
 
 /**
- * The 7-button nudge layout shown in each guesser's ephemeral panel.
+ * The 8-button nudge layout shown in each guesser's ephemeral panel.
  *
  * Row 1: -25 / -5 / -1
- * Row 2: SUBMIT
+ * Row 2: Type a number / SUBMIT
  * Row 3: +1 / +5 / +25
  *
  * @param {string} userId
- * @param {boolean} submitted  When true, all nudge buttons are disabled.
+ * @param {boolean} submitted  When true, every button is disabled.
  * @param {number} position    Current 0–100 position (used to disable nudges at edges).
  */
 function buildNudgeComponents(userId, submitted, position) {
@@ -30,6 +30,12 @@ function buildNudgeComponents(userId, submitted, position) {
   );
 
   const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`wl_guess_type_${userId}`)
+      .setLabel('Type a number')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('⌨️')
+      .setDisabled(submitted),
     new ButtonBuilder()
       .setCustomId(`wl_submit_${userId}`)
       .setLabel(submitted ? '✅ Locked In' : 'SUBMIT')

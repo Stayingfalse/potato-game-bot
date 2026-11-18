@@ -61,19 +61,56 @@ function offsetFromPivot(point, distance) {
   };
 }
 
-function fetchBuffer(url) {
+/** How long an avatar download may take before the dial is drawn with the initial instead. */
+const AVATAR_TIMEOUT_MS = 3_000;
+let avatarTimeoutMs = AVATAR_TIMEOUT_MS;
+
+function fetchBuffer(url, timeoutMs = avatarTimeoutMs) {
   return new Promise((resolve, reject) => {
-    https.get(url, res => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
-      }
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-      res.on('error', reject);
-    }).on('error', reject);
+    let req = null;
+    const timer = setTimeout(() => {
+      req?.destroy?.();
+      reject(new Error(`Timed out fetching ${url}`));
+    }, timeoutMs);
+    const done = fn => value => { clearTimeout(timer); fn(value); };
+
+    try {
+      req = https.get(url, res => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return done(reject)(new Error(`HTTP ${res.statusCode} fetching ${url}`));
+        }
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => done(resolve)(Buffer.concat(chunks)));
+        res.on('error', done(reject));
+      });
+      req.on('error', done(reject));
+    } catch (err) {
+      done(reject)(err);
+    }
   });
+}
+
+/**
+ * Avatars are downloaded once per URL and kept (oldest dropped past the limit),
+ * so nudging a guess doesn't re-download the same picture. A failed or timed-out
+ * download is removed again so a later image can retry it.
+ */
+const avatarCache = new Map();
+const AVATAR_CACHE_LIMIT = 200;
+
+function loadAvatar(url) {
+  if (!url) return Promise.reject(new Error('No avatar URL'));
+  if (!avatarCache.has(url)) {
+    if (avatarCache.size >= AVATAR_CACHE_LIMIT) avatarCache.delete(avatarCache.keys().next().value);
+    const pending = fetchBuffer(url).then(buf => loadImage(buf));
+    pending.catch(() => {
+      if (avatarCache.get(url) === pending) avatarCache.delete(url);
+    });
+    avatarCache.set(url, pending);
+  }
+  return avatarCache.get(url);
 }
 
 function drawBackground(ctx) {
@@ -226,8 +263,7 @@ async function drawAvatar(ctx, avatarURL, username, point, radius, badgeText = n
   ctx.clip();
 
   try {
-    const buf = await fetchBuffer(avatarURL);
-    const img = await loadImage(buf);
+    const img = await loadAvatar(avatarURL);
     ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
   } catch {
     ctx.fillStyle = '#7289DA';
@@ -506,4 +542,11 @@ async function generateRevealImage(spectrum, targetPosition, playerGuesses, clue
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { generateClueGiverImage, generateGuesserImage, generateRevealImage };
+/** Test hooks: shorten the avatar timeout (no argument restores the default) and empty the avatar cache. */
+const _testing = {
+  setAvatarTimeout(ms) { avatarTimeoutMs = ms ?? AVATAR_TIMEOUT_MS; },
+  clearAvatarCache() { avatarCache.clear(); },
+  avatarCache,
+};
+
+module.exports = { generateClueGiverImage, generateGuesserImage, generateRevealImage, _testing };
