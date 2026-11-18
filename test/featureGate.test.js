@@ -24,7 +24,7 @@ const threadIn = (parentId, id = '300000000000000001') => ({ id, parentId, isThr
 /** A client whose commands only record that they ran. */
 function createClient() {
   const ran = [];
-  const names = [...getGames().map(game => game.command.data.name), 'birthday', 'ping'];
+  const names = [...getGames().map(game => game.command.data.name), 'birthday', 'birthday-admin', 'ping'];
   const commands = new Map(names.map(name => [name, {
     execute: async interaction => { ran.push(`${name} ${interaction.options.getSubcommand()}`); },
   }]));
@@ -154,11 +154,14 @@ describe('game commands', () => {
 
 describe('/birthday', () => {
   const MEMBER_SUBCOMMANDS = ['set', 'list', 'delete'];
-  const ADMIN_SUBCOMMANDS = ['start', 'stop', 'setchannel', 'resend'];
+  const ADMIN_SUBCOMMANDS = ['start', 'stop', 'setchannel', 'settime', 'resend'];
 
   it('works everywhere by default', async () => {
-    for (const sub of [...MEMBER_SUBCOMMANDS, ...ADMIN_SUBCOMMANDS]) {
+    for (const sub of MEMBER_SUBCOMMANDS) {
       assert.deepEqual((await run('birthday', sub, { guildId: 'b-default' })).ran, [`birthday ${sub}`]);
+    }
+    for (const sub of ADMIN_SUBCOMMANDS) {
+      assert.deepEqual((await run('birthday-admin', sub, { guildId: 'b-default' })).ran, [`birthday-admin ${sub}`]);
     }
   });
 
@@ -189,13 +192,13 @@ describe('/birthday', () => {
     }
   });
 
-  it('keeps the admin subcommands working when turned off or restricted', async () => {
+  it('keeps /birthday-admin working when turned off or restricted', async () => {
     settingsRepo.setFeature('b-admin-off', 'birthday', false);
     settingsRepo.setFeature('b-admin-channels', 'birthday', true, [GAMES_CHANNEL]);
     for (const guildId of ['b-admin-off', 'b-admin-channels']) {
       for (const sub of ADMIN_SUBCOMMANDS) {
-        const { ran, replies } = await run('birthday', sub, { guildId });
-        assert.deepEqual(ran, [`birthday ${sub}`]);
+        const { ran, replies } = await run('birthday-admin', sub, { guildId });
+        assert.deepEqual(ran, [`birthday-admin ${sub}`]);
         assert.deepEqual(replies, []);
       }
     }

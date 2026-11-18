@@ -31,6 +31,7 @@ const fs     = require('fs');
 const path   = require('path');
 
 const settingsRepo = require('./SettingsRepository');
+const birthdayRepo = require('../db/BirthdayRepository');
 const { publishRoleMenuMessage } = require('../features/roleMenuFeature');
 const { getGames } = require('../games/_core/registry');
 
@@ -40,11 +41,44 @@ const SESSION_TTL_MS   = 24 * 60 * 60 * 1000; // 24 hours
 const MANAGE_GUILD_BIT = 0x20n; // BigInt for safe 53-bit overflow handling
 const HTML_DIR         = path.join(__dirname, 'html');
 
+// The Birthdays card's announcement time. Stored in birthday_settings (the same
+// place /birthday-admin settime writes), not in guild_settings.extra: GET adds
+// it to the card's `extra`, POST takes it back out (see _withBirthdayTime and
+// _saveBirthdayTime).
+const BIRTHDAY_TIME_FIELDS = [
+  {
+    key: 'announceHour',
+    label: 'Announcement hour',
+    type: 'select',
+    valueType: 'number',
+    defaultValue: birthdayRepo.DEFAULT_ANNOUNCE_HOUR,
+    options: Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, '0')}:00` })),
+    hint: 'When announcements go out each day, in the time zone below.',
+  },
+  {
+    key: 'timezone',
+    label: 'Time zone',
+    type: 'select',
+    defaultValue: birthdayRepo.DEFAULT_TIMEZONE,
+    options: [
+      birthdayRepo.DEFAULT_TIMEZONE,
+      ...(Intl.supportedValuesOf?.('timeZone') ?? []).filter(tz => tz !== birthdayRepo.DEFAULT_TIMEZONE),
+    ].map(tz => ({ value: tz, label: tz.replace(/_/g, ' ') })),
+    hint: 'Birthdays are matched on the date in this time zone. Type to jump to a zone.',
+  },
+];
+
 // Known bot features shown in the guild settings UI: every registered game,
 // then the bot's other features.
 const FEATURES = [
   ...getGames().map(game => ({ id: game.id, label: game.name, hasChannels: true })),
-  { id: 'birthday',     label: 'Birthdays',    hasChannels: true  },
+  {
+    id: 'birthday',
+    label: 'Birthdays',
+    hasChannels: true,
+    extraTitle: 'Announcement time (same setting as /birthday-admin settime)',
+    extraFields: BIRTHDAY_TIME_FIELDS,
+  },
   {
     id: 'rolemenu',
     label: 'Role Menu',
@@ -261,7 +295,7 @@ class DashboardServer {
       await this._assertGuildAccess(session, guildId);
       const settings = settingsRepo.getGuildSettings(guildId);
       // Merge with defaults so every known feature is always present
-      const merged = this._mergeDefaults(settings);
+      const merged = this._withBirthdayTime(guildId, this._mergeDefaults(settings));
       return this._sendJson(res, 200, { guildId, features: merged });
     }
 
@@ -288,7 +322,8 @@ class DashboardServer {
       if (!featureDef) {
         throw Object.assign(new Error(`Unknown feature: ${feature}`), { status: 400 });
       }
-      const safeExtra = extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : null;
+      let safeExtra = extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : null;
+      if (feature === 'birthday') safeExtra = this._saveBirthdayTime(guildId, safeExtra);
       settingsRepo.setFeature(
         guildId,
         feature,
@@ -490,6 +525,40 @@ class DashboardServer {
       result[feat.id] = stored[feat.id] ?? { enabled: defaultEnabled, channelIds: null, extra: null };
     }
     return result;
+  }
+
+  /** The Birthdays card's settings with the announcement time (from birthday_settings) in `extra`. */
+  _withBirthdayTime(guildId, features) {
+    if (!features.birthday) return features;
+    const { hour, timezone } = birthdayRepo.getAnnounceTime(guildId);
+    const birthday = features.birthday;
+    return {
+      ...features,
+      birthday: { ...birthday, extra: { ...(birthday.extra || {}), announceHour: hour, timezone } },
+    };
+  }
+
+  /**
+   * Saves the announcement time from a Birthdays card POST to birthday_settings
+   * and returns the rest of `extra` (null when nothing is left) for guild_settings.
+   * Throws 400 for an invalid hour or time zone. Omitted fields keep their value.
+   */
+  _saveBirthdayTime(guildId, extra) {
+    if (!extra) return null;
+    const { announceHour, timezone, ...rest } = extra;
+    if (announceHour !== undefined || timezone !== undefined) {
+      const current = birthdayRepo.getAnnounceTime(guildId);
+      const hour = announceHour === undefined ? current.hour : Number(announceHour);
+      const zone = timezone === undefined ? current.timezone : timezone;
+      if (!birthdayRepo.isValidHour(hour)) {
+        throw Object.assign(new Error('Announcement hour must be a whole number from 0 to 23'), { status: 400 });
+      }
+      if (!birthdayRepo.normalizeTimeZone(zone)) {
+        throw Object.assign(new Error(`Unknown time zone: ${zone}`), { status: 400 });
+      }
+      birthdayRepo.setAnnounceTime(guildId, hour, zone);
+    }
+    return Object.keys(rest).length ? rest : null;
   }
 
   async _buildGuildMetadata(guildId) {

@@ -21,7 +21,7 @@ const BIRTHDAY_COMMANDS = [
   '`/birthday set <date>` — set your birthday (dd/mm or dd/mm/yyyy)',
   '`/birthday list` — the next 3 upcoming birthdays (`all:True` for everyone)',
   '`/birthday delete` — remove your birthday',
-  'Admins: `/birthday start`, `stop`, `setchannel` and `resend` control the announcements',
+  'Admins: `/birthday-admin start`, `stop`, `setchannel`, `settime` and `resend` control the announcements',
 ].join('\n');
 
 const startCommand = game => `/${game.command.data.name} start`;

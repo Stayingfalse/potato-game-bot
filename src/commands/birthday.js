@@ -10,10 +10,9 @@
  *                               • list            → show next 3 upcoming birthdays
  *                               • list all:True   → show all birthdays sorted by month/day
  *   delete [user]            – Remove a birthday. Admins can target any user.
- *   start [channel]          – Admin: enable announcements (optionally set channel).
- *   stop                     – Admin: disable announcements.
- *   setchannel <channel>     – Admin: set/change the announcement channel.
- *   resend                   – Admin: clear today's dedup and re-send today's announcements.
+ *
+ * Announcement settings (start, stop, setchannel, settime, resend) are in
+ * /birthday-admin, which Discord only shows to members with Manage Server.
  */
 
 const {
@@ -159,45 +158,6 @@ module.exports = {
             .setName('user')
             .setDescription('(Admin only) The user whose birthday to remove'),
         ),
-    )
-
-    // /birthday start [channel]
-    .addSubcommand(sub =>
-      sub
-        .setName('start')
-        .setDescription('(Admin) Enable birthday announcements in this server.')
-        .addChannelOption(opt =>
-          opt
-            .setName('channel')
-            .setDescription('Channel to send birthday messages (uses existing setting if omitted)'),
-        ),
-    )
-
-    // /birthday stop
-    .addSubcommand(sub =>
-      sub
-        .setName('stop')
-        .setDescription('(Admin) Disable birthday announcements in this server.'),
-    )
-
-    // /birthday setchannel <channel>
-    .addSubcommand(sub =>
-      sub
-        .setName('setchannel')
-        .setDescription('(Admin) Set or change the birthday announcement channel.')
-        .addChannelOption(opt =>
-          opt
-            .setName('channel')
-            .setDescription('The channel to use for birthday announcements')
-            .setRequired(true),
-        ),
-    )
-
-    // /birthday resend
-    .addSubcommand(sub =>
-      sub
-        .setName('resend')
-        .setDescription('(Admin) Re-send today\'s birthday announcements (clears today\'s dedup first).'),
     ),
 
   // ── Handler ──────────────────────────────────────────────────────────────────
@@ -362,112 +322,6 @@ module.exports = {
       return interaction.reply({
         content: `🗑️ ${whose} birthday has been removed.`,
         flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // ── /birthday start ──────────────────────────────────────────────────────
-    if (sub === 'start') {
-      if (!isAdmin) {
-        return interaction.reply({
-          content: '❌ You need the **Manage Server** permission to use this command.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      const channelOption = interaction.options.getChannel('channel');
-      const settings = repo.getSettings(guildId);
-      const channelId = channelOption?.id ?? settings?.channel_id ?? null;
-
-      if (!channelId) {
-        return interaction.reply({
-          content:
-            '❌ No announcement channel is set. Please provide a channel:\n' +
-            '`/birthday start channel:#your-channel`\nor set one first with `/birthday setchannel`.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      repo.setEnabled(guildId, true, channelId);
-
-      return interaction.reply({
-        content: `✅ Birthday announcements **enabled**! Messages will be sent in <#${channelId}>.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // ── /birthday stop ───────────────────────────────────────────────────────
-    if (sub === 'stop') {
-      if (!isAdmin) {
-        return interaction.reply({
-          content: '❌ You need the **Manage Server** permission to use this command.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      repo.setEnabled(guildId, false, null);
-      return interaction.reply({
-        content: '🛑 Birthday announcements **disabled**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // ── /birthday setchannel ─────────────────────────────────────────────────
-    if (sub === 'setchannel') {
-      if (!isAdmin) {
-        return interaction.reply({
-          content: '❌ You need the **Manage Server** permission to use this command.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      const channel = interaction.options.getChannel('channel', true);
-      repo.setChannel(guildId, channel.id);
-
-      return interaction.reply({
-        content: `✅ Birthday announcement channel set to <#${channel.id}>.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // ── /birthday resend ─────────────────────────────────────────────────────
-    if (sub === 'resend') {
-      if (!isAdmin) {
-        return interaction.reply({
-          content: '❌ You need the **Manage Server** permission to use this command.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      const settings = repo.getSettings(guildId);
-      if (!settings || !settings.enabled || !settings.channel_id) {
-        return interaction.reply({
-          content:
-            '❌ Birthday announcements are not enabled in this server. ' +
-            'Use `/birthday start` to enable them first.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      // Defer because we'll be making Discord API calls (member fetches + sends).
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      // Wipe today's dedup records for this guild so everyone gets re-announced.
-      const dateKey = new Date().toISOString().slice(0, 10);
-      repo.clearTodayAnnouncements(guildId, dateKey);
-
-      const result = await interaction.client.birthdayManager.runForGuild(interaction.guild);
-
-      if (result.total === 0) {
-        return interaction.editReply({ content: 'ℹ️ No birthdays today in this server.' });
-      }
-
-      return interaction.editReply({
-        content:
-          `✅ Sent **${result.sent}** birthday announcement${result.sent === 1 ? '' : 's'}` +
-          ` in <#${result.channelId}>.` +
-          (result.total > result.sent
-            ? ` (${result.total - result.sent} member${result.total - result.sent === 1 ? '' : 's'} not found in server)`
-            : ''),
       });
     }
   },
