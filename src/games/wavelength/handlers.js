@@ -25,6 +25,7 @@ const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
 const { editOrSend } = require('../_core/messages');
+const { altText } = require('../_core/altText');
 const { replyWithLeaderboard } = require('../_core/statsDisplay');
 const { howToPlayReply } = require('../_core/lobby');
 const howToPlay = require('./howToPlay');
@@ -74,7 +75,10 @@ async function buildGuessPanel(game, userId, content) {
       ? `✅ You locked in at position **${guess.position}**. Waiting for others…`
       : `📍 Your current position: **${guess.position}** — ${GUESS_PROMPT}`),
     components: buildNudgeComponents(userId, guess.submitted, guess.position),
-    files: imageBuffer ? [new AttachmentBuilder(imageBuffer, { name: 'guess.png' })] : [],
+    files: imageBuffer ? [new AttachmentBuilder(imageBuffer, {
+      name: 'guess.png',
+      description: altText(`Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, clue "${game.clue}", your marker at ${guess.position}`),
+    })] : [],
     // Replace the previous dial image rather than adding another one.
     attachments: [],
   };
@@ -135,7 +139,7 @@ async function buildClueEntryPanel(game) {
       `✅ **Spectrum chosen:** \`${game.chosenSpectrum.left}\` ↔ \`${game.chosenSpectrum.right}\`\n\n` +
       '🎯 The **target position** is shown on the image below. Give the guessers a **clue** that hints at where it sits!',
     components: buildClueSubmitComponents(),
-    ...(cgImageBuffer ? { files: [new AttachmentBuilder(cgImageBuffer, { name: 'target.png' })] } : {}),
+    ...(cgImageBuffer ? { files: [new AttachmentBuilder(cgImageBuffer, { name: 'target.png', description: `Wavelength dial from ${game.chosenSpectrum.left} to ${game.chosenSpectrum.right}, target at ${game.targetPosition}` })] } : {}),
   };
 }
 
