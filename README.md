@@ -185,7 +185,7 @@ Each game is a folder under `src/games/`, and the bot picks up new folders autom
 
 **For Birthday Celebrations:**
 - Set up announcements early so you never miss a celebration
-- The bot will post automatically at midnight UTC
+- The bot posts automatically at midnight UTC unless you pick another time with `/birthday-admin settime` (or the dashboard)
 - Fun, random messages keep each birthday announcement unique!
 
 ## 🛠️ Features Overview
