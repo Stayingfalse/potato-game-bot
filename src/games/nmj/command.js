@@ -2,6 +2,7 @@
 
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { renderGameMessage } = require('./render');
+const card = require('./card');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
@@ -68,9 +69,8 @@ module.exports = {
         nmjManager.saveGame(thread.id);
       }
 
-      return interaction.reply({
-        content: `🎬 **No More Jockeys** game created by <@${user.id}>! Join in <#${thread.id}>.`,
-      });
+      await card.post(interaction, game, client);
+      return;
     }
 
     if (sub === 'end') {

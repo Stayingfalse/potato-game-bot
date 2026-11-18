@@ -2,6 +2,7 @@
 
 const { MessageFlags } = require('discord.js');
 const WavelengthRepository = require('../repository');
+const card = require('../card');
 const { fetchChannel, lockAndArchive } = require('../../_core/threads');
 const { editMessage } = require('../../_core/messages');
 const { evaluateSessionGoal, computeSessionTotals } = require('./sessionEnd');
@@ -87,6 +88,17 @@ async function closeSession(game, client, reason) {
   }
 
   client.wavelengthManager.deleteGame(game.threadId);
+  // Nothing was played: the card says the game was cancelled rather than showing empty standings.
+  const cancelled = (game.sessionHistory ?? []).length === 0;
+  await (cancelled ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+}
+
+/** One line for the channel card: the top three of the session's standings. */
+function cardResult(game) {
+  const top = computeSessionTotals(game).slice(0, 3);
+  if (top.length === 0) return null;
+  const medals = ['🥇', '🥈', '🥉'];
+  return `🏁 Final standings: ${top.map((entry, i) => `${medals[i]} <@${entry.userId}> ${entry.total} pts`).join(' · ')}`;
 }
 
 module.exports = {

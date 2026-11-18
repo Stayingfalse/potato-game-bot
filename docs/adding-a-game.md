@@ -37,7 +37,8 @@ are skipped, so the template itself is never loaded into the bot.
 | File | Purpose |
 |---|---|
 | `index.js` | The **manifest**: id, name, button prefix, and links to everything below. Fields are documented in `src/games/_core/registry.js`. |
-| `command.js` | `/<id> start` and `/<id> end`. Start creates a public thread, refuses a second game for the same host, and posts the game message. |
+| `command.js` | `/<id> start` and `/<id> end`. Start creates a public thread, refuses a second game for the same host, posts the game message, and replies with the channel card (`card.post`). |
+| `card.js` | The game's **channel card**: the status message in the channel the game was started from, made with `createChannelCard` from `src/games/_core/channelCard.js` (see [Channel card](#channel-card)). |
 | `state.js` | The game's state class (extends `BaseGameState`) with `fromRow` / `toRow` for saving. |
 | `repository.js` | The game's table (`SCHEMA`), and `ADDED_COLUMNS` for columns added after release. Built with `createRepository`. |
 | `manager.js` | Game-specific actions on top of `BaseGameManager` (which already has get, delete, add/remove player and timer cleanup). |
@@ -63,7 +64,42 @@ for anyone reading the code.
 - **Timers:** keep handles in fields listed in the manager's `timerKeys`, so deleting or resetting a game always stops them. Save deadlines as timestamps (like `phaseEndsAt`) so restore can re-arm only the time left.
 - **Restore:** redraw the message in place; don't post "bot restarted" messages.
 - **Changing what's saved:** add new columns to both `SCHEMA` and `ADDED_COLUMNS`. For bigger changes, write a `migrate` that converts saved games, as `src/games/nmj/repository.js` does, so games in progress survive the upgrade.
-- **Shared helpers** live in `src/games/_core/`: `threads.js` (create, archive, permission messages), `lobby.js` (lobby buttons, player list, how to play), `messages.js` (edit or send), `errors.js`, `random.js`.
+- **Channel card:** the reply to `/<id> start` is the game's status card in the starting channel. Keep it up to date from the hooks listed under [Channel card](#channel-card); don't post anything else to the starting channel.
+- **Shared helpers** live in `src/games/_core/`: `threads.js` (create, archive, permission messages), `lobby.js` (lobby buttons, player list, how to play), `messages.js` (edit or send), `channelCard.js` (the channel card), `errors.js`, `random.js`.
+
+## Channel card
+
+People in the channel a game was started from see a short status card there
+instead of a one-off "game created" message: the lobby (host, `N/max players`,
+the players, a **Join** button and a link to the thread), then "Game in
+progress", then the result and "Thread closed" (or "Cancelled" if the session
+ended before anything was played). Mentions on the card never ping.
+
+`card.js` makes it once:
+
+```js
+module.exports = createChannelCard({ name: 'My Game', emoji: '🎯', prefix: 'mg_', clientKey: 'myGameManager', repository: require('./repository') });
+```
+
+and the game calls it from a few places (the template shows each one):
+
+| Where | Call |
+|---|---|
+| `/<id> start`, instead of the reply | `await card.post(interaction, game, client)`: replies with the card and saves its id as `game.cardMessageId` |
+| Lobby Join and Leave, Start, and anything that reopens the lobby | `await card.update(client, game)`: lobby or "in progress", from the game's phase |
+| The end of the session (`closeSession`) | `await card.finish(client, game, resultLine)` with one or two lines (with their own leading emoji), or `await card.cancel(client, game)` if nothing was played |
+| `handleInteraction`, before the game is looked up | `if (interaction.customId === card.joinId) return card.handleJoin(interaction, client, { refreshLobby })` |
+
+The card's Join button (`<prefix>card_join`) is pressed in the starting channel,
+not the thread, so `handleJoin` finds the game by the card's message id. It
+adds the player as the lobby's Join does (through the manager's `addPlayer`),
+adds them to the thread, replies privately with a link, then calls
+`refreshLobby(game, client)` to redraw the lobby message and updates the card.
+
+Save `cardMessageId` like any other field: a `card_message_id TEXT` column in
+`SCHEMA` and `ADDED_COLUMNS`, and in the state's `toRow` / `fromRow`. Restore
+needs nothing else; the card is left as it is. Card updates never throw: a
+missing card, channel or message, or a failed edit, is ignored.
 
 ## Stats
 

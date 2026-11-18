@@ -8,7 +8,9 @@ const assert = require('node:assert/strict');
 const {
   user, createThread, createChannel, createClient, componentInteraction, slashCommand, quietly, allCustomIds,
 } = require('./helpers/discord');
+const { trackImages, missingAltText } = require('./helpers/images');
 
+const images = trackImages(); // before src/ is loaded
 const huesClues = src('games/huesclues/index.js');
 const repository = src('games/huesclues/repository');
 const HuesCluesGameState = src('games/huesclues/state');
@@ -102,7 +104,7 @@ describe('a game through the real command and buttons', () => {
     await huesClues.command.execute(start, client);
     game = manager.getGame(thread.id);
     assert.ok(game.messageId);
-    assert.match(start.replies()[0], /game created/);
+    assert.match(start.replies()[0], /Lobby open/);
     assert.ok(text(sessionMessage()).includes('hc_join'));
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });
@@ -265,7 +267,18 @@ describe('a game through the real command and buttons', () => {
     const results = text(turnMessage());
     assert.ok(results.includes('Turn 1 Results'));
     assert.ok(results.includes('attachment://huesclues_reveal.png'));
-    assert.ok(!results.includes('pts**'), 'scores live in the image, not the text');
+    // The image renders, and the key facts are in text beside it too.
+    const summary = turnMessage().payload.components[0].toJSON().components.map(c => c.content).filter(Boolean).join('\n');
+    assert.match(summary, /🎯 Target \*\*F12\*\*/);
+    assert.ok(summary.includes(`<@${g1.id}> **+5**`) && summary.includes(`<@${g2.id}> **+1**`), summary);
+    assert.ok(summary.includes(`cue giver <@${cue.id}> **+2**`), summary);
+    assert.ok(!summary.includes('Totals'), 'totals equal this turn\'s points after turn 1, so they are left out');
+    assert.deepEqual(turnMessage().payload.allowedMentions, { parse: [] }, 'the results don\'t ping anyone');
+    const reveal = turnMessage().payload.files[0];
+    assert.match(reveal.description, /target F12 marked/i);
+    assert.match(reveal.description, new RegExp(`${g1.username} on F12 and F11`));
+    const gallery = JSON.stringify(turnMessage().payload.components);
+    assert.ok(gallery.includes(JSON.stringify(reveal.description).slice(1, -1)), 'the media gallery item has the same description');
     assert.match(results, /Next turn <t:\d+:R>/);
     assert.ok(game.advanceAt > Date.now() && game.autoAdvanceTimeout, 'the next turn is scheduled');
   });
@@ -329,6 +342,8 @@ describe('a game through the real command and buttons', () => {
     assert.equal(game.phase, 'ended');
     assert.equal(rules.evaluateSessionGoal(game).complete, true);
     assert.ok(text(turnMessage()).includes('Session over'));
+    const summary = turnMessage().payload.components[0].toJSON().components.map(c => c.content).filter(Boolean).join('\n');
+    assert.match(summary, /\*\*Totals:\*\* <@/, 'after the first turn the running totals are in text too');
     assert.match((await press(HOST, 'hc_next')).replies()[0], /session is over/);
   });
 
@@ -452,5 +467,12 @@ describe('/huesclues end', () => {
 
     await huesClues.command.execute(slashCommand({ sub: 'end', user: user('h'), channel, channelId: thread.id }), client);
     assert.equal(manager.getGame(thread.id), null);
+  });
+});
+
+describe('alt text', () => {
+  it('every generated image in the game runs above has a description', () => {
+    assert.ok(images.attachments.length > 0 && images.mediaItems.length > 0, 'images were generated');
+    assert.deepEqual(missingAltText(images), []);
   });
 });

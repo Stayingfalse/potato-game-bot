@@ -13,6 +13,9 @@ class HighRollGameState extends BaseGameState {
     // phase: 'lobby' | 'rolling' | 'ended'
     // messageId: the one game message in the thread, rendered by render.js
 
+    /** The status card in the starting channel (card.js). Saved, so restore keeps it. */
+    this.cardMessageId = null;
+
     /** @type {Map<string, number>} userId → their roll (1–100) this round */
     this.rolls = new Map();
     /** When the rolling window closes (ms since epoch); null outside 'rolling'. Saved, so restore can re-arm it. */
@@ -31,6 +34,7 @@ class HighRollGameState extends BaseGameState {
   static fromRow(row) {
     const game = new HighRollGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.rolls = new Map(Object.entries(JSON.parse(row.rolls || '{}')));
@@ -49,6 +53,7 @@ class HighRollGameState extends BaseGameState {
       host_id:       game.hostId,
       host_username: game.hostUsername,
       message_id:    game.messageId ?? null,
+      card_message_id: game.cardMessageId ?? null,
       phase:         game.phase,
       players:       JSON.stringify([...game.players.values()]),
       rolls:         JSON.stringify(Object.fromEntries(game.rolls)),

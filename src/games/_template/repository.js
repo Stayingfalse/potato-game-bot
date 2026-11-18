@@ -12,6 +12,7 @@ const SCHEMA = `
     host_id        TEXT NOT NULL,
     host_username  TEXT NOT NULL,
     message_id     TEXT,
+    card_message_id TEXT,
     phase          TEXT NOT NULL DEFAULT 'lobby',
     players        TEXT NOT NULL DEFAULT '[]',
     rolls          TEXT NOT NULL DEFAULT '{}',

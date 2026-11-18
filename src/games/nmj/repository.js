@@ -11,6 +11,7 @@ const SCHEMA = `
     host_id               TEXT NOT NULL,
     host_username         TEXT NOT NULL DEFAULT '',
     message_id            TEXT,
+    card_message_id       TEXT,
     phase                 TEXT NOT NULL DEFAULT 'lobby',
     players               TEXT NOT NULL DEFAULT '[]',
     eliminated_players    TEXT NOT NULL DEFAULT '[]',
@@ -30,6 +31,7 @@ const SCHEMA = `
 /** Columns added after the host_id/phase layout, with the definition each is added with. */
 const ADDED_COLUMNS = {
   challenge_results: "challenge_results TEXT NOT NULL DEFAULT '[]'",
+  card_message_id: 'card_message_id TEXT',
 };
 
 /**

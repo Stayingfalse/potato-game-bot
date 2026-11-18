@@ -68,12 +68,12 @@ async function updateLobbyMessage(game, client, payload) {
  * isn't already running.  Also sends a "let's go!" announcement.
  */
 async function maybeStartTimer(game, client) {
-  if (game.timerInterval !== null) return;
+  if (game.timerTimeout) return;
   if (game.readyPlayers.size < game.players.size) return;
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
   await thread.send({ content: '⏱️ All players are ready — the timer has started! Good luck!' }).catch(() => {});
-  startGameTimer(game, thread, client);
+  await startGameTimer(game, thread, client);
 }
 
 /**

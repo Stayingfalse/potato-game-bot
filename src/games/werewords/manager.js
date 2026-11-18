@@ -9,7 +9,7 @@ const MIN_PLAYERS = 3;
 
 class WerewordsManager extends BaseGameManager {
   constructor() {
-    super({ repository: WerewordsRepository, timerKeys: ['timerInterval', 'revealTimeout'], maxPlayers: 10 });
+    super({ repository: WerewordsRepository, timerKeys: ['timerTimeout', 'timerWarningTimeout', 'revealTimeout'], maxPlayers: 10 });
   }
 
   /**
@@ -46,6 +46,7 @@ class WerewordsManager extends BaseGameManager {
     game.winnerGuesserUserId = null;
     game.responseStatsShown = false;
     game.timeLeft = 240;
+    game.timerEndsAt = null;
     // For same-group rematch keep the previously chosen mode; for open sign-ups ask again.
     if (openSignups) game.sessionMode = null;
     game.voicePlayerMessageIds = new Map();

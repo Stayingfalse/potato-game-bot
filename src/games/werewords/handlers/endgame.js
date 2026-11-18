@@ -18,6 +18,7 @@ const { sampleN } = require('../../_core/random');
 const { fetchChannel, lockAndArchive } = require('../../_core/threads');
 const { replyWithLeaderboard } = require('../../_core/statsDisplay');
 const WerewordsRepository = require('../repository');
+const card = require('../card');
 const { renderGameMessage } = require('../render');
 const { updateGameMessage } = require('../gameMessage');
 const { isHost, replyNotHost } = require('../../_core/host');
@@ -214,6 +215,7 @@ async function handleRematchOpen(interaction, client, game) {
     resetGame.messageId = lobbyMsg.id;
     WerewordsRepository.upsert(resetGame);
   }
+  await card.update(client, resetGame);
 }
 
 /** The host closes the session after a game. */
@@ -260,6 +262,18 @@ async function closeSession(game, client, reason) {
   });
 
   client.werewordsManager.deleteGame(game.threadId);
+  await (gamesPlayed === 0 ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+}
+
+/** One line for the channel card: how the session's games went. */
+function cardResult(game) {
+  const games = game.sessionHistory;
+  const villagerWins = games.filter(g => g.outcome === 'villagers_word' || g.outcome === 'villagers_vote').length;
+  const last = games.at(-1);
+  return [
+    `🏁 ${games.length} game${games.length === 1 ? '' : 's'} played — Villagers ${villagerWins}, Werewolves ${games.length - villagerWins}.`,
+    last.word ? `Last word: **${last.word}**` : null,
+  ].filter(Boolean).join(' ');
 }
 
 /** Button routes: the first entry whose `match` accepts the customId handles it. */

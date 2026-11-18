@@ -28,6 +28,7 @@ const {
   firstTokenOwnerAt,
 } = require('./rules');
 const { generateBoardImage, generateRevealImage, generateCardImage } = require('./imageGen');
+const { altText, listText } = require('../_core/altText');
 
 const TITLE = '🎨 Hues & Clues';
 const COLOR = { lobby: 0x5865F2, picking: 0xF39C12, guessing: 0x3498DB, ended: 0x2ECC71, closed: 0x95A5A6 };
@@ -178,7 +179,7 @@ async function renderGuessing(game) {
       button('hc_guess_panel', round === 1 ? 'Place Your Token' : 'Place Your Second Token', '📍', ButtonStyle.Primary),
       button('hc_force_lock', 'Lock Remaining (host)', '⏩', ButtonStyle.Secondary),
     ))];
-  if (round === 2) await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.guessing);
+  if (round === 2) await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.guessing, firstTokensAlt(game));
   return message(parts, files);
 }
 
@@ -193,7 +194,7 @@ async function renderFollowup(game) {
       button('hc_cue_panel', 'View My Card', '🎨', ButtonStyle.Secondary),
       button('hc_skip_cue', 'Skip Second Clue (host)', '⏭️', ButtonStyle.Secondary),
     ))];
-  await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.picking);
+  await addImage(parts, files, await firstTokensImage(game), 'huesclues_board.png', COLOR.picking, firstTokensAlt(game));
   return message(parts, files);
 }
 
@@ -209,6 +210,14 @@ function firstTokensImage(game) {
     subtitle: `Turn ${game.gameNumber} · first tokens`,
     tokens,
   }));
+}
+
+const playerName = (game, userId) => game.players.get(userId)?.username ?? 'someone';
+
+/** Alt text for the board with everyone's first tokens. */
+function firstTokensAlt(game) {
+  const placed = [...game.tokens].filter(([, t]) => t.cells[0]).map(([id, t]) => `${playerName(game, id)} on ${formatCell(t.cells[0])}`);
+  return altText(`Hues & Clues board, turn ${game.gameNumber}. ${imageHeading(game, game.cueGiverId, game.clues)}. First tokens: ${placed.length > 0 ? listText(placed) : 'none yet'}.`);
 }
 
 // ── Results ────────────────────────────────────────────────────────────────────
@@ -229,8 +238,11 @@ async function renderEnded(game, { includeControls = true } = {}) {
 
   const image = await revealImage(game, turn);
   if (image) {
-    files.push(new AttachmentBuilder(image, { name: 'huesclues_reveal.png' }));
-    box.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://huesclues_reveal.png')));
+    const description = revealAlt(game, turn);
+    files.push(new AttachmentBuilder(image, { name: 'huesclues_reveal.png', description }));
+    box.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://huesclues_reveal.png').setDescription(description)));
+    // The image is small on a phone and silent to a screen reader, so the key facts go in text too.
+    box.addTextDisplayComponents(new TextDisplayBuilder().setContent(resultsSummaryText(game, turn)));
   } else {
     // Without the image, fall back to the scores in text so nothing is lost.
     box.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${clueHeadline(turn.cueGiverId, turn.clues)}\n🎯 Target: \`${formatCell(turn.target)}\`\n\n${standingsText(game)}`));
@@ -238,7 +250,46 @@ async function renderEnded(game, { includeControls = true } = {}) {
 
   box.addTextDisplayComponents(new TextDisplayBuilder().setContent(statusText(game, goal)));
   if (includeControls) box.addActionRowComponents(endedControls(game, goal));
-  return message([box], files);
+  // The results name players; they shouldn't be pinged by it.
+  return { ...message([box], files), allowedMentions: { parse: [] } };
+}
+
+/**
+ * Up to three short lines beside the results image: the clues and target, this
+ * turn's points, and (after the first turn) the running totals.
+ */
+function resultsSummaryText(game, turn) {
+  const { guessers, cueGiver } = turn.scores;
+  const turnScores = Object.entries(guessers)
+    .sort(([, a], [, b]) => b.total - a.total)
+    .map(([id, score]) => `<@${id}> **+${score.total}**`);
+  turnScores.push(`cue giver <@${cueGiver.id}> **+${cueGiver.total}**`);
+  const lines = [
+    `${turn.clues.length > 0 ? `🗣️ ${quotedClues(turn.clues)} → ` : ''}🎯 Target **${formatCell(turn.target)}**`,
+    turnScores.join(' · '),
+  ];
+  if (game.sessionHistory.length > 1) {
+    lines.push(`**Totals:** ${sessionTotals(game).map(({ userId, total }) => `<@${userId}> ${total}`).join(' · ')}`);
+  }
+  return lines.join('\n');
+}
+
+/** Alt text for the results image: clues, target, every token and the scores. */
+function revealAlt(game, turn) {
+  const thisTurn = turnPoints(turn);
+  const tokens = Object.entries(turn.tokens).map(([id, cells]) => {
+    const placed = cells.filter(Boolean).map(formatCell);
+    return `${playerName(game, id)} on ${placed.length > 0 ? listText(placed) : 'no square'}`;
+  });
+  const scores = sessionTotals(game).map(({ userId, total }) =>
+    `${playerName(game, userId)}${userId === turn.cueGiverId ? ' (cue giver)' : ''} +${thisTurn[userId] ?? 0}, ${total} total`);
+  return altText([
+    `Hues & Clues results board, turn ${turn.turnNumber}.`,
+    `${imageHeading(game, turn.cueGiverId, turn.clues)}.`,
+    `Target ${formatCell(turn.target)} marked.`,
+    `Tokens: ${tokens.length > 0 ? listText(tokens) : 'none'}.`,
+    `Scores: ${scores.join('; ')}.`,
+  ].join(' '));
 }
 
 /** One line under the results: the winner, the auto-advance countdown, or the mode. */
@@ -309,7 +360,9 @@ function renderPointer(text) {
 /** The cue giver's card: pick a colour, then give the first clue. */
 async function renderCuePanel(game) {
   const image = await tryImage(() => generateCardImage(game.card, game.targetIndex));
-  const files = image ? [new AttachmentBuilder(image, { name: 'huesclues_card.png' })] : [];
+  const cardAlt = altText(`Your Hues & Clues card with four colours: ${game.card.map((c, i) => `${i + 1} is ${formatCell(c)}`).join(', ')}.${
+    game.targetIndex !== null ? ` Colour ${game.targetIndex + 1} (${formatCell(game.card[game.targetIndex])}) is chosen.` : ''}`);
+  const files = image ? [new AttachmentBuilder(image, { name: 'huesclues_card.png', description: cardAlt })] : [];
   const cardList = game.card.map((cell, i) => `${i + 1} · \`${formatCell(cell)}\``).join('   ');
 
   if (game.phase !== 'picking') {
@@ -359,7 +412,16 @@ async function renderGuessPanel(game, userId) {
     subtitle: `Turn ${game.gameNumber} · placing your ${ordinal} token`,
     tokens: [...others, ...own],
   }));
-  const files = image ? [new AttachmentBuilder(image, { name: 'huesclues_token.png' })] : [];
+  const othersAlt = game.guessRound === 2
+    ? [...game.tokens].filter(([id, t]) => id !== userId && t.cells[0]).map(([id, t]) => `${playerName(game, id)} on ${formatCell(t.cells[0])}`)
+    : [];
+  const tokenAlt = altText([
+    `Hues & Clues board preview, turn ${game.gameNumber}. ${imageHeading(game, game.cueGiverId, game.clues)}.`,
+    cell ? `Your ${ordinal} token ${locked ? 'locked in' : 'placed'} on ${formatCell(cell)}.` : `You have no ${ordinal} token.`,
+    game.guessRound === 2 && token.cells[0] ? `Your first token is on ${formatCell(token.cells[0])}.` : null,
+    othersAlt.length > 0 ? `Other first tokens: ${listText(othersAlt)}.` : null,
+  ].filter(Boolean).join(' '));
+  const files = image ? [new AttachmentBuilder(image, { name: 'huesclues_token.png', description: tokenAlt })] : [];
 
   const blockedBy = locked ? null : firstTokenOwnerAt(game, cell);
   let content;
@@ -401,11 +463,11 @@ async function tryImage(generate) {
   }
 }
 
-async function addImage(parts, files, buffer, name, accent) {
+async function addImage(parts, files, buffer, name, accent, description) {
   if (!buffer) return;
-  files.push(new AttachmentBuilder(buffer, { name }));
+  files.push(new AttachmentBuilder(buffer, { name, description }));
   parts.push(new ContainerBuilder().setAccentColor(accent).addMediaGalleryComponents(
-    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${name}`)),
+    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${name}`).setDescription(description)),
   ));
 }
 

@@ -8,7 +8,7 @@ async function restore(client) {
   if (rows.length === 0) return;
 
   const WavelengthGameState = require('./state');
-  const { updateGameMessage, scheduleGuessTimeout } = require('./handlers');
+  const { updateGameMessage, resumeGuessTimeout } = require('./handlers');
   const { scheduleAutoAdvance } = require('./phases/endGame');
   const { evaluateSessionGoal } = require('./phases/sessionEnd');
 
@@ -31,7 +31,7 @@ async function restore(client) {
     }
 
     if (game.phase === 'guessing' && game.gamePace !== 'turnbased') {
-      await scheduleGuessTimeout(game, client);
+      await resumeGuessTimeout(game, client);
     }
 
     if (game.phase === 'ended' && game.autoAdvanceRounds && !evaluateSessionGoal(game).complete) {

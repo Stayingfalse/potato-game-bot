@@ -20,6 +20,8 @@ class HuesCluesGameState extends BaseGameState {
     // messageId: the lobby/setup message. Each turn then gets its own message (turnMessageId).
 
     this.turnMessageId = null;
+    /** The status card in the starting channel (see card.js). */
+    this.cardMessageId = null;
 
     /** @type {{type: 'clue_turns'|'first_to_points'|'endless', target?: number}|null} */
     this.sessionMode = null;
@@ -69,6 +71,7 @@ class HuesCluesGameState extends BaseGameState {
     const game = new HuesCluesGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
     game.turnMessageId = row.turn_message_id ?? null;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.sessionMode = row.session_mode ? JSON.parse(row.session_mode) : null;
@@ -99,6 +102,7 @@ class HuesCluesGameState extends BaseGameState {
       host_username:        game.hostUsername,
       message_id:           game.messageId ?? null,
       turn_message_id:      game.turnMessageId ?? null,
+      card_message_id:      game.cardMessageId ?? null,
       phase:                game.phase,
       players:              JSON.stringify([...game.players.values()]),
       session_mode:         game.sessionMode ? JSON.stringify(game.sessionMode) : null,

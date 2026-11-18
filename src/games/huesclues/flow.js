@@ -12,9 +12,10 @@
 
 const { recordTurn } = require('./stats');
 const { renderGameMessage, renderClosed, renderPointer } = require('./render');
-const { evaluateSessionGoal } = require('./rules');
+const { evaluateSessionGoal, sessionTotals } = require('./rules');
 const { fetchChannel, lockAndArchive } = require('../_core/threads');
 const { editMessage, editOrSend } = require('../_core/messages');
+const card = require('./card');
 
 /** How long the results stay up before auto-advance starts the next turn. */
 const AUTO_ADVANCE_MS = 15_000;
@@ -164,6 +165,7 @@ async function newSession(game, client) {
   managerOf(client).resetForNewSession(game);
   game.messageId = null; // post the new lobby at the bottom of the thread
   await updateGameMessage(game, client);
+  await card.update(client, game);
 }
 
 /** Ends the session from any phase: final standings, archive the thread, delete the game. */
@@ -175,6 +177,14 @@ async function closeSession(game, client, reason) {
     lockAndArchive(thread, { delayMs: 5_000 });
   }
   managerOf(client).deleteGame(game.threadId);
+  await (game.sessionHistory.length === 0 ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+}
+
+/** One line for the channel card: the top three of the session's standings. */
+function cardResult(game) {
+  const medals = ['🥇', '🥈', '🥉'];
+  const top = sessionTotals(game).slice(0, 3).map((entry, i) => `${medals[i]} <@${entry.userId}> ${entry.total} pts`);
+  return `🏁 Final standings: ${top.join(' · ')}`;
 }
 
 module.exports = {

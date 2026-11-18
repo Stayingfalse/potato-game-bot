@@ -13,6 +13,7 @@ const SCHEMA = `
     host_username        TEXT NOT NULL,
     message_id           TEXT,
     board_message_id     TEXT,
+    card_message_id      TEXT,
     phase                TEXT NOT NULL DEFAULT 'lobby',
     players              TEXT NOT NULL DEFAULT '[]',
     word                 TEXT,
@@ -35,6 +36,8 @@ const ADDED_COLUMNS = {
   response_stats_shown: 'response_stats_shown INTEGER NOT NULL DEFAULT 0',
   phase_ends_at: 'phase_ends_at INTEGER',
   werewolf_revealed: 'werewolf_revealed INTEGER NOT NULL DEFAULT 0',
+  timer_ends_at: 'timer_ends_at INTEGER',
+  card_message_id: 'card_message_id TEXT',
 };
 
 /** Adds any columns that a table created by an older version is missing. */
@@ -57,7 +60,8 @@ const stmtUpdateTimeLeft = db.prepare(`
 `);
 
 /**
- * Lightweight update for just the time_left column (called on every board refresh).
+ * Lightweight update for just the time_left column. The countdown itself is
+ * saved as timer_ends_at by upsert; this is kept for callers that only have seconds.
  * @param {string} threadId
  * @param {number} timeLeft
  */

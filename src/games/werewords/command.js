@@ -3,6 +3,7 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./phases/lobby');
 const WerewordsRepository = require('./repository');
+const card = require('./card');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
@@ -68,9 +69,8 @@ module.exports = {
         WerewordsRepository.upsert(game);
       }
 
-      return interaction.reply({
-        content: `🎬 **Werewords** game created by <@${user.id}>! Join in <#${thread.id}>.`,
-      });
+      await card.post(interaction, game, client);
+      return;
     }
 
     if (sub === 'end') {

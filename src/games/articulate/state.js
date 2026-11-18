@@ -21,6 +21,8 @@ class ArticulateGameState extends BaseGameState {
     // Each turn gets its own message (turnMessageId).
 
     this.turnMessageId = null;
+    /** The status card in the starting channel (see card.js). */
+    this.cardMessageId = null;
     this.options = { teamCount: 2, teamMethod: null, turnSeconds: 30, singleDescriber: false, voiceChannelId: null };
     /** @type {Array<{name, emoji, color, playerIds: string[], position: number, describerIndex: number}>} */
     this.teams = [];
@@ -63,6 +65,7 @@ class ArticulateGameState extends BaseGameState {
     const game = new ArticulateGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
     game.turnMessageId = row.turn_message_id ?? null;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.options = JSON.parse(row.options || '{}');
@@ -93,6 +96,7 @@ class ArticulateGameState extends BaseGameState {
       host_username:      game.hostUsername,
       message_id:         game.messageId ?? null,
       turn_message_id:    game.turnMessageId ?? null,
+      card_message_id:    game.cardMessageId ?? null,
       phase:              game.phase,
       players:            JSON.stringify([...game.players.values()]),
       options:            JSON.stringify(game.options),

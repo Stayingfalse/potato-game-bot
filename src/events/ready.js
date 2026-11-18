@@ -40,7 +40,7 @@ module.exports = {
     // ── Birthday announcements ──────────────────────────────────────────────
     try {
       client.birthdayManager.start(client);
-      console.log('[BirthdayManager] Daily birthday check scheduled.');
+      console.log('[BirthdayManager] Hourly birthday check scheduled (each server announces at its own hour and timezone).');
     } catch (err) {
       console.error('[BirthdayManager] Failed to start:', err);
     }

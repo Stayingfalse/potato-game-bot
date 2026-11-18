@@ -326,7 +326,8 @@
       color: var(--muted);
       margin-bottom: 4px;
     }
-    .extra-field input[type="number"] {
+    .extra-field input[type="number"],
+    .extra-field select {
       width: 100%;
       max-width: 260px;
       background: var(--surface2);
@@ -337,7 +338,8 @@
       font-size: 13px;
       outline: none;
     }
-    .extra-field input[type="number"]:focus {
+    .extra-field input[type="number"]:focus,
+    .extra-field select:focus {
       border-color: var(--accent);
     }
     .extra-field-hint {
@@ -1207,9 +1209,26 @@
           </div>` : ''}
           ${extraFields.length ? `
           <div class="extra-settings">
-            <div class="extra-settings-title">Advanced settings (override env defaults for this server)</div>
+            <div class="extra-settings-title">${escHtml(feat.extraTitle || 'Advanced settings (override env defaults for this server)')}</div>
             ${extraFields.map((field) => {
               const rawValue = currentExtra[field.key];
+              if (field.type === 'select') {
+                // A list of { value, label } options; a saved value missing from the list is kept as an option.
+                const options = Array.isArray(field.options) ? field.options : [];
+                const selected = String(rawValue ?? field.defaultValue ?? '');
+                const known = options.some(opt => String(opt.value) === selected);
+                const all = known || !selected ? options : [{ value: selected, label: selected }, ...options];
+                const defaultOption = options.find(opt => String(opt.value) === String(field.defaultValue));
+                return `
+                <div class="extra-field">
+                  <label for="extra-${feat.id}-${field.key}">${escHtml(field.label)}</label>
+                  <select id="extra-${feat.id}-${field.key}" data-extra-key="${escHtml(field.key)}">
+                    ${all.map(opt => `<option value="${escHtml(String(opt.value))}"${String(opt.value) === selected ? ' selected' : ''}>${escHtml(String(opt.label ?? opt.value))}</option>`).join('')}
+                  </select>
+                  <div class="extra-field-hint">${escHtml(field.hint || '')} Default: <code>${escHtml(String(defaultOption?.label ?? field.defaultValue ?? ''))}</code></div>
+                </div>
+              `;
+              }
               const numericValue = Number(rawValue);
               const value = Number.isFinite(numericValue)
                 ? String(Math.trunc(numericValue))
@@ -1307,6 +1326,10 @@
         for (const field of extraFields) {
           const input = section.querySelector(`#extra-${feat.id}-${field.key}`);
           if (!input) continue;
+          if (field.type === 'select') {
+            extra[field.key] = field.valueType === 'number' ? Number.parseInt(input.value, 10) : input.value;
+            continue;
+          }
           const parsed = Number.parseInt(input.value, 10);
           const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
           if (!Number.isFinite(parsed) || parsed < min) {

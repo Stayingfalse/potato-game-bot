@@ -14,8 +14,8 @@ const { getGames } = require('./registry');
 
 const BIRTHDAY_FEATURE_ID = 'birthday';
 
-/** /birthday subcommands that stay available to admins whatever the dashboard says. */
-const BIRTHDAY_ADMIN_SUBCOMMANDS = new Set(['start', 'stop', 'setchannel', 'resend']);
+/** The admin command for birthday announcements; never gated, so admins can always manage them. */
+const BIRTHDAY_ADMIN_COMMAND = 'birthday-admin';
 
 /**
  * The stored dashboard setting for one feature, with defaults applied.
@@ -85,7 +85,7 @@ function checkFeature(guildId, featureId, channel, { label = featureId, off = 'i
  *
  * - Game commands: only `start` is gated, so games in progress can always be
  *   played out and ended.
- * - /birthday: the member-facing subcommands are gated; the admin ones are not.
+ * - /birthday (set, list, delete) is gated; /birthday-admin never is.
  */
 function getCommandBlockReason(interaction) {
   const { guildId, commandName } = interaction;
@@ -94,8 +94,8 @@ function getCommandBlockReason(interaction) {
   const channel = interaction.channel ?? interaction.channelId ?? null;
   const sub = interaction.options?.getSubcommand?.(false) ?? null;
 
+  if (commandName === BIRTHDAY_ADMIN_COMMAND) return null;
   if (commandName === 'birthday') {
-    if (BIRTHDAY_ADMIN_SUBCOMMANDS.has(sub)) return null;
     return checkFeature(guildId, BIRTHDAY_FEATURE_ID, channel, {
       label: 'Birthdays', off: 'are turned off', action: 'used',
     }).reason;
@@ -120,7 +120,7 @@ async function blockIfGated(interaction) {
 
 module.exports = {
   BIRTHDAY_FEATURE_ID,
-  BIRTHDAY_ADMIN_SUBCOMMANDS,
+  BIRTHDAY_ADMIN_COMMAND,
   getFeatureSetting,
   isFeatureEnabled,
   checkFeature,

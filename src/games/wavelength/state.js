@@ -14,6 +14,8 @@ class WavelengthGameState extends BaseGameState {
     // edited as the round advances (cluing → guessing → reveal) and then left
     // in place when the next round posts a fresh message.
     this.roundMessageId = null;
+    /** The status card in the starting channel (see card.js). */
+    this.cardMessageId = null;
 
     // phase: 'lobby'|'setup'|'cluing'|'guessing'|'reveal'|'ended'
     // players: userId → {id, username, avatarURL}
@@ -25,6 +27,8 @@ class WavelengthGameState extends BaseGameState {
     this.clue = null;
     this.guesses = new Map();
     this.guessTimeout = null;
+    // When the real-time guess timer locks guesses (ms since epoch), or null when no timer runs.
+    this.guessEndsAt = null;
     this.autoAdvanceTimeout = null;
     this.sessionHistory = [];
     this.sessionMode = null;
@@ -43,6 +47,7 @@ class WavelengthGameState extends BaseGameState {
     const game = new WavelengthGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
     game.roundMessageId = row.round_message_id ?? null;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.clueGiverId = row.clue_giver_id;
@@ -59,6 +64,7 @@ class WavelengthGameState extends BaseGameState {
     game.sessionHistory = JSON.parse(row.session_history || '[]');
     game.gamePace = row.game_pace ?? 'realtime';
     game.autoAdvanceRounds = row.auto_advance_rounds === 1;
+    game.guessEndsAt = row.guess_ends_at ?? null;
     game._createdAt = row.created_at;
     return game;
   }
@@ -73,6 +79,7 @@ class WavelengthGameState extends BaseGameState {
       host_username:        game.hostUsername,
       message_id:           game.messageId ?? null,
       round_message_id:     game.roundMessageId ?? null,
+      card_message_id:      game.cardMessageId ?? null,
       phase:                game.phase,
       players:              JSON.stringify([...game.players.values()]),
       clue_giver_id:        game.clueGiverId ?? null,
@@ -87,6 +94,7 @@ class WavelengthGameState extends BaseGameState {
       game_pace:            game.gamePace ?? 'realtime',
       auto_advance_rounds:  game.autoAdvanceRounds ? 1 : 0,
       session_history:      JSON.stringify(game.sessionHistory ?? []),
+      guess_ends_at:        game.guessEndsAt ?? null,
       created_at:           game._createdAt ?? Date.now(),
     };
   }

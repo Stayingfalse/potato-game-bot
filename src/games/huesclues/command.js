@@ -2,6 +2,7 @@
 
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { updateGameMessage, closeSession } = require('./flow');
+const card = require('./card');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 const ephemeral = content => ({ content, flags: MessageFlags.Ephemeral });
@@ -50,6 +51,6 @@ module.exports = {
     manager.addPlayer(thread.id, user);
     await updateGameMessage(game, client);
 
-    return interaction.reply({ content: `🎨 **Hues & Clues** game created by <@${user.id}>! Join in <#${thread.id}>.` });
+    await card.post(interaction, game, client);
   },
 };
