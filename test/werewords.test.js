@@ -147,11 +147,11 @@ describe('a session through the real command and handlers', () => {
     await press(HOST, 'ww_word_1');
     assert.equal(game.word, game.wordOptions[1]);
     for (const u of [A, B, C]) await press(u, 'ww_ready');
-    assert.equal(game.timerInterval, null, 'the countdown waits for everyone');
+    assert.equal(game.timerTimeout, null, 'the countdown waits for everyone');
 
     const gameMessage = game.boardMessageId;
     await press(D, 'ww_ready');
-    assert.ok(game.timerInterval);
+    assert.ok(game.timerTimeout);
     assert.equal(game.boardMessageId, gameMessage);
     assert.deepEqual(embedTitles(message(gameMessage)), ['🔮  Werewords — Game Board']);
     const saved = WerewordsGameState.fromRow(repository.getAll().find(r => r.thread_id === thread.id));
@@ -299,7 +299,7 @@ describe('restoring a game mid-play', () => {
 
     const notReady = newManager();
     await quietly(() => werewords.restore(createClient([thread], { werewordsManager: notReady })));
-    assert.equal(notReady.getGame(thread.id).timerInterval, null);
+    assert.equal(notReady.getGame(thread.id).timerTimeout, null);
 
     game.readyPlayers = new Set(['h', 'a', 'b']);
     repository.upsert(game);
@@ -307,7 +307,7 @@ describe('restoring a game mid-play', () => {
     const sentBefore = thread.sent.length;
     await quietly(() => werewords.restore(createClient([thread], { werewordsManager: ready })));
     const restored = ready.getGame(thread.id);
-    assert.ok(restored.timerInterval);
+    assert.ok(restored.timerTimeout);
     assert.equal(restored.word, 'Kiwi');
     assert.equal(thread.sent.length, sentBefore);
     assert.deepEqual(embedTitles(thread.store.get(restored.boardMessageId)), ['🔮  Werewords — Game Board']);

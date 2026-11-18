@@ -20,15 +20,28 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/**
+ * The board's time field: once the countdown has started, Discord timestamps
+ * that every client counts down by itself ("in 3 minutes · 20:15:30"), so the
+ * board never needs editing to keep the clock right. Before that, the round's length.
+ * @param {import('../state')} game
+ * @returns {string}
+ */
+function formatTimeRemaining(game) {
+  if (!game.timerEndsAt) return formatTime(game.timeLeft);
+  const seconds = Math.floor(game.timerEndsAt / 1000);
+  return `Ends <t:${seconds}:R>\n<t:${seconds}:T>`;
+}
+
 // ── Board embed ────────────────────────────────────────────────────────────────
 
 /**
  * Builds the live game board embed shown in the game thread.
- * Updated on each timer tick and after each token use.
+ * Updated after each token use; the time field counts down by itself.
  * @param {import('../state').GameState} game
  */
 function buildBoardEmbed(game) {
-  const { tokens, timeLeft, players } = game;
+  const { tokens, players } = game;
 
   const playerList = [...players.values()].map(p => `<@${p.id}>`).join(' • ');
 
@@ -42,7 +55,7 @@ function buildBoardEmbed(game) {
           : '🔤 The secret word has been chosen. Type any message in this thread to make a guess!',
     )
     .addFields(
-      { name: '⏱ Time Remaining', value: formatTime(timeLeft), inline: true },
+      { name: '⏱ Time Remaining', value: formatTimeRemaining(game), inline: true },
       { name: 'Mode', value: game.sessionMode === 'voice' ? '🎙️ Voice' : '📝 Text', inline: true },
       { name: '✅ ❌  Yes / No', value: `${tokens.yes_no} / 36`, inline: true },
       { name: '❔ Maybe', value: `${tokens.maybe} / 12`, inline: true },
@@ -171,6 +184,7 @@ function buildVoicePlayerComponents(playerId, tokens) {
 
 module.exports = {
   formatTime,
+  formatTimeRemaining,
   buildBoardEmbed,
   buildGuessComponents,
   buildVoicePlayerContent,

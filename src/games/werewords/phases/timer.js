@@ -1,74 +1,105 @@
 'use strict';
 
-// Key time milestones (in seconds) at which TTS warnings are announced.
-const TTS_WARNINGS = new Set([60, 30, 10]);
+/**
+ * Seconds-remaining marks at which a warning is posted, per session mode.
+ * Voice mode reads them aloud (TTS) for players who are looking away from the
+ * screen. Text mode posts plain messages and skips the 30 s one: the board's
+ * live countdown already shows the time, and players are typing in the thread.
+ */
+const WARNINGS = {
+  voice: [60, 30, 10],
+  text: [60, 10],
+};
 
 /**
- * Attempts to send a TTS warning message to the thread.
+ * Posts a time warning. In voice mode it is sent as TTS; text mode never uses TTS.
  * Fails silently so a broken TTS permission never kills the bot.
  */
-async function sendTtsWarning(thread, seconds) {
-  try {
-    await thread.send({ content: `⏱️ ${seconds} seconds remaining!`, tts: true });
-  } catch (err) {
-    // TTS may be disabled or rate-limited — fall back to a plain message.
+async function sendTimeWarning(thread, seconds, sessionMode) {
+  const content = `⏱️ ${seconds} seconds remaining!`;
+  if (sessionMode === 'voice') {
     try {
-      await thread.send({ content: `⏱️ ${seconds} seconds remaining!` });
+      await thread.send({ content, tts: true });
+      return;
     } catch {
-      // Ignore all errors; timer warnings are non-critical.
+      // TTS may be disabled or rate-limited — fall back to a plain message below.
     }
+  }
+  try {
+    await thread.send({ content });
+  } catch {
+    // Ignore all errors; timer warnings are non-critical.
   }
 }
 
 /**
- * Shared helper: start (or restart) the werewords game-board timer.
- * Called both from interactionCreate.js (initial start) and restore.js (crash recovery).
+ * Starts (or re-arms) the werewords countdown. The deadline is `game.timerEndsAt`;
+ * when it is not set yet it is fixed now from `game.timeLeft` and saved, so a
+ * restored game resumes with only the time it had left.
  *
- * @param {import('../state').GameState} game
+ * Nothing edits the board to tick the clock: the board shows the deadline as a
+ * Discord relative timestamp, which every client counts down by itself. Two
+ * timeouts are armed instead, both listed in the manager's timerKeys so
+ * clearTimers stops them:
+ *   - game.timerTimeout fires at the deadline and moves the game to the vote;
+ *   - game.timerWarningTimeout fires at the next warning still ahead, then
+ *     re-arms itself for the one after. Warnings already passed are skipped.
+ *
+ * Called when everyone is ready (handlers/shared.js) and by restore.js.
+ * Returns a promise for the one board redraw done when a new deadline is set.
+ *
+ * @param {import('../state')} game
  * @param {import('discord.js').ThreadChannel} thread
  * @param {import('discord.js').Client} client
  */
 function startGameTimer(game, thread, client) {
   const { startVotingPhase } = require('./voting');
-  const { updateGameMessage } = require('../gameMessage');
-  const { updateTimeLeft } = require('../repository');
+  const WerewordsRepository = require('../repository');
 
-  let boardRefreshing = false;
+  // Re-arming replaces any previous countdown for this game.
+  clearTimeout(game.timerTimeout);
+  clearTimeout(game.timerWarningTimeout);
+  game.timerWarningTimeout = null;
 
-  game.timerInterval = setInterval(async () => {
-    if (game.phase !== 'playing') return;
+  let boardRefresh = Promise.resolve();
+  if (!game.timerEndsAt) {
+    game.timerEndsAt = Date.now() + Math.max(0, game.timeLeft) * 1000;
+    WerewordsRepository.upsert(game);
+    // The board was drawn before the deadline existed; redraw it once to show the countdown.
+    if (game.boardMessageId) {
+      const { updateGameMessage } = require('../gameMessage');
+      boardRefresh = updateGameMessage(game, client).catch(err => console.error('[Timer] board refresh error:', err));
+    }
+  }
+  const endsAt = game.timerEndsAt;
 
-    game.timeLeft--;
+  game.timerTimeout = setTimeout(async () => {
+    game.timerTimeout = null;
+    if (game.phase !== 'playing' || game.timerEndsAt !== endsAt) return;
+    try {
+      await startVotingPhase(game, client);
+    } catch (err) {
+      console.error('[Timer] startVotingPhase error:', err);
+    }
+  }, Math.max(0, endsAt - Date.now()));
 
-    if (game.timeLeft <= 0) {
-      game.timeLeft = 0;
-      try {
-        await startVotingPhase(game, client);
-      } catch (err) {
-        console.error('[Timer] startVotingPhase error:', err);
-      }
+  const marks = WARNINGS[game.sessionMode === 'voice' ? 'voice' : 'text'];
+  const armNextWarning = () => {
+    const now = Date.now();
+    const next = marks.find(seconds => endsAt - seconds * 1000 > now);
+    if (next === undefined) {
+      game.timerWarningTimeout = null;
       return;
     }
-
-    // TTS warning at key milestones.
-    if (TTS_WARNINGS.has(game.timeLeft)) {
-      await sendTtsWarning(thread, game.timeLeft);
-    }
-
-    const updateEvery = game.timeLeft > 60 ? 30
-                      : game.timeLeft > 30 ? 10
-                      : 5;
-
-    if (game.timeLeft % updateEvery === 0 && game.boardMessageId && !boardRefreshing) {
-      updateTimeLeft(game.threadId, game.timeLeft);
-      boardRefreshing = true;
-      try {
-        await updateGameMessage(game, client);
-      } finally {
-        boardRefreshing = false;
-      }
-    }
-  }, 1_000);
+    game.timerWarningTimeout = setTimeout(async () => {
+      game.timerWarningTimeout = null;
+      if (game.phase !== 'playing' || game.timerEndsAt !== endsAt) return;
+      armNextWarning();
+      await sendTimeWarning(thread, next, game.sessionMode);
+    }, endsAt - next * 1000 - now);
+  };
+  armNextWarning();
+  return boardRefresh;
 }
 
-module.exports = { startGameTimer };
+module.exports = { startGameTimer, sendTimeWarning, WARNINGS };
