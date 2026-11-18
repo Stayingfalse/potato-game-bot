@@ -3,6 +3,7 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { updateGameMessage, closeSession } = require('./flow');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
+const card = require('./card');
 
 const ephemeral = content => ({ content, flags: MessageFlags.Ephemeral });
 
@@ -50,6 +51,7 @@ module.exports = {
     manager.addPlayer(thread.id, user);
     await updateGameMessage(game, client);
 
-    return interaction.reply({ content: `🎲 **High Roll** game created by <@${user.id}>! Join in <#${thread.id}>.` });
+    // The reply is the game's status card in this channel; card.post saves its id on the game.
+    await card.post(interaction, game, client);
   },
 };

@@ -102,7 +102,7 @@ describe('a session through the real command and handlers', () => {
     game = manager.getGame(thread.id);
     assert.equal(channel.createdThreads[0].type, 11);
     assert.equal(channel.createdThreads[0].autoArchiveDuration, 1440);
-    assert.match(start.replies()[0], /game created by <@host>/);
+    assert.match(start.replies()[0], /hosted by <@host>\n🟢 Lobby open/);
     assert.deepEqual(buttonIds(message(game.messageId)), ['ww_join', 'ww_leave', 'ww_start', 'ww_cancel', 'ww_howto']);
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });

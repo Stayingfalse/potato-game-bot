@@ -4,11 +4,12 @@ const { MessageFlags } = require('discord.js');
 const { MIN_PLAYERS } = require('./manager');
 const HighRollRepository = require('./repository');
 const { renderGameMessage } = require('./render');
-const { startRound, finishRound, closeSession } = require('./flow');
+const { updateGameMessage, startRound, finishRound, closeSession } = require('./flow');
 const { fetchChannel } = require('../_core/threads');
 const { howToPlayReply } = require('../_core/lobby');
 const howToPlay = require('./howToPlay');
 const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
+const card = require('./card');
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
@@ -26,14 +27,16 @@ async function handleJoin(interaction, client, game) {
   }
   const thread = await fetchChannel(client, game.threadId);
   await thread?.members.add(interaction.user.id).catch(() => {});
-  return interaction.update(renderGameMessage(game));
+  await interaction.update(renderGameMessage(game));
+  return card.update(client, game); // the channel card lists the players too
 }
 
 async function handleLeave(interaction, client, game) {
   if (!client.highRollManager.removePlayer(game.threadId, interaction.user.id)) {
     return reply(interaction, 'You are not in the lobby.');
   }
-  return interaction.update(renderGameMessage(game));
+  await interaction.update(renderGameMessage(game));
+  return card.update(client, game);
 }
 
 async function handleStart(interaction, client, game) {
@@ -43,7 +46,8 @@ async function handleStart(interaction, client, game) {
     return reply(interaction, `Need at least **${MIN_PLAYERS} players** to start. Currently: **${game.players.size}**.`);
   }
   await startRound(game, client);
-  return interaction.update(renderGameMessage(game));
+  await interaction.update(renderGameMessage(game));
+  return card.update(client, game); // now "Game in progress"
 }
 
 async function handleCancel(interaction, client, game) {
@@ -103,6 +107,12 @@ const BUTTONS = {
 async function handleInteraction(interaction, client) {
   // The lobby's "How to play" button: anyone can read the rules, with or without a game in the thread.
   if (interaction.customId === 'hr_howto') return interaction.reply(howToPlayReply({ name: 'High Roll', howToPlay }));
+
+  // The Join button on the channel card. It's pressed in the starting channel, not the
+  // thread, so the card finds the game by its message; refreshLobby redraws the lobby.
+  if (interaction.customId === card.joinId) {
+    return card.handleJoin(interaction, client, { refreshLobby: (game, c) => updateGameMessage(game, c) });
+  }
 
   const handler = interaction.isButton() ? BUTTONS[interaction.customId] : null;
   if (!handler) return;

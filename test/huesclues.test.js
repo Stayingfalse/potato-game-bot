@@ -102,7 +102,7 @@ describe('a game through the real command and buttons', () => {
     await huesClues.command.execute(start, client);
     game = manager.getGame(thread.id);
     assert.ok(game.messageId);
-    assert.match(start.replies()[0], /game created/);
+    assert.match(start.replies()[0], /Lobby open/);
     assert.ok(text(sessionMessage()).includes('hc_join'));
 
     const again = slashCommand({ sub: 'start', user: HOST, channel });

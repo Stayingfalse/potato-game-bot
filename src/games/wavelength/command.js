@@ -7,6 +7,7 @@ const {
 } = require('discord.js');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
+const card = require('./card');
 const { createGameThread, deleteThread, missingThreadPermissionsMessage } = require('../_core/threads');
 
 module.exports = {
@@ -68,9 +69,8 @@ module.exports = {
         WavelengthRepository.upsert(game);
       }
 
-      return interaction.reply({
-        content: `🎬 **Wavelength** game created by <@${user.id}>! Join in <#${thread.id}>.`,
-      });
+      await card.post(interaction, game, client);
+      return;
     }
 
     if (sub === 'end') {

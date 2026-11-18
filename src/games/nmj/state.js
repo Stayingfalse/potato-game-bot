@@ -23,6 +23,8 @@ class NoMoreJockeysGameState extends BaseGameState {
     /** Array of eliminated player user IDs. */
     this.eliminatedPlayers = [];
     this.currentPlayerIndex = 0;
+    /** The status card in the starting channel (see card.js). */
+    this.cardMessageId = null;
 
     /** Hidden categories (text) that have already been used and are no longer available. */
     this.bannedCategories = [];
@@ -72,6 +74,7 @@ class NoMoreJockeysGameState extends BaseGameState {
   static fromRow(row) {
     const game = new NoMoreJockeysGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.eliminatedPlayers = JSON.parse(row.eliminated_players || '[]');
@@ -97,6 +100,7 @@ class NoMoreJockeysGameState extends BaseGameState {
       host_id: game.hostId,
       host_username: game.hostUsername ?? '',
       message_id: game.messageId ?? null,
+      card_message_id: game.cardMessageId ?? null,
       phase: game.phase,
       players: JSON.stringify([...game.players.values()]),
       eliminated_players: JSON.stringify(game.eliminatedPlayers ?? []),

@@ -65,6 +65,8 @@ class WerewordsGameState extends BaseGameState {
      * @type {Array<{gameNumber: number, outcome: string, word: string|null, winners: string[], players: Array}>}
      */
     this.sessionHistory = [];
+    /** The status card in the starting channel (see card.js). */
+    this.cardMessageId = null;
     /** userId of the player whose guess was accepted (for stats credit). */
     this.winnerGuesserUserId = null;
     /** Set to true once the response-card stats embed has been posted (e.g. before voting). */
@@ -75,6 +77,7 @@ class WerewordsGameState extends BaseGameState {
     const game = new WerewordsGameState(row.guild_id, row.channel_id, row.thread_id, row.host_id, row.host_username);
     game.messageId = row.message_id;
     game.boardMessageId = row.board_message_id;
+    game.cardMessageId = row.card_message_id ?? null;
     game.phase = row.phase;
     game.players = new Map(JSON.parse(row.players || '[]').map(p => [p.id, p]));
     game.word = row.word;
@@ -105,6 +108,7 @@ class WerewordsGameState extends BaseGameState {
       host_username:            game.hostUsername,
       message_id:               game.messageId ?? null,
       board_message_id:         game.boardMessageId ?? null,
+      card_message_id:          game.cardMessageId ?? null,
       phase:                    game.phase,
       players:                  JSON.stringify([...game.players.values()]),
       word:                     game.word ?? null,

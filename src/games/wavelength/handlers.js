@@ -24,6 +24,7 @@ const { evaluateSessionGoal } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 const { renderGameMessage } = require('./render');
 const WavelengthRepository = require('./repository');
+const card = require('./card');
 const { editOrSend } = require('../_core/messages');
 const { replyWithLeaderboard } = require('../_core/statsDisplay');
 const { howToPlayReply } = require('../_core/lobby');
@@ -243,6 +244,13 @@ async function handleInteraction(interaction, client) {
 
   if (!interaction.isButton()) return;
 
+  // The Join button on the status card in the starting channel.
+  if (interaction.customId === card.joinId) {
+    return card.handleJoin(interaction, client, {
+      refreshLobby: (g, c) => updateGameMessage(g, c, { createIfMissing: false }),
+    });
+  }
+
   const { customId, user } = interaction;
   const game = wavelengthManager.getGame(interaction.channelId);
 
@@ -292,7 +300,8 @@ async function handleInteraction(interaction, client) {
     }
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) await thread.members.add(user.id).catch(() => {});
-    return replaceCurrentInteractionMessage(interaction, game);
+    await replaceCurrentInteractionMessage(interaction, game);
+    return card.update(client, game);
   }
 
   if (customId === 'wl_leave') {
@@ -305,7 +314,8 @@ async function handleInteraction(interaction, client) {
     }
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) await thread.members.remove(user.id).catch(() => {});
-    return replaceCurrentInteractionMessage(interaction, game);
+    await replaceCurrentInteractionMessage(interaction, game);
+    return card.update(client, game);
   }
 
   if (customId === 'wl_start') {
@@ -324,7 +334,8 @@ async function handleInteraction(interaction, client) {
 
     game.phase = 'setup';
     WavelengthRepository.upsert(game);
-    return replaceCurrentInteractionMessage(interaction, game);
+    await replaceCurrentInteractionMessage(interaction, game);
+    return card.update(client, game);
   }
 
   if (customId === 'wl_cancel') {
@@ -749,6 +760,7 @@ async function handleInteraction(interaction, client) {
     const resetGame = client.wavelengthManager.resetForNewSession(game.threadId, true);
     if (!resetGame) return;
     await updateGameMessage(resetGame, client);
+    await card.update(client, resetGame);
     return;
   }
 

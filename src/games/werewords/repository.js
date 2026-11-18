@@ -13,6 +13,7 @@ const SCHEMA = `
     host_username        TEXT NOT NULL,
     message_id           TEXT,
     board_message_id     TEXT,
+    card_message_id      TEXT,
     phase                TEXT NOT NULL DEFAULT 'lobby',
     players              TEXT NOT NULL DEFAULT '[]',
     word                 TEXT,
@@ -35,6 +36,7 @@ const ADDED_COLUMNS = {
   response_stats_shown: 'response_stats_shown INTEGER NOT NULL DEFAULT 0',
   phase_ends_at: 'phase_ends_at INTEGER',
   werewolf_revealed: 'werewolf_revealed INTEGER NOT NULL DEFAULT 0',
+  card_message_id: 'card_message_id TEXT',
 };
 
 /** Adds any columns that a table created by an older version is missing. */

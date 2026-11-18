@@ -12,6 +12,7 @@ const SCHEMA = `
     host_username        TEXT NOT NULL,
     message_id           TEXT,
     round_message_id     TEXT,
+    card_message_id      TEXT,
     phase                TEXT NOT NULL DEFAULT 'lobby',
     players              TEXT NOT NULL DEFAULT '[]',
     clue_giver_id        TEXT,
@@ -38,6 +39,7 @@ const ADDED_COLUMNS = {
   auto_advance_rounds: "auto_advance_rounds INTEGER NOT NULL DEFAULT 0",
   session_history: "session_history TEXT NOT NULL DEFAULT '[]'",
   round_message_id: "round_message_id TEXT",
+  card_message_id: "card_message_id TEXT",
 };
 
 /** Adds any columns that a table created by an older version is missing. */

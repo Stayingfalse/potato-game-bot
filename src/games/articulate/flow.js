@@ -15,6 +15,7 @@ const { spin: spinTheSpinner } = require('./board');
 const { TIMER_GRACE_MS } = require('./rules');
 const { fetchChannel, lockAndArchive } = require('../_core/threads');
 const { editMessage, editOrSend } = require('../_core/messages');
+const card = require('./card');
 
 const TURN_PHASES = ['ready', 'describing', 'spin', 'control', 'turnover', 'ended'];
 const managerOf = client => client.articulateManager;
@@ -173,6 +174,7 @@ async function newGame(game, client) {
   if (!managerOf(client).newGame(game)) return false;
   game.messageId = null;
   await updateGameMessage(game, client);
+  await card.update(client, game);
   return true;
 }
 
@@ -185,6 +187,19 @@ async function closeSession(game, client, reason) {
     lockAndArchive(thread, { delayMs: 5_000 });
   }
   managerOf(client).deleteGame(game.threadId);
+  const cancelled = ['lobby', 'setup'].includes(game.phase) && game.gameNumber === 1;
+  await (cancelled ? card.cancel(client, game) : card.finish(client, game, cardResult(game)));
+}
+
+/** One line for the channel card: the winning team, or who was ahead. */
+function cardResult(game) {
+  const label = team => `${team.emoji} Team ${team.name} (${team.playerIds.map(id => `<@${id}>`).join(', ')})`;
+  const winner = game.phase === 'ended' ? game.teams[game.winnerTeam] : null;
+  if (winner) return `🏆 ${label(winner)} win!`;
+  const leader = game.turnNumber > 0 ? [...game.teams].sort((a, b) => b.position - a.position)[0] : null;
+  if (leader) return `🏁 Ended early — ${label(leader)} led on square ${leader.position}.`;
+  const played = game.gameNumber - 1;
+  return played > 0 ? `🏁 Session over — ${played} game${played === 1 ? '' : 's'} played.` : null;
 }
 
 module.exports = {

@@ -16,6 +16,7 @@ const { editOrSend } = require('../_core/messages');
 const { howToPlayReply } = require('../_core/lobby');
 const howToPlay = require('./howToPlay');
 const { isHost, trackHostActivity, replyNotHost, handleTakeHost } = require('../_core/host');
+const card = require('./card');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -142,8 +143,9 @@ function advanceTurn(game) {
   if (idx !== -1) game.currentPlayerIndex = idx;
 }
 
-/** Ends the game: records stats if there is a winner, posts the final state to the starting channel, locks/archives the thread and cleans up. */
+/** Ends the game: records stats if there is a winner, shows the result on the channel card, locks/archives the thread and cleans up. */
 async function endGame(game, client, resultText, { winnerId } = {}) {
+  const cancelled = game.phase === 'lobby';
   game.phase = 'ended';
   persistGame(client, game);
   // Only a game that finished with a winner counts towards stats.
@@ -154,17 +156,20 @@ async function endGame(game, client, resultText, { winnerId } = {}) {
     await updateGameMessage(game, client, resultText, thread);
   }
 
-  const { components, flags } = renderGameMessage(game, resultText);
-  const originChannel = await client.channels.fetch(game.channelId).catch(() => null);
-  if (originChannel) {
-    await originChannel.send({ components, flags }).catch(() => {});
-  }
-
   if (thread) {
     await lockAndArchive(thread);
   }
 
   client.nmjManager.deleteGame(game.threadId);
+  if (cancelled) {
+    await card.cancel(client, game);
+  } else {
+    const moves = game.moves.length;
+    const result = winnerId
+      ? `🏆 <@${winnerId}> wins No More Jockeys! (${moves} move${moves === 1 ? '' : 's'})`
+      : resultText;
+    await card.finish(client, game, result);
+  }
 }
 
 function checkForWinner(game) {
@@ -279,7 +284,8 @@ async function handleButton(interaction, client, game) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) await thread.members.add(user.id).catch(() => {});
     const { components, flags } = renderGameMessage(game);
-    return interaction.update({ components, flags });
+    await interaction.update({ components, flags });
+    return card.update(client, game);
   }
 
   if (customId === 'nmj_leave') {
@@ -291,7 +297,8 @@ async function handleButton(interaction, client, game) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) await thread.members.remove(user.id).catch(() => {});
     const { components, flags } = renderGameMessage(game);
-    return interaction.update({ components, flags });
+    await interaction.update({ components, flags });
+    return card.update(client, game);
   }
 
   if (customId === 'nmj_start') {
@@ -307,7 +314,8 @@ async function handleButton(interaction, client, game) {
     game.phase = 'ordering';
     persistGame(client, game);
     const { components, flags } = renderGameMessage(game);
-    return interaction.update({ components, flags });
+    await interaction.update({ components, flags });
+    return card.update(client, game);
   }
 
   if (customId === 'nmj_cancel') {
@@ -641,6 +649,13 @@ async function handleInteraction(interaction, client) {
   // Anyone can read the rules, with or without a game in the thread.
   if (interaction.customId === 'nmj_howto') {
     return interaction.reply(howToPlayReply({ name: 'No More Jockeys', howToPlay }));
+  }
+
+  // The Join button on the status card in the starting channel.
+  if (interaction.customId === card.joinId) {
+    return card.handleJoin(interaction, client, {
+      refreshLobby: (game, c) => updateGameMessage(game, c),
+    });
   }
 
   const game = client.nmjManager.getGame(interaction.channelId);

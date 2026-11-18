@@ -156,7 +156,8 @@ describe('No More Jockeys: cancelling the lobby', () => {
     const closed = JSON.stringify(session.message().payload.components);
     assert.ok(closed.includes('Game cancelled by <@host> before it started.'));
     assert.ok(!closed.includes('nmj_join'), 'the lobby buttons are gone');
-    assert.ok(JSON.stringify(session.channel.sent.at(-1).components).includes('Game cancelled by <@host>'));
+    assert.deepEqual(session.channel.sent, [], 'nothing new is posted in the channel');
+    assert.match(session.channel.store.get(session.state.cardMessageId).payload.content, /Cancelled/);
     assert.equal(src('db/database').prepare('SELECT COUNT(*) AS n FROM nmj_games WHERE thread_id = ?').get(session.thread.id).n, 0);
     assert.deepEqual((await session.press(HOST, 'join')).replies(), ['There is no active No More Jockeys game in this thread.']);
   });

@@ -71,6 +71,13 @@ function createChannel(id, thread) {
     sent: [],
     createdThreads: [],
     threads: { create: async options => { channel.createdThreads.push(options); return thread; } },
+    messages: {
+      fetch: async messageId => {
+        const message = channel.store.get(messageId);
+        if (!message) throw new Error('Unknown Message');
+        return message;
+      },
+    },
     send: async payload => { channel.sent.push(payload); return createMessage(channel, payload); },
   };
   return channel;
@@ -137,6 +144,12 @@ function slashCommand({ sub, user: from, channel, channelId = channel?.id, guild
     memberPermissions: { has: () => canManageThreads },
     isChatInputCommand: () => true,
     reply: async payload => { interaction.calls.push(payload); interaction.replied = true; },
+    /** The reply as a message in `channel` (created on first fetch), as Discord returns it. */
+    fetchReply: async () => {
+      if (!interaction.replied || !channel?.store) throw new Error('No reply');
+      interaction.replyMessage ??= createMessage(channel, interaction.calls.at(-1));
+      return interaction.replyMessage;
+    },
   };
   interaction.replies = () => interaction.calls.map(p => p.content);
   return interaction;
